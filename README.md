@@ -27,10 +27,15 @@
 
 ## Prerequisites
 
-- **rootless mode:** `podman` 4.4+, `passt` (provides `pasta`), `nftables`,
-  a working systemd `--user` session (`loginctl enable-linger $USER` if
-  you're not always logged in), kernel ≥ 5.x with cgroup v2.
-- **`--rootful` mode:** `podman`, `iptables` (legacy or nft-backed), `sudo`.
+- **Linux rootless mode:** `podman` 4.4+, `passt` (provides `pasta`),
+  `nftables`, a working systemd `--user` session
+  (`loginctl enable-linger $USER` if you're not always logged in),
+  kernel ≥ 5.x with cgroup v2.
+- **Linux `--rootful` mode:** `podman`, `iptables` (legacy or nft-backed),
+  `sudo`.
+- **macOS (Apple Silicon):** `podman` 4.4+ (`brew install podman`) and a
+  podman machine in **rootful** mode — see [macOS notes](#macos-apple-silicon-notes)
+  below.
 - A deploy key with commit + pull access to the repo you want to work on.
 
 ## Usage
@@ -55,6 +60,39 @@ mode), plus the warmup slice / podman network it installed.
 (rootless uses your user's podman store, `--rootful` uses root's). Switching
 modes means a first-launch rebuild of the base image and an empty volume;
 it does not destroy data in the other mode's store.
+
+## macOS (Apple Silicon) notes
+
+`launch.sh` auto-detects macOS. Containers run inside the podman-machine
+Linux VM; the egress filter is installed inside the VM via
+`podman machine ssh -- sudo nft ...`. No firewall changes are made on the
+macOS host itself.
+
+First-time setup:
+
+```bash
+podman machine init
+podman machine set --rootful
+podman machine start
+```
+
+> **Why rootful?** Rootless podman inside the VM uses `pasta` (userspace
+> networking) which bypasses the kernel's netfilter — nft rules have no
+> effect. Rootful mode uses real bridge networking that goes through the
+> FORWARD chain. This only affects the daemon inside the VM; on the macOS
+> host you still run `podman` without sudo.
+
+For Macs with limited RAM, configure the VM before starting:
+`podman machine set --memory 4096 --cpus 2`.
+
+- The `--rootful` flag is **not** supported on macOS (and not needed) —
+  the VM boundary already provides equivalent isolation. Use the default
+  invocation: `./launch.sh`.
+- If your ISP blocks outbound port 22, use the SSH-over-443 form for
+  `REPO_URL`, e.g. `ssh://git@ssh.github.com:443/owner/repo.git`.
+- The notification socket requires virtiofs home-directory sharing
+  (default in podman machine). If disabled, container hooks fail silently
+  with a warning at launch.
 
 ## More docs
 

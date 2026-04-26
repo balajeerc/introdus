@@ -5,7 +5,15 @@ set -euo pipefail
 # Detected once here; used throughout to gate macOS-specific paths.
 # Linux behaviour is preserved exactly; macOS paths are purely additive.
 OS="linux"
-[[ "$(uname -s)" == "Darwin" ]] && OS="macos"
+case "$(uname -s)" in
+    Linux)  OS="linux" ;;
+    Darwin) OS="macos" ;;
+    *)
+        echo "error: unsupported OS '$(uname -s)'." >&2
+        echo "       supported: Linux (incl. WSL2), macOS." >&2
+        exit 1
+        ;;
+esac
 
 # ---- arg parsing -----------------------------------------------------------
 
@@ -107,17 +115,6 @@ fi
 # filter is enforcing. Must be reachable on the open internet and must NOT
 # appear in the resolved allowlist. example.com is the default.
 CANARY_BLOCKED_IP="${CANARY_BLOCKED_IP:-93.184.216.34}"
-
-EXPOSE_WEBAPP="${EXPOSE_WEBAPP:-false}"
-
-# When EXPOSE_WEBAPP=true, the container runs `cloudflared tunnel --url ...`
-# which dials out to Cloudflare's tunnel edge on TCP/UDP 7844. Auto-add
-# those endpoints to the resolved allowlist so the egress filter doesn't
-# kill the tunnel. Edge hostnames are anycast so the IPs are stable.
-TUNNEL_HOSTS=""
-if [[ "$EXPOSE_WEBAPP" == "true" ]]; then
-    TUNNEL_HOSTS="region1.v2.argotunnel.com region2.v2.argotunnel.com"
-fi
 
 if [[ ! -f "$DEPLOY_KEY_PATH" ]]; then
     echo "error: DEPLOY_KEY_PATH does not exist: $DEPLOY_KEY_PATH" >&2
@@ -554,11 +551,19 @@ elif [[ $MODE == rootless ]]; then
         echo "error: slice cgroup did not materialize: $SLICE_CGROUP" >&2
         exit 1
     fi
+    # nft resolves the cgroupv2 string via a literal stat("/sys/fs/cgroup/" +
+    # string) — no tree walking, not a basename match. So we feed the full
+    # cgroup path stripped of its leading slash. `level N` is independent
+    # metadata telling the kernel how many ancestors up from the socket's
+    # cgroup to compare against; it must equal the depth of the path below.
     SLICE_CGROUP_REL="${SLICE_CGROUP#/}"
     SLICE_LEVEL=$(echo "$SLICE_CGROUP_REL" | tr / '\n' | grep -c .)
     echo "    slice cgroup: $SLICE_CGROUP"
     echo "    slice level:  $SLICE_LEVEL"
 
+    # Loopback is accept-first so the container can reach its own DNS stub
+    # (pasta terminates DNS in userspace and reopens a host socket, typically
+    # to 127.0.0.53 on systemd-resolved hosts).
     ALLOWED_SET=$(IFS=,; echo "${ALLOWED_IPS[*]}")
     sudo nft delete table inet "$NFT_TABLE" 2>/dev/null || true
     sudo nft -f - <<EOF
