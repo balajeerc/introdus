@@ -115,7 +115,15 @@ if [[ "$EXPOSE_WEBAPP" == "true" ]]; then
     log "starting cloudflared quick tunnel in tmux session 'tunnel' (-> port $WEBAPP_PORT)"
     : > /root/.logs/tunnel.log
     rm -f /root/.logs/tunnel-url.txt
-    tmux new-session -d -s tunnel "cloudflared tunnel --url http://localhost:$WEBAPP_PORT 2>&1; echo '[cloudflared exited]'; exec bash"
+    # Pin edge IPs and force HTTP/2 so cloudflared skips its SRV-based edge
+    # discovery (DNS for SRV records is unreliable through pasta) and avoids
+    # QUIC/UDP. Edge IPs come from TUNNEL_EDGE_IPS, set by launch.sh and
+    # already added to the egress allowlist there.
+    EDGE_ARGS=""
+    for ip in $TUNNEL_EDGE_IPS; do
+        EDGE_ARGS="$EDGE_ARGS --edge ${ip}:7844"
+    done
+    tmux new-session -d -s tunnel "cloudflared tunnel --protocol http2 $EDGE_ARGS --url http://localhost:$WEBAPP_PORT 2>&1; echo '[cloudflared exited]'; exec bash"
     tmux pipe-pane -t tunnel -o 'cat >>/root/.logs/tunnel.log'
     echo "  attach: podman exec -it remote-code-$PROJECT_NAME tmux attach -t tunnel"
     echo "  tail:   podman exec -it remote-code-$PROJECT_NAME tail -f /root/.logs/tunnel.log"

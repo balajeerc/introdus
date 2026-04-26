@@ -188,14 +188,23 @@ NFT_TABLE="rcode_${SAFE_PROJECT}"
 
 EXPOSE_WEBAPP="${EXPOSE_WEBAPP:-false}"
 
-# When EXPOSE_WEBAPP=true, the container runs `cloudflared tunnel --url ...`
-# which (1) POSTs to api.trycloudflare.com to register a quick tunnel, then
-# (2) dials Cloudflare's tunnel edge on TCP/UDP 7844. Auto-add both to the
-# resolved allowlist so the egress filter doesn't kill the tunnel. Edge
-# hostnames are anycast so the IPs are stable.
+# When EXPOSE_WEBAPP=true, the container runs cloudflared. It first POSTs to
+# api.trycloudflare.com to register a quick tunnel (resolved via --add-host so
+# /etc/hosts handles it), then dials Cloudflare's tunnel edge on TCP/7844.
+#
+# We pin a fixed set of edge IPs and pass them via --edge to cloudflared so it
+# skips the SRV-based edge discovery (which would need working DNS for SRV
+# records inside the container — pasta's DNS proxy is unreliable for SRV).
+# --protocol http2 forces TCP so we don't need to allow UDP/QUIC either.
+#
+# These IPs may rotate; if the tunnel stops registering, refresh from
+# `dig +short SRV _v2-origintunneld._tcp.argotunnel.com`. A dedicated sibling
+# container would be the cleaner long-term fix.
 TUNNEL_HOSTS=""
+TUNNEL_EDGE_IPS=""
 if [[ "$EXPOSE_WEBAPP" == "true" ]]; then
-    TUNNEL_HOSTS="api.trycloudflare.com region1.v2.argotunnel.com region2.v2.argotunnel.com"
+    TUNNEL_HOSTS="api.trycloudflare.com"
+    TUNNEL_EDGE_IPS="198.41.192.167 198.41.192.227 198.41.200.13 198.41.200.193"
 fi
 
 GIT_HOST="$(echo "$REPO_URL" | sed -E 's#^(git@|ssh://git@|https://)##; s#[:/].*$##')"
@@ -449,6 +458,15 @@ else
             fi
         done <<< "$ips"
         printf '    %-40s -> %s\n' "$h" "$(echo "$ips" | tr '\n' ' ')"
+    done
+
+    for ip in $TUNNEL_EDGE_IPS; do
+        if ! echo "$SEEN_IPS" | grep -qxF "$ip"; then
+            ALLOWED_IPS+=("$ip")
+            SEEN_IPS="${SEEN_IPS}${ip}
+"
+            printf '    %-40s -> %s\n' "(cloudflared edge)" "$ip"
+        fi
     done
 
     if [[ ${#ALLOWED_IPS[@]} -eq 0 ]]; then
@@ -737,6 +755,7 @@ PODMAN_ARGS=(
     --env "HOST_OS=$OS"
     --env "DISABLE_NETWORK_BLOCK=$DISABLE_NETWORK_BLOCK"
     --env "EXPOSE_WEBAPP=$EXPOSE_WEBAPP"
+    --env "TUNNEL_EDGE_IPS=$TUNNEL_EDGE_IPS"
     --publish "127.0.0.1:${WEBAPP_PORT}:${WEBAPP_PORT}"
     --publish "127.0.0.1:${RC_PORT}:${RC_PORT}"
 )
