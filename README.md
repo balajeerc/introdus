@@ -3,7 +3,7 @@
 ## Overview
 
 - Spins up a network-hardened Linux container for dev environments.
-0 Theoretically, this can also be configured to run on a remote instance running on Hetzner/AWS/Digital Ocean.
+- This can also be configured to [run on a remote instance](docs/Running%20on%20a%20remote%20host.md) running on Hetzner/AWS/Digital Ocean.
 - Primary benefits are
   - Your host environment/machine is more insulated from supply chain attacks
     - Which are becoming increasingly common

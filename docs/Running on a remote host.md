@@ -3,10 +3,15 @@
 Back to the [project README](../README.md).
 
 The harness runs identically on a remote Linux box (Hetzner, AWS, DO,
-etc.) — including aarch64 instances. You launch the container on the
-remote host and attach VSCode to it from your laptop over SSH. Nothing
-in the harness itself changes; the only difference is one extra setting
-in your local VSCode config and a working SSH key into the host.
+Oracle Cloud, etc.) — including aarch64 instances. You launch the
+container on the remote host and attach VSCode to it from your laptop.
+Nothing in the harness itself changes.
+
+The recommended VSCode flow is **Remote-SSH first, then attach to
+container**. From the remote VSCode window's perspective, the container
+is local, so you skip the entire dance of exposing podman's socket over
+SSH (which used to rely on the now-deprecated `docker.host` setting and
+podman's built-in SSH client that doesn't read `~/.ssh/config`).
 
 ## On the remote host (one-time)
 
@@ -14,43 +19,39 @@ in your local VSCode config and a working SSH key into the host.
    mode (rootless is recommended for remote — fewer SSH-side gotchas).
 2. Clone this repo, copy `sample.env` to `.env`, fill it in, and run
    `./launch.sh` the same way you would locally.
-3. Enable the podman socket so your laptop's VSCode has something to
-   talk to over SSH:
 
-   ```bash
-   # rootless (default launch mode)
-   systemctl --user enable --now podman.socket
-   loginctl enable-linger $USER   # keep the user socket alive after logout
-
-   # --rootful launch mode
-   sudo systemctl enable --now podman.socket
-   ```
+That's it on the remote — no podman socket to enable, no extra services.
 
 ## On your laptop
 
-1. Confirm SSH key auth works without a password prompt:
+1. Confirm SSH key auth works without a password prompt. If you use an
+   alias in `~/.ssh/config`, it just works:
 
    ```bash
-   ssh user@remote-host    # should drop you in without prompting
+   ssh my-remote-alias    # should drop you in without prompting
    ```
 
-   Password auth doesn't play well with VSCode's `docker.host` over SSH —
-   use a key, ideally with `ssh-agent` so VSCode can reuse it.
+2. Install VSCode's **Remote - SSH** extension
+   (`ms-vscode-remote.remote-ssh`).
 
-2. In your local VSCode `settings.json`:
+3. F1 → **Remote-SSH: Connect to Host…** → pick your alias. A new VSCode
+   window opens; the status bar bottom-left reads `SSH: my-remote-alias`.
 
-   ```jsonc
-   "dev.containers.dockerPath": "podman",
-   "docker.host": "ssh://user@remote-host"
-   ```
+4. In that remote window (not your local one), install **Dev Containers**
+   (`ms-vscode-remote.remote-containers`). It installs on the remote and
+   is independent of any Dev Containers install on your laptop.
 
-   For `--rootful` mode on the remote, VSCode's SSH session also needs
-   `DOCKER_HOST=unix:///run/podman/podman.sock` exported in the remote
-   shell environment, or your SSH user has to be in a group that can read
-   the root socket. Rootless avoids both.
+5. F1 → **Dev Containers: Attach to Running Container…** →
+   `remote-code-<project>` shows up because, from this VSCode's vantage
+   point, podman is just local.
 
-3. Command Palette → **Dev Containers: Attach to Running Container…** →
-   pick `remote-code-<project>`.
+6. Once attached, install the **Claude Code** extension. It lands in
+   `/root/.vscode-server/extensions/` on the persistent volume and
+   survives across launches (same as local mode).
+
+No `docker.host`, `DOCKER_HOST`, `dev.containers.dockerPath`, or podman
+connection plumbing is needed on your laptop. The Remote-SSH layer
+handles every cross-host call.
 
 ## Reaching the published ports
 

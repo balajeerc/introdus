@@ -75,30 +75,24 @@ podman's docker-compat socket. You get a VSCode window whose filesystem,
 terminal, and extensions all live inside the container — the Claude Code
 extension you install there uses the `claude` binary already in the image.
 
-On the container host, enable the podman socket that matches your launch
-mode — they're separate daemons with separate container views:
-
-```bash
-# rootless (default launch mode)
-systemctl --user enable --now podman.socket   # -> /run/user/$UID/podman/podman.sock
-
-# --rootful launch mode
-sudo systemctl enable --now podman.socket     # -> /run/podman/podman.sock
-```
-
-On your local machine, in VSCode `settings.json`:
+If you launched the container on **this same machine**, the only setting
+you need in your local VSCode `settings.json` is:
 
 ```jsonc
-"dev.containers.dockerPath": "podman",
-"docker.host": "ssh://user@host"            // omit if the host is local
+"dev.containers.dockerPath": "podman"
 ```
 
-For rootless, your SSH user's default podman context already points at the
-user socket, so no extra `DOCKER_HOST` plumbing is needed. For `--rootful`,
-VSCode's SSH session needs to reach the root socket — typically via
-`DOCKER_HOST=unix:///run/podman/podman.sock` exported in the remote
-environment, or by making your SSH user a member of a group the socket is
-readable by (effectively root-equivalent — see [TODO.md](../TODO.md)).
+That tells the Dev Containers extension to drive `podman` instead of
+`docker`; everything else (socket discovery, container listing) is
+handled by the local podman binary.
+
+If the container is on a **different host** (Hetzner, Oracle Cloud,
+etc.), don't try to expose podman's socket over SSH — the
+`docker.host` setting that used to do this was deprecated when the
+Docker extension was renamed to Container Tools, and podman's built-in
+SSH client is awkward to configure (it doesn't read `~/.ssh/config`).
+Use VSCode's Remote-SSH flow instead — see
+[Running on a remote host.md](Running%20on%20a%20remote%20host.md).
 
 Then: Command Palette → **Dev Containers: Attach to Running Container…** →
 pick `remote-code-<project>`. From the new window, install the Claude

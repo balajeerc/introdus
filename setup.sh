@@ -137,20 +137,44 @@ echo "  tail:   podman exec -it remote-code-$PROJECT_NAME tail -f /root/.logs/re
 
 CNAME="remote-code-$PROJECT_NAME"
 
-# Build OS-specific VSCode socket instructions.
+# VSCode connection instructions are OS- and locality-aware. macOS launches
+# always need the podman-machine socket path (containers live inside the VM);
+# Linux local launches need the user systemd socket; remote launches go via
+# Remote-SSH and skip socket setup entirely.
 if [[ "$HOST_OS" == "macos" ]]; then
-    VSCODE_SOCKET_INSTRUCTIONS="  1. Find your podman socket path on macOS:
-       podman machine inspect | python3 -c \"
+    VSCODE_SETUP_INSTRUCTIONS="  Local-only setup (containers live in the podman machine VM):
+
+    1. Find your podman socket path:
+         podman machine inspect | python3 -c \"
 import sys, json
 d = json.load(sys.stdin)
 print(d[0]['ConnectionInfo']['PodmanSocket']['Path'])
 \"
-       (typically ~/.local/share/containers/podman/machine/.../podman.sock)"
+       (typically ~/.local/share/containers/podman/machine/.../podman.sock)
+
+    2. In VSCode settings.json:
+         \"dev.containers.dockerPath\": \"podman\"
+
+    3. Command Palette -> 'Dev Containers: Attach to Running Container...'
+       -> pick '$CNAME'."
 else
-    VSCODE_SOCKET_INSTRUCTIONS="  1. On THIS host, enable podman's docker-compat socket so VSCode can
-     see the container:
-       systemctl --user enable --now podman.socket     # rootless mode
-       sudo systemctl enable --now podman.socket       # --rootful mode"
+    VSCODE_SETUP_INSTRUCTIONS="  If THIS host is your local machine:
+
+    1. In VSCode settings.json:
+         \"dev.containers.dockerPath\": \"podman\"
+
+    2. Command Palette -> 'Dev Containers: Attach to Running Container...'
+       -> pick '$CNAME'.
+
+  If THIS host is a remote (Hetzner/Oracle/etc.) that you SSH into:
+
+    1. Install the Remote-SSH extension on your laptop and connect to
+       this host (F1 -> 'Remote-SSH: Connect to Host...').
+    2. In the resulting remote VSCode window, install Dev Containers
+       (it installs into the remote, not your laptop).
+    3. F1 -> 'Dev Containers: Attach to Running Container...' ->
+       pick '$CNAME'.
+    See docs/'Running on a remote host.md' for the full walkthrough."
 fi
 
 TUNNEL_BANNER=""
@@ -222,20 +246,12 @@ Ctrl-b d to detach without killing them):
 
 Connect with VSCode (Dev Containers):
 
-${VSCODE_SOCKET_INSTRUCTIONS}
+${VSCODE_SETUP_INSTRUCTIONS}
 
-  2. On your local machine, install the 'Dev Containers' extension
-     (ms-vscode-remote.remote-containers) and add to settings.json:
-       "dev.containers.dockerPath": "podman",
-       "docker.host": "ssh://user@<this-host>"   # omit if local
-
-  3. Command Palette -> 'Dev Containers: Attach to Running Container...'
-     -> pick '$CNAME'.
-
-  4. In the new VSCode window, install the 'Claude Code' extension —
-     it lands on the persistent volume and survives relaunches. The
-     extension spawns its own claude; it does NOT share state with the
-     'remote-control' tmux session above.
+  Once attached, install the 'Claude Code' extension — it lands on the
+  container's persistent volume and survives relaunches. The extension
+  spawns its own claude; it does NOT share state with the 'remote-control'
+  tmux session above.
 
 To stop the container:
   podman stop $CNAME
