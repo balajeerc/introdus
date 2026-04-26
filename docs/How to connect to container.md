@@ -17,12 +17,18 @@ in `.env` and the next launch will:
 
 - start `cloudflared` in a `tunnel` tmux session inside the container
 - print a stable `https://*.trycloudflare.com` URL in the startup banner
-- cache the URL at `/root/.logs/tunnel-url.txt`
+- cache the URL at `/root/.logs/tunnel-url.txt` (also retrievable from
+  inside the container via the `tunnel-url` command on `$PATH`)
 
 The URL is stable for the container's lifetime and rotates on relaunch.
 No Cloudflare account or domain required. The egress allowlist is
-auto-extended with the Cloudflare tunnel edge endpoints
-(`region1.v2.argotunnel.com`, `region2.v2.argotunnel.com`).
+auto-extended with `api.trycloudflare.com` (for tunnel registration)
+plus a pinned set of Cloudflare argotunnel edge IPs — these are
+hardcoded in [launch.sh](../launch.sh) since cloudflared's normal SRV-
+based edge discovery doesn't survive the container's restricted DNS.
+If Cloudflare ever rotates these edges and the tunnel stops connecting,
+refresh them by running `dig +short SRV _v2-origintunneld._tcp.argotunnel.com`
+on a machine with normal DNS.
 
 **What you're trading off:**
 
@@ -33,9 +39,22 @@ auto-extended with the Cloudflare tunnel edge endpoints
   Cloudflare.
 - Any vulnerability in the webapp is now exposed to the open internet
   rather than just `localhost`.
-- Dev frameworks (Vite/Next/etc.) often reject requests where the
-  `Host` header isn't `localhost`. You may need to allow the
-  `*.trycloudflare.com` host in your dev server config.
+- Dev frameworks reject requests with non-`localhost` `Host` headers
+  by default. **You must allow the trycloudflare hostname in your dev
+  server config.** For Vite, in `vite.config.js`:
+
+  ```js
+  export default defineConfig({
+    server: {
+      // ...your existing options
+      allowedHosts: ['.trycloudflare.com'],  // leading dot = subdomain wildcard
+    },
+  });
+  ```
+
+  Equivalent settings exist for Next (`allowedDevOrigins`), webpack-dev-
+  server (`allowedHosts`), etc. This config lives in your project repo,
+  not the harness — commit it once and every future launch works.
 
 `RC_PORT` is **not** tunneled — only the webapp. The remote-control
 server stays bound to `127.0.0.1` and is reached over your existing

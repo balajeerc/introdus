@@ -108,6 +108,20 @@ RUN set -eu; arch="$(uname -m)"; \
       -o /usr/local/bin/cloudflared \
  && chmod +x /usr/local/bin/cloudflared
 
+# Convenience: `tunnel-url` prints the cached cloudflared quick-tunnel URL.
+# setup.sh writes the URL to /root/.logs/tunnel-url.txt at startup when
+# EXPOSE_WEBAPP=true. Useful for piping into curl/qrencode from inside.
+RUN printf '%s\n' \
+    '#!/bin/sh' \
+    'if [ -s /root/.logs/tunnel-url.txt ]; then' \
+    '  cat /root/.logs/tunnel-url.txt' \
+    'else' \
+    '  echo "no tunnel URL cached — is EXPOSE_WEBAPP=true and cloudflared running?" >&2' \
+    '  exit 1' \
+    'fi' \
+    > /usr/local/bin/tunnel-url \
+ && chmod +x /usr/local/bin/tunnel-url
+
 # Remap tmux prefix from C-b to C-a so it doesn't collide with a host-side
 # tmux when attaching from a local tmux pane. Written to /etc/tmux.conf so
 # the change survives across persistent-volume reuse (a /root/.tmux.conf
