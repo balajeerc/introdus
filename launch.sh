@@ -189,12 +189,13 @@ NFT_TABLE="rcode_${SAFE_PROJECT}"
 EXPOSE_WEBAPP="${EXPOSE_WEBAPP:-false}"
 
 # When EXPOSE_WEBAPP=true, the container runs `cloudflared tunnel --url ...`
-# which dials out to Cloudflare's tunnel edge on TCP/UDP 7844. Auto-add
-# those endpoints to the resolved allowlist so the egress filter doesn't
-# kill the tunnel. Edge hostnames are anycast so the IPs are stable.
+# which (1) POSTs to api.trycloudflare.com to register a quick tunnel, then
+# (2) dials Cloudflare's tunnel edge on TCP/UDP 7844. Auto-add both to the
+# resolved allowlist so the egress filter doesn't kill the tunnel. Edge
+# hostnames are anycast so the IPs are stable.
 TUNNEL_HOSTS=""
 if [[ "$EXPOSE_WEBAPP" == "true" ]]; then
-    TUNNEL_HOSTS="region1.v2.argotunnel.com region2.v2.argotunnel.com"
+    TUNNEL_HOSTS="api.trycloudflare.com region1.v2.argotunnel.com region2.v2.argotunnel.com"
 fi
 
 GIT_HOST="$(echo "$REPO_URL" | sed -E 's#^(git@|ssh://git@|https://)##; s#[:/].*$##')"

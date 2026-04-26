@@ -150,7 +150,7 @@ if [[ "$EXPOSE_WEBAPP" == "true" ]]; then
     log "waiting for cloudflared tunnel URL (up to 30s)"
     TUNNEL_URL=""
     for _ in $(seq 1 60); do
-        TUNNEL_URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /root/.logs/tunnel.log 2>/dev/null | head -1 || true)
+        TUNNEL_URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /root/.logs/tunnel.log 2>/dev/null | grep -v '^https://api\.trycloudflare\.com$' | head -1 || true)
         [[ -n "$TUNNEL_URL" ]] && break
         sleep 0.5
     done
