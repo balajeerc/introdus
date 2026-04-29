@@ -91,13 +91,26 @@ show_notification() {
         echo "$TITLE: $BODY" >&2
         return 1
     fi
-    notify-send \
+
+    # Persist the last notification ID so a follow-up event collapses onto
+    # the previous bubble instead of queuing a new one. Stale IDs (whose
+    # notification has already been dismissed) are silently ignored by the
+    # daemon, so the new bubble simply appears as normal.
+    local id_file="${XDG_RUNTIME_DIR:-/tmp}/claude-code-notify.id"
+    local prev_id=0
+    [[ -r "$id_file" ]] && prev_id=$(cat "$id_file" 2>/dev/null || echo 0)
+
+    local new_id
+    new_id=$(notify-send \
+        --print-id \
+        --replace-id="$prev_id" \
         --urgency=critical \
         --expire-time=0 \
         --app-name="claude-code" \
         --icon=dialog-information \
         "$TITLE" \
-        "$BODY"
+        "$BODY")
+    [[ -n "$new_id" ]] && echo "$new_id" > "$id_file"
 }
 
 play_sound
