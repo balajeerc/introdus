@@ -53,18 +53,16 @@ RUN set -eu; arch="$(uname -m)"; \
 RUN curl -fsSL https://mise.jdx.dev/install.sh | sh
 
 ENV PNPM_HOME="/root/.local/share/pnpm"
-ENV PATH="/root/.local/bin:/root/.local/share/mise/shims:${PNPM_HOME}:${PATH}"
+ENV PATH="/root/.local/bin:/root/.local/share/mise/shims:${PNPM_HOME}/bin:${PATH}"
 
 # Pin node LTS + pnpm, then install claude code via pnpm. Note: node ships
 # npm bundled — it exists on disk but we don't use it anywhere.
 #
-# pnpm v10 blocks postinstall scripts for globally-installed packages, so
-# claude-code's native-binary download never runs. We invoke its install.cjs
-# manually after `pnpm add -g` to finish the install.
+# pnpm v10+ blocks postinstall scripts by default; claude-code's install.cjs
+# downloads the native binary, so we whitelist it via --allow-build.
 RUN mkdir -p "$PNPM_HOME" \
  && mise use -g node@lts pnpm@latest \
- && mise exec -- pnpm add -g @anthropic-ai/claude-code \
- && mise exec -- node "$(mise exec -- pnpm root -g)/@anthropic-ai/claude-code/install.cjs"
+ && mise exec -- pnpm add -g --allow-build=@anthropic-ai/claude-code @anthropic-ai/claude-code
 
 # tree-sitter CLI: LazyVim's treesitter config invokes this at first nvim
 # startup to compile/verify parser grammars. Installing via pnpm would emit
@@ -137,7 +135,7 @@ RUN printf '%s\n' \
     '# --- remote-code-harness ---' \
     'export PATH="/root/.local/bin:$PATH"' \
     'export PNPM_HOME="/root/.local/share/pnpm"' \
-    'export PATH="$PNPM_HOME:$PATH"' \
+    'export PATH="$PNPM_HOME/bin:$PATH"' \
     'eval "$(/root/.local/bin/mise activate bash)"' \
     '# --- end remote-code-harness ---' \
     >> /root/.bashrc
