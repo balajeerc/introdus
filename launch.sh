@@ -19,6 +19,7 @@ esac
 
 MODE=rootless
 RESET=false
+RECREATE=false
 REBUILD_BASE=false
 VERIFY=false
 DISABLE_NETWORK_BLOCK=false
@@ -35,13 +36,14 @@ while [[ $# -gt 0 ]]; do
             fi
             MODE=rootful; shift ;;
         --reset)                  RESET=true; shift ;;
+        --recreate)               RECREATE=true; shift ;;
         --rebuild-base)           REBUILD_BASE=true; shift ;;
         --verify)                 VERIFY=true; shift ;;
         --disable-network-block)  DISABLE_NETWORK_BLOCK=true; shift ;;
         --update)                 UPDATE=true; shift ;;
         -h|--help)
             cat <<'EOF'
-usage: $0 [--rootful] [--reset] [--rebuild-base] [--verify]
+usage: $0 [--rootful] [--reset] [--recreate] [--rebuild-base] [--verify]
           [--disable-network-block] [--update] [env-file]
 
 Linux default mode: rootless podman + --network=pasta + nftables cgroup-v2
@@ -60,6 +62,11 @@ prereqs: podman (brew install podman), a running podman machine
   --reset                   remove the container and wipe the persistent
                             volume for the current mode (forces a fresh create
                             on next launch, picking up any config edits).
+  --recreate                remove the container but KEEP the persistent
+                            volume, so the next launch is a fresh `podman run`
+                            (picks up new --publish / --env / etc.) while your
+                            checkout, installed packages, and Claude state in
+                            /root survive. Use after editing .env.
   --rebuild-base            force rebuild of the base image (--no-cache).
   --verify                  after launch, run a short egress check and exit.
   --disable-network-block   run without egress restrictions (all outbound
@@ -67,7 +74,7 @@ prereqs: podman (brew install podman), a running podman machine
   --update                  in-container refresh (apt upgrade, mise, claude
                             code, lazyvim). requires a container already running
                             in another terminal. mutually exclusive with
-                            --reset, --rebuild-base, --verify.
+                            --reset, --recreate, --rebuild-base, --verify.
   env-file                  path to env file (default: .env)
 EOF
             exit 0
@@ -82,8 +89,18 @@ if $VERIFY && $DISABLE_NETWORK_BLOCK; then
     exit 1
 fi
 
-if $UPDATE && ( $RESET || $REBUILD_BASE || $VERIFY ); then
-    echo "error: --update is mutually exclusive with --reset, --rebuild-base, --verify." >&2
+if $UPDATE && ( $RESET || $RECREATE || $REBUILD_BASE || $VERIFY ); then
+    echo "error: --update is mutually exclusive with --reset, --recreate, --rebuild-base, --verify." >&2
+    exit 1
+fi
+
+if $RECREATE && $RESET; then
+    echo "error: --recreate and --reset are mutually exclusive (use --reset to also wipe the volume)." >&2
+    exit 1
+fi
+
+if $RECREATE && $VERIFY; then
+    echo "error: --recreate and --verify are mutually exclusive (--verify does not launch the persistent container)." >&2
     exit 1
 fi
 
@@ -131,6 +148,38 @@ if [[ -n "$SHARED_DATA_PATH" ]]; then
     SHARED_DATA_PATH="$(cd "$SHARED_DATA_PATH" && pwd)"
     SHARED_DATA_VOLUME_ARGS=(--volume "${SHARED_DATA_PATH}:/root/shared_data:ro")
 fi
+
+EXTRA_PORTS="${EXTRA_PORTS:-}"
+declare -a EXTRA_PUBLISH_ARGS=()
+declare -a EXTRA_PORTS_DESC=()
+for entry in $EXTRA_PORTS; do
+    if [[ "$entry" =~ ^([0-9]+):([0-9]+)$ ]]; then
+        host_port="${BASH_REMATCH[1]}"
+        container_port="${BASH_REMATCH[2]}"
+    elif [[ "$entry" =~ ^([0-9]+)$ ]]; then
+        host_port="${BASH_REMATCH[1]}"
+        container_port="$host_port"
+    else
+        echo "error: EXTRA_PORTS entry is not a port or host:container mapping: '$entry'" >&2
+        exit 1
+    fi
+    for p in "$host_port" "$container_port"; do
+        if (( p < 1 || p > 65535 )); then
+            echo "error: EXTRA_PORTS entry has out-of-range port: '$entry'" >&2
+            exit 1
+        fi
+    done
+    if [[ "$host_port" == "$WEBAPP_PORT" || "$host_port" == "$RC_PORT" ]]; then
+        echo "error: EXTRA_PORTS host port $host_port collides with WEBAPP_PORT/RC_PORT" >&2
+        exit 1
+    fi
+    EXTRA_PUBLISH_ARGS+=(--publish "127.0.0.1:${host_port}:${container_port}")
+    if [[ "$host_port" == "$container_port" ]]; then
+        EXTRA_PORTS_DESC+=("$host_port")
+    else
+        EXTRA_PORTS_DESC+=("${host_port}->${container_port}")
+    fi
+done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SETUP_SCRIPT="$SCRIPT_DIR/setup.sh"
@@ -698,6 +747,13 @@ if ! $VERIFY; then
         echo "==> --reset: removing container $CONTAINER_NAME and wiping volume $VOLUME_NAME (os=$OS)"
         "${PODMAN[@]}" rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
         "${PODMAN[@]}" volume rm -f "$VOLUME_NAME" >/dev/null 2>&1 || true
+    elif $RECREATE; then
+        if "${PODMAN[@]}" container inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
+            echo "==> --recreate: removing container $CONTAINER_NAME (volume $VOLUME_NAME preserved)"
+            "${PODMAN[@]}" rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+        else
+            echo "==> --recreate: no existing container to remove; will create a fresh one"
+        fi
     fi
     if ! "${PODMAN[@]}" volume inspect "$VOLUME_NAME" >/dev/null 2>&1; then
         "${PODMAN[@]}" volume create "$VOLUME_NAME" >/dev/null
@@ -719,6 +775,9 @@ echo "==> launching container $CONTAINER_NAME (os=$OS, mode=$MODE)"
 echo "    repo:    $REPO_URL"
 echo "    webapp:  $WEBAPP_CMD (port $WEBAPP_PORT)"
 echo "    rc:      port $RC_PORT"
+if (( ${#EXTRA_PORTS_DESC[@]} > 0 )); then
+    echo "    extra:   ${EXTRA_PORTS_DESC[*]} (127.0.0.1 only)"
+fi
 echo
 
 # HOST_OS is passed into the container so setup.sh can tailor its instructions
@@ -758,6 +817,7 @@ PODMAN_ARGS=(
     --env "TUNNEL_EDGE_IPS=$TUNNEL_EDGE_IPS"
     --publish "127.0.0.1:${WEBAPP_PORT}:${WEBAPP_PORT}"
     --publish "127.0.0.1:${RC_PORT}:${RC_PORT}"
+    ${EXTRA_PUBLISH_ARGS[@]:+"${EXTRA_PUBLISH_ARGS[@]}"}
 )
 
 if [[ $OS == "macos" ]]; then
