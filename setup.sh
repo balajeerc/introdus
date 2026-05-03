@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
 # Runs inside the container as root. Base image already has apt packages,
 # mise, node LTS, and claude. This script handles the per-project bits:
-# ssh setup, cloning, and starting the devserver + remote-control + claude.
+# ssh setup, cloning, and (when EXPOSE_WEBAPP=true) the cloudflared tunnel.
 # Safe to re-run — /root is a persistent podman volume.
 set -euo pipefail
 
 : "${PROJECT_NAME:?}"
 : "${REPO_URL:?}"
-: "${WEBAPP_CMD:?}"
 : "${WEBAPP_PORT:?}"
-: "${RC_PORT:?}"
 : "${CANARY_BLOCKED_IP:?}"
 
 # HOST_OS is set by launch.sh on the host and passed in as an env var.
@@ -104,12 +102,7 @@ else
 fi
 cd "$WORKDIR"
 
-log "starting devserver in tmux session 'devserver': $WEBAPP_CMD"
 mkdir -p /root/.logs
-tmux new-session -d -s devserver -c "$WORKDIR" "$WEBAPP_CMD; echo '[devserver exited]'; exec bash"
-tmux pipe-pane -t devserver -o 'cat >>/root/.logs/devserver.log'
-echo "  attach: podman exec -it remote-code-$PROJECT_NAME tmux attach -t devserver"
-echo "  tail:   podman exec -it remote-code-$PROJECT_NAME tail -f /root/.logs/devserver.log"
 
 if [[ "$EXPOSE_WEBAPP" == "true" ]]; then
     log "starting cloudflared quick tunnel in tmux session 'tunnel' (-> port $WEBAPP_PORT)"
@@ -128,12 +121,6 @@ if [[ "$EXPOSE_WEBAPP" == "true" ]]; then
     echo "  attach: podman exec -it remote-code-$PROJECT_NAME tmux attach -t tunnel"
     echo "  tail:   podman exec -it remote-code-$PROJECT_NAME tail -f /root/.logs/tunnel.log"
 fi
-
-log "starting claude remote-control in tmux session 'remote-control'"
-tmux new-session -d -s remote-control 'claude remote-control; echo "[claude remote-control exited]"; exec bash'
-tmux pipe-pane -t remote-control -o 'cat >>/root/.logs/remote-control.log'
-echo "  attach: podman exec -it remote-code-$PROJECT_NAME tmux attach -t remote-control"
-echo "  tail:   podman exec -it remote-code-$PROJECT_NAME tail -f /root/.logs/remote-control.log"
 
 CNAME="remote-code-$PROJECT_NAME"
 
@@ -232,26 +219,12 @@ cat <<EOF
 Shell into the container:
   podman exec -it $CNAME bash
 
-Running tmux sessions (sessions persist across attach/detach;
-Ctrl-b d to detach without killing them):
-
-  devserver        — your webapp ($WEBAPP_CMD), bound to port $WEBAPP_PORT
-    attach: podman exec -it $CNAME tmux attach -t devserver
-    log:    podman exec -it $CNAME tail -f /root/.logs/devserver.log
-
-  remote-control   — 'claude remote-control' on port $RC_PORT;
-                     pairing URL/code shows up here on first connect
-    attach: podman exec -it $CNAME tmux attach -t remote-control
-    log:    podman exec -it $CNAME tail -f /root/.logs/remote-control.log
-
 Connect with VSCode (Dev Containers):
 
 ${VSCODE_SETUP_INSTRUCTIONS}
 
   Once attached, install the 'Claude Code' extension — it lands on the
-  container's persistent volume and survives relaunches. The extension
-  spawns its own claude; it does NOT share state with the 'remote-control'
-  tmux session above.
+  container's persistent volume and survives relaunches.
 
 To stop the container:
   podman stop $CNAME
@@ -263,6 +236,17 @@ $TUNNEL_BANNER
 EOF
 
 trap 'echo; echo "shutting down..."; exit 0' INT TERM
+
+# Optional per-project launch hook. Runs from the repo root on every container
+# start. If it blocks (e.g. a foreground dev server), the container stays alive
+# on it and the cat blocker below is never reached. If it returns, we fall
+# through to cat. Failures are logged but don't kill the container, so a broken
+# hook doesn't prevent attaching for debugging.
+if [[ -n "${ON_LAUNCH_SCRIPT:-}" ]]; then
+    log "running ON_LAUNCH_SCRIPT: $ON_LAUNCH_SCRIPT"
+    bash -c "$ON_LAUNCH_SCRIPT" || echo "  warning: ON_LAUNCH_SCRIPT exited with status $?"
+fi
+
 cat >/dev/null || true
 echo
 echo "stdin closed, shutting down..."

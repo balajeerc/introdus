@@ -19,6 +19,7 @@ RUN echo 'APT::Sandbox::User "root";' > /etc/apt/apt.conf.d/99-no-sandbox \
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
+      bash-completion \
       ca-certificates \
       curl \
       git \
@@ -131,14 +132,26 @@ RUN printf '%s\n' \
     > /etc/tmux.conf
 
 # Interactive shells inside the container should get mise + pnpm on PATH.
+# Ubuntu's stock /etc/bash.bashrc has the bash-completion sourcing block
+# commented out, so we source it ourselves here. apt-installed tools (git,
+# ssh, tmux, sudo, ip, fd, rg) ship their own completion files; tools
+# installed outside apt get completions generated below into
+# /etc/bash_completion.d/, which the loader picks up.
 RUN printf '%s\n' \
     '# --- remote-code-harness ---' \
     'export PATH="/root/.local/bin:$PATH"' \
     'export PNPM_HOME="/root/.local/share/pnpm"' \
     'export PATH="$PNPM_HOME/bin:$PATH"' \
     'eval "$(/root/.local/bin/mise activate bash)"' \
+    '[ -f /usr/share/bash-completion/bash_completion ] && . /usr/share/bash-completion/bash_completion' \
     '# --- end remote-code-harness ---' \
     >> /root/.bashrc
+
+# Generate completions for tools we installed outside apt (mise via curl,
+# pnpm via mise). Files in /etc/bash_completion.d/ are sourced eagerly by
+# the bash-completion loader on interactive-shell startup.
+RUN mise completion bash > /etc/bash_completion.d/mise \
+ && mise exec -- pnpm completion bash > /etc/bash_completion.d/pnpm
 
 # Seed /root/.claude with a default settings.json wiring Claude's Stop
 # and Notification hooks to the host-side rc-notify UDS that launch.sh

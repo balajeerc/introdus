@@ -117,9 +117,10 @@ set +a
 : "${PROJECT_NAME:?PROJECT_NAME must be set}"
 : "${REPO_URL:?REPO_URL must be set}"
 : "${DEPLOY_KEY_PATH:?DEPLOY_KEY_PATH must be set}"
-: "${WEBAPP_CMD:?WEBAPP_CMD must be set}"
 : "${WEBAPP_PORT:?WEBAPP_PORT must be set}"
 : "${RC_PORT:?RC_PORT must be set}"
+
+ON_LAUNCH_SCRIPT="${ON_LAUNCH_SCRIPT:-}"
 
 MEM_LIMIT="${MEM_LIMIT:-8g}"
 CPU_LIMIT="${CPU_LIMIT:-8}"
@@ -773,8 +774,11 @@ fi
 echo
 echo "==> launching container $CONTAINER_NAME (os=$OS, mode=$MODE)"
 echo "    repo:    $REPO_URL"
-echo "    webapp:  $WEBAPP_CMD (port $WEBAPP_PORT)"
+echo "    webapp:  port $WEBAPP_PORT"
 echo "    rc:      port $RC_PORT"
+if [[ -n "$ON_LAUNCH_SCRIPT" ]]; then
+    echo "    on-launch: $ON_LAUNCH_SCRIPT"
+fi
 if (( ${#EXTRA_PORTS_DESC[@]} > 0 )); then
     echo "    extra:   ${EXTRA_PORTS_DESC[*]} (127.0.0.1 only)"
 fi
@@ -807,9 +811,9 @@ PODMAN_ARGS=(
     ${NOTIFY_VOLUME_ARGS[@]:+"${NOTIFY_VOLUME_ARGS[@]}"}
     --env "PROJECT_NAME=$PROJECT_NAME"
     --env "REPO_URL=$REPO_URL"
-    --env "WEBAPP_CMD=$WEBAPP_CMD"
     --env "WEBAPP_PORT=$WEBAPP_PORT"
     --env "RC_PORT=$RC_PORT"
+    --env "ON_LAUNCH_SCRIPT=$ON_LAUNCH_SCRIPT"
     --env "CANARY_BLOCKED_IP=$CANARY_BLOCKED_IP"
     --env "HOST_OS=$OS"
     --env "DISABLE_NETWORK_BLOCK=$DISABLE_NETWORK_BLOCK"
