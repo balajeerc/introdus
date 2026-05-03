@@ -24,6 +24,7 @@ REBUILD_BASE=false
 VERIFY=false
 DISABLE_NETWORK_BLOCK=false
 UPDATE=false
+PULL=false
 ENV_FILE=".env"
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -41,10 +42,11 @@ while [[ $# -gt 0 ]]; do
         --verify)                 VERIFY=true; shift ;;
         --disable-network-block)  DISABLE_NETWORK_BLOCK=true; shift ;;
         --update)                 UPDATE=true; shift ;;
+        --pull)                   PULL=true; shift ;;
         -h|--help)
             cat <<'EOF'
 usage: $0 [--rootful] [--reset] [--recreate] [--rebuild-base] [--verify]
-          [--disable-network-block] [--update] [env-file]
+          [--disable-network-block] [--update] [--pull] [env-file]
 
 Linux default mode: rootless podman + --network=pasta + nftables cgroup-v2
 match on OUTPUT for egress filtering. prereqs: pasta, nftables, systemd --user
@@ -75,6 +77,11 @@ prereqs: podman (brew install podman), a running podman machine
                             code, lazyvim). requires a container already running
                             in another terminal. mutually exclusive with
                             --reset, --recreate, --rebuild-base, --verify.
+  --pull                    on the next container start, fast-forward the
+                            project repo at /root/work/<project> against its
+                            remote tracking branch (git fetch + git pull
+                            --ff-only). no-op when the repo is being freshly
+                            cloned. one-shot — does not persist across runs.
   env-file                  path to env file (default: .env)
 EOF
             exit 0
@@ -101,6 +108,16 @@ fi
 
 if $RECREATE && $VERIFY; then
     echo "error: --recreate and --verify are mutually exclusive (--verify does not launch the persistent container)." >&2
+    exit 1
+fi
+
+if $PULL && $VERIFY; then
+    echo "error: --pull and --verify are mutually exclusive (--verify does not launch the persistent container)." >&2
+    exit 1
+fi
+
+if $PULL && $UPDATE; then
+    echo "error: --pull and --update are mutually exclusive (--pull runs at container start; --update operates on an already-running container)." >&2
     exit 1
 fi
 
@@ -768,6 +785,18 @@ if ! $VERIFY; then
         echo "==> created volume $VOLUME_NAME (first launch)"
     else
         echo "==> reusing volume $VOLUME_NAME"
+    fi
+
+    # --pull: drop a one-shot sentinel into the volume. setup.sh consumes it
+    # and runs git fetch + git pull --ff-only. We can't pass a fresh env var
+    # through `podman start -ai` (env is fixed at container creation), so a
+    # filesystem sentinel is what lets --pull work for a reused container too.
+    if $PULL; then
+        echo "==> --pull: scheduling git pull --ff-only on next container start"
+        "${PODMAN[@]}" run --rm --network=none \
+            --volume "$VOLUME_NAME:/root" \
+            "$IMAGE_NAME" \
+            touch /root/.pull-on-next-start >/dev/null
     fi
 fi
 

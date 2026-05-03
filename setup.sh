@@ -102,6 +102,20 @@ else
 fi
 cd "$WORKDIR"
 
+# One-shot --pull sentinel dropped by launch.sh. Always consume it (rm
+# first) so a failed pull doesn't keep retrying on every relaunch.
+if [[ -f /root/.pull-on-next-start ]]; then
+    rm -f /root/.pull-on-next-start
+    log "fast-forwarding repo (--pull)"
+    if git fetch --prune; then
+        if ! git pull --ff-only; then
+            echo "  warning: not a fast-forward — repo left as-is. resolve manually inside the container."
+        fi
+    else
+        echo "  warning: git fetch failed — repo left as-is"
+    fi
+fi
+
 mkdir -p /root/.logs
 
 if [[ "$EXPOSE_WEBAPP" == "true" ]]; then
