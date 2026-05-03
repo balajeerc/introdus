@@ -433,12 +433,19 @@ if ! $VERIFY && $RESET; then
                 "$IMAGE_NAME" \
                 bash -c '
 set +e
-while IFS= read -r gitdir; do
-    repo=${gitdir%/.git}
+while IFS= read -r gitpath; do
+    repo=${gitpath%/.git}
     cd "$repo" 2>/dev/null || continue
     status=$(git status --porcelain 2>/dev/null)
-    unpushed=$(git rev-list --count --all --not --remotes 2>/dev/null || echo 0)
     stashes=$(git stash list 2>/dev/null)
+    # linked worktrees have a .git file pointing into the main repo;
+    # refs are shared, so let the main repo own the unpushed-commits check
+    # to avoid double-counting.
+    if [ -f "$gitpath" ]; then
+        unpushed=0
+    else
+        unpushed=$(git rev-list --count --all --not --remotes 2>/dev/null || echo 0)
+    fi
     if [ -n "$status" ] || [ "${unpushed:-0}" -gt 0 ] || [ -n "$stashes" ]; then
         echo "--- $repo ---"
         [ -n "$status" ] && { echo "  working tree:"; echo "$status" | sed "s/^/    /"; }
@@ -446,7 +453,7 @@ while IFS= read -r gitdir; do
         [ -n "$stashes" ] && { echo "  stashes:"; echo "$stashes" | sed "s/^/    /"; }
         echo
     fi
-done < <(find /root/work -maxdepth 5 -type d -name .git 2>/dev/null)
+done < <(find /root/work -maxdepth 5 -name .git \( -type d -o -type f \) 2>/dev/null)
 ' 2>/dev/null
         )
         if [[ -n "$DIRTY_REPORT" ]]; then
