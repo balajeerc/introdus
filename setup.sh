@@ -224,7 +224,8 @@ TBEOF
     fi
 fi
 
-cat <<EOF
+print_banner() {
+    cat <<EOF
 
 ============================================================
   Dev container '$CNAME' is up and running.
@@ -248,6 +249,9 @@ To stop the container:
 $TUNNEL_BANNER
 
 EOF
+}
+
+print_banner
 
 trap 'echo; echo "shutting down..."; exit 0' INT TERM
 
@@ -259,6 +263,10 @@ trap 'echo; echo "shutting down..."; exit 0' INT TERM
 if [[ -n "${ON_LAUNCH_SCRIPT:-}" ]]; then
     log "running ON_LAUNCH_SCRIPT: $ON_LAUNCH_SCRIPT"
     bash -c "$ON_LAUNCH_SCRIPT" || echo "  warning: ON_LAUNCH_SCRIPT exited with status $?"
+    # Reprint the banner so the attach/VSCode instructions aren't buried
+    # under the hook's output. Only reached if the hook returned (a blocking
+    # foreground server never falls through here).
+    print_banner
 fi
 
 cat >/dev/null || true
