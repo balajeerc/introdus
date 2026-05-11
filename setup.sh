@@ -224,6 +224,23 @@ TBEOF
     fi
 fi
 
+NTFY_BANNER=""
+if [[ "${ENABLE_NOTIFY_SH_ALERTS:-false}" == "true" && -n "${NTFY_SH_TOPIC:-}" ]]; then
+    NTFY_BANNER=$(cat <<NBEOF
+
+============================================================
+  MOBILE NOTIFICATIONS via ntfy.sh
+============================================================
+
+  You are also subscribed to mobile notifications via ntfy.sh.
+  Subscribe to the following topic name to access it via the
+  ntfy.sh app: $NTFY_SH_TOPIC
+
+============================================================
+NBEOF
+)
+fi
+
 print_banner() {
     cat <<EOF
 
@@ -247,6 +264,7 @@ To stop the container:
 
 ============================================================
 $TUNNEL_BANNER
+$NTFY_BANNER
 
 EOF
 }

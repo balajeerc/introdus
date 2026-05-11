@@ -24,6 +24,7 @@
 - Optionally exposes the webapp to the public internet via a Cloudflare quick tunnel (opt-in via `EXPOSE_WEBAPP` in `.env`)
 - When doing teardown, it checks git directories for any uncommitted files/commits before taking it down
 - Dev container to host notification via Unix domain socket comes built in
+- Optional mobile push notifications via [ntfy.sh](https://ntfy.sh) — pings your phone alongside the desktop alert whenever Claude Code is awaiting input or finishes a task (opt-in via `ENABLE_NOTIFY_SH_ALERTS` + `NTFY_SH_TOPIC` in `.env`)
 
 ## Prerequisites
 

@@ -34,6 +34,46 @@ case "$EVENT" in
     *)          echo "host_notify: unknown event '$EVENT'" >&2; exit 2 ;;
 esac
 
+# Pull ntfy.sh config from the harness .env on every invocation rather than
+# relying on the long-running listener daemon's environment, so edits to
+# .env take effect without a listener restart. We sandbox the source in a
+# subshell so unrelated variables in .env do not leak into this script.
+ENABLE_NOTIFY_SH_ALERTS=""
+NTFY_SH_TOPIC=""
+if [[ -r "$SCRIPT_DIR/.env" ]]; then
+    eval "$(
+        set +eu
+        # shellcheck disable=SC1091
+        source "$SCRIPT_DIR/.env" >/dev/null 2>&1
+        printf 'ENABLE_NOTIFY_SH_ALERTS=%q\nNTFY_SH_TOPIC=%q\n' \
+            "${ENABLE_NOTIFY_SH_ALERTS:-}" "${NTFY_SH_TOPIC:-}"
+    )"
+fi
+
+send_ntfy() {
+    [[ "$ENABLE_NOTIFY_SH_ALERTS" == "true" ]] || return 0
+    if [[ -z "$NTFY_SH_TOPIC" ]]; then
+        echo "host_notify: ENABLE_NOTIFY_SH_ALERTS=true but NTFY_SH_TOPIC unset" >&2
+        return 0
+    fi
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "host_notify: curl not found; cannot send ntfy.sh alert" >&2
+        return 0
+    fi
+    # Fire-and-forget: don't block the local notification on network latency,
+    # and don't fail the script if ntfy.sh is unreachable.
+    (
+        curl -fsS --max-time 5 \
+            -H "Title: $TITLE" \
+            -H "Tags: bell" \
+            -d "$BODY" \
+            "https://ntfy.sh/${NTFY_SH_TOPIC}" >/dev/null 2>&1 || true
+    ) &
+    disown 2>/dev/null || true
+}
+
+send_ntfy
+
 # ---------------------------------------------------------------------------
 # macOS
 # ---------------------------------------------------------------------------
