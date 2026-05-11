@@ -12,6 +12,7 @@
 ## Highlights
 
 - Runs in rootless mode using podman. It clones your code into the container.
+- Cross-platform: Linux (rootless + nftables) and macOS / Apple Silicon (containers inside the podman machine VM, no host firewall changes)
 - Persists the container data across restarts
 - Enforces egress rules that prevents accessing/sending data to any non-whitelisted IPs
   - Does a self-check at startup to ensure enforecement for egress rules
@@ -21,6 +22,8 @@
 - Has mise installed to setup any other dev environments you may need
 - Claude Code pre-installed (along with NodeJS and pnpm that Claude Code needs)
 - Optionally, it can mount a directory on host that you can configure as a read-only mount
+- Optionally runs a per-project launch hook on every container start — bring up your dev server, run migrations, warm caches, etc. (`ON_LAUNCH_SCRIPT` in `.env`)
+- Optionally publishes extra container ports to `127.0.0.1` for local tools (DBeaver against an in-container ClickHouse, a debugger attaching, `redis-cli`, etc.) via `EXTRA_PORTS` in `.env`
 - Optionally exposes the webapp to the public internet via a Cloudflare quick tunnel (opt-in via `EXPOSE_WEBAPP` in `.env`)
 - When doing teardown, it checks git directories for any uncommitted files/commits before taking it down
 - Dev container to host notification via Unix domain socket comes built in
