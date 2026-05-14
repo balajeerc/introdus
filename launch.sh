@@ -152,6 +152,17 @@ if ! $DISABLE_NETWORK_BLOCK; then
     : "${WHITELIST_HOSTS:?WHITELIST_HOSTS must be set}"
 fi
 
+# Period (seconds) for the background loop that re-resolves $ALL_HOSTS and
+# adds newly-observed IPs to the live allowlist. CDN-fronted hosts
+# (archive.ubuntu.com via Cloudflare, github.com, npm, etc.) rotate A
+# records, so the launch-time snapshot drifts during long sessions. 0
+# disables the loop entirely.
+RESOLVE_INTERVAL="${RESOLVE_INTERVAL:-300}"
+if ! [[ "$RESOLVE_INTERVAL" =~ ^[0-9]+$ ]]; then
+    echo "error: RESOLVE_INTERVAL must be a non-negative integer (got: '$RESOLVE_INTERVAL')" >&2
+    exit 1
+fi
+
 # Canary IP the container tries to reach at startup to prove the egress
 # filter is enforcing. Must be reachable on the open internet and must NOT
 # appear in the resolved allowlist. example.com is the default.
@@ -569,6 +580,9 @@ cleanup() {
     echo
     echo "==> tearing down (os=$OS, mode=$MODE)"
     "${PODMAN[@]}" stop -t 10 "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    [[ -n "${RESOLVE_LOOP_PID:-}" ]] && kill "$RESOLVE_LOOP_PID" 2>/dev/null || true
+    [[ -n "${SUDO_KEEPALIVE_PID:-}" ]] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
+    [[ -n "${RESOLVE_STATE_FILE:-}" ]] && rm -f "$RESOLVE_STATE_FILE" 2>/dev/null || true
     if $DISABLE_NETWORK_BLOCK; then
         return
     fi
@@ -703,6 +717,89 @@ else
     sudo iptables -w -A "$CHAIN_NAME" -j DROP
     sudo iptables -w -I FORWARD 1 -s "$SUBNET" -j "$CHAIN_NAME"
     echo "==> installed iptables egress filter: chain $CHAIN_NAME, ${#ALLOWED_IPS[@]} allowed IPs"
+fi
+
+# ---- background re-resolve loop --------------------------------------------
+# The launch-time allowlist is a snapshot. CDN-fronted hosts in $ALL_HOSTS
+# rotate their A records, so connections to IPs we didn't see at launch get
+# dropped silently by the egress filter mid-session ("Unable to connect" out
+# of apt/git/pnpm being the common symptom). This loop re-resolves on every
+# RESOLVE_INTERVAL tick and adds the delta into the live nft set / iptables
+# chain. Add-only by design — in-flight TCP sessions to old IPs must keep
+# working, and the upstream IP pool is small enough that growth is bounded.
+RESOLVE_LOOP_PID=""
+SUDO_KEEPALIVE_PID=""
+RESOLVE_STATE_FILE=""
+
+allowlist_add_ips() {
+    local -a ips=("$@")
+    [[ ${#ips[@]} -eq 0 ]] && return 0
+    if [[ $OS == "macos" ]]; then
+        local set_elem
+        set_elem=$(IFS=,; echo "${ips[*]}")
+        podman machine ssh -- sudo nft add element inet "$NFT_TABLE" allowed_v4 "{ $set_elem }" 2>/dev/null \
+            || echo "[resolve] warn: nft add element failed inside podman machine"
+    elif [[ $MODE == rootless ]]; then
+        local set_elem
+        set_elem=$(IFS=,; echo "${ips[*]}")
+        sudo -n nft add element inet "$NFT_TABLE" allowed_v4 "{ $set_elem }" 2>/dev/null \
+            || echo "[resolve] warn: nft add element failed (sudo timestamp may have expired)"
+    else
+        local ip
+        for ip in "${ips[@]}"; do
+            sudo -n iptables -w -C "$CHAIN_NAME" -d "$ip" -j ACCEPT 2>/dev/null && continue
+            sudo -n iptables -w -I "$CHAIN_NAME" 2 -d "$ip" -j ACCEPT 2>/dev/null \
+                || echo "[resolve] warn: iptables insert for $ip failed"
+        done
+    fi
+}
+
+update_allowlist_once() {
+    local -a new_ips=()
+    local h ip ips
+    for h in $ALL_HOSTS; do
+        ips=$(resolve_ipv4 "$h" 2>/dev/null) || continue
+        [[ -z "$ips" ]] && continue
+        while IFS= read -r ip; do
+            [[ -z "$ip" ]] && continue
+            if ! grep -qxF "$ip" "$RESOLVE_STATE_FILE" 2>/dev/null; then
+                new_ips+=("$ip")
+                echo "$ip" >> "$RESOLVE_STATE_FILE"
+            fi
+        done <<< "$ips"
+    done
+    if [[ ${#new_ips[@]} -gt 0 ]]; then
+        echo "[resolve] $(date -u +%H:%M:%SZ) adding ${#new_ips[@]} new IP(s): ${new_ips[*]}"
+        allowlist_add_ips "${new_ips[@]}"
+    fi
+}
+
+if ! $DISABLE_NETWORK_BLOCK && ! $VERIFY && [[ "$RESOLVE_INTERVAL" -gt 0 ]]; then
+    RESOLVE_STATE_FILE=$(mktemp -t rcode-allowlist-XXXXXX 2>/dev/null || mktemp)
+    for ip in "${ALLOWED_IPS[@]}"; do
+        echo "$ip" >> "$RESOLVE_STATE_FILE"
+    done
+
+    # Linux backends require sudo to mutate nft/iptables. Keep the sudo
+    # timestamp warm so the loop never blocks on a password prompt mid-run.
+    # macOS goes through `podman machine ssh -- sudo nft`, which uses the
+    # VM's passwordless sudo, so no host-side keep-alive is needed.
+    if [[ $OS == "linux" ]]; then
+        (
+            while sleep 50; do
+                sudo -n -v >/dev/null 2>&1 || exit 0
+            done
+        ) &
+        SUDO_KEEPALIVE_PID=$!
+    fi
+
+    (
+        while sleep "$RESOLVE_INTERVAL"; do
+            update_allowlist_once
+        done
+    ) &
+    RESOLVE_LOOP_PID=$!
+    echo "==> egress re-resolve loop running (every ${RESOLVE_INTERVAL}s, pid $RESOLVE_LOOP_PID)"
 fi
 
 # ---- host-side notification listener ---------------------------------------
