@@ -116,7 +116,7 @@ For Macs with limited RAM, configure the VM before starting:
 
 - [Connecting from your phone](docs/How%20to%20connect%20to%20container.md#connecting-from-your-phone) — tunneling the 127.0.0.1-bound ports.
 - [Connecting from VSCode](docs/How%20to%20connect%20to%20container.md#connecting-from-vscode) — Dev Containers extension + the podman socket.
-- [Claude remote-control](docs/How%20to%20connect%20to%20container.md#claude-remote-control) — attaching to the tmux session, pairing, log tail.
+- [Claude remote-control](docs/How%20to%20connect%20to%20container.md#claude-remote-control) — `run-claude`, on-by-default remote control, pairing from your phone.
 
 ### [Running on a remote host](docs/Running%20on%20a%20remote%20host.md)
 

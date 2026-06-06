@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# run-claude — drop into a tmux session running Claude Code in this project's
+# working directory, with permission prompts bypassed.
+#
+# Remote control is already enabled for every session via
+# /root/.claude/settings.json ("remoteControlAtStartup": true), so once you
+# pair the session from claude.ai/code or the mobile app you can drive it from
+# your phone. This wrapper just adds the two ergonomic bits the harness wants
+# by default: cd into the repo and skip the permission prompts so the agent
+# runs unattended.
+#
+# Re-running attaches to the existing 'claude' session instead of spawning a
+# second one, so it's safe to fire from multiple shells / reconnects.
+set -euo pipefail
+
+SESSION="claude"
+
+# setup.sh clones the repo to /root/work/<PROJECT_NAME>. PROJECT_NAME is passed
+# into the container as an env var and inherited by exec/login shells; if it's
+# somehow absent, fall back to the sole project directory under /root/work.
+if [[ -n "${PROJECT_NAME:-}" && -d "/root/work/${PROJECT_NAME}" ]]; then
+    WORKDIR="/root/work/${PROJECT_NAME}"
+else
+    WORKDIR="$(find /root/work -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1)"
+fi
+
+if [[ -z "${WORKDIR:-}" || ! -d "$WORKDIR" ]]; then
+    echo "run-claude: could not locate the project working directory under /root/work" >&2
+    exit 1
+fi
+
+cd "$WORKDIR"
+
+# Attach to an already-running session rather than starting a duplicate.
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+    exec tmux attach -t "$SESSION"
+fi
+
+exec tmux new-session -s "$SESSION" -c "$WORKDIR" "claude --dangerously-skip-permissions"

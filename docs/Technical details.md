@@ -17,8 +17,11 @@ You run `./launch.sh` on a host machine, and you end up with:
   on first mount, so mise/node/pnpm/claude come along for free.
 - The project's dev webapp running under `nohup`, forwarded to
   `127.0.0.1:$WEBAPP_PORT` on the host.
-- A Claude Code remote-control server on `127.0.0.1:$RC_PORT`, which you
-  connect to from your phone.
+- Claude Code with remote control enabled by default
+  (`"remoteControlAtStartup": true`), which you pair from claude.ai/code or
+  the mobile app and drive from your phone. Start a session with the bundled
+  `run-claude` helper. Remote control polls the Anthropic API over outbound
+  HTTPS and opens no inbound port.
 - A per-project egress allowlist on the host that drops every outbound
   connection except to hostnames you named in `WHITELIST_HOSTS`.
 
@@ -203,13 +206,13 @@ allowlist only costs you a container restart.
   network for `--rootful`), runs the container, cleans up on exit.
 - [setup.sh](../setup.sh) — runs inside the container as the entrypoint.
   Installs the deploy key, clones the repo (or reuses an existing
-  checkout), then starts two tmux sessions: `devserver` and
-  `remote-control` (plus an optional third `tunnel` session running
-  `cloudflared` when `EXPOSE_WEBAPP=true` — see
-  [Connecting from your phone](How%20to%20connect%20to%20container.md#connecting-from-your-phone)).
-  Then `exec`s into `sleep infinity` to keep the container alive —
-  `podman exec -it ... bash` in to use claude or attach to the tmux
-  sessions. Every step is idempotent.
+  checkout), optionally starts a `tunnel` tmux session running `cloudflared`
+  when `EXPOSE_WEBAPP=true` (see
+  [Connecting from your phone](How%20to%20connect%20to%20container.md#connecting-from-your-phone)),
+  runs `ON_LAUNCH_SCRIPT` if set, then blocks to keep the container alive.
+  `podman exec -it ... run-claude` to start Claude Code (remote control on by
+  default), or `podman exec -it ... bash` to get a shell. Every step is
+  idempotent.
 - [TODO.md](../TODO.md) — known limitations of the current hardening.
 
 ## Best practices

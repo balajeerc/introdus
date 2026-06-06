@@ -160,3 +160,10 @@ RUN mise completion bash > /etc/bash_completion.d/mise \
 # at will; --reset re-seeds).
 COPY container/claude/ /root/.claude/
 RUN chmod +x /root/.claude/test_notify.sh
+
+# `run-claude`: cd into the project repo, open a tmux session named 'claude',
+# and start Claude Code with --dangerously-skip-permissions. Remote control is
+# enabled by default for every session (see container/claude/settings.json), so
+# the session is reachable from claude.ai/code and the mobile app once paired.
+COPY container/bin/run-claude /usr/local/bin/run-claude
+RUN chmod +x /usr/local/bin/run-claude

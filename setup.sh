@@ -251,6 +251,13 @@ print_banner() {
 Shell into the container:
   podman exec -it $CNAME bash
 
+Start Claude Code (remote control is on by default — pair from
+claude.ai/code or the mobile app to drive it from your phone):
+  podman exec -it $CNAME run-claude
+  (cds into the repo, opens the 'claude' tmux session, and runs
+   claude --dangerously-skip-permissions; re-running re-attaches.
+   Ctrl-a d detaches without killing it.)
+
 Connect with VSCode (Dev Containers):
 
 ${VSCODE_SETUP_INSTRUCTIONS}

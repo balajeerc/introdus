@@ -56,9 +56,9 @@ on a machine with normal DNS.
   server (`allowedHosts`), etc. This config lives in your project repo,
   not the harness — commit it once and every future launch works.
 
-`RC_PORT` is **not** tunneled — only the webapp. The remote-control
-server stays bound to `127.0.0.1` and is reached over your existing
-secure path (claude pairing flow).
+Only the webapp is tunneled. Remote control doesn't need a tunnel: it
+polls the Anthropic API over outbound HTTPS and you reach the session
+through the claude.ai/code or mobile-app pairing flow, not an inbound port.
 
 If `EXPOSE_WEBAPP` is left unset (or set to anything other than `true`),
 no tunnel is started and no extra hosts are added to the allowlist.
@@ -105,30 +105,33 @@ First attach downloads VSCode server (~100MB) into `/root/.vscode-server/`;
 allowlist for this reason. Subsequent launches reuse the cached server.
 
 The extension starts its own `claude` when you open it — it does not
-share state with the tmux `claude` session [setup.sh](../setup.sh) launched.
-If you want that one, open a terminal in VSCode and `tmux attach -t claude`.
+share state with the tmux `claude` session that [`run-claude`](#claude-remote-control)
+starts. If you want that one, open a terminal in VSCode and
+`tmux attach -t claude`.
 
 ## Claude remote-control
 
-[setup.sh](../setup.sh) starts `claude remote-control` inside a detached
-tmux session named `remote-control` on container boot. Two ways to see
-what it's doing:
+Remote control is **on by default** for every Claude Code session in the
+container — [container/claude/settings.json](../container/claude/settings.json)
+sets `"remoteControlAtStartup": true`, so the bridge registers automatically
+whenever `claude` starts. It works by making outbound HTTPS calls to the
+Anthropic API and polling for work; it does **not** open an inbound port on
+the container, so there's nothing to publish or tunnel for pairing.
+
+Start a session with the bundled `run-claude` helper, which cds into the
+repo, opens a tmux session named `claude`, and launches Claude Code with
+`--dangerously-skip-permissions`:
 
 ```bash
-# Attach to the live tmux session (Ctrl-a d to detach without killing it;
-# the container's tmux prefix is remapped from C-b to C-a so it doesn't
-# collide with a host-side tmux you're attaching through)
-podman exec -it remote-code-<project> tmux attach -t remote-control
-
-# Or just tail the mirrored log
-podman exec -it remote-code-<project> tail -f /root/.logs/remote-control.log
+podman exec -it remote-code-<project> run-claude
 ```
 
-The first time you connect, grab the pairing URL/code from there and
-hand it to your phone. Auth persists in the volume, so subsequent
-launches don't need re-pairing.
+Re-running `run-claude` re-attaches to the existing `claude` session instead
+of spawning a second one (`Ctrl-a d` detaches without killing it; the
+container's tmux prefix is remapped from `C-b` to `C-a` so it doesn't collide
+with a host-side tmux you're attaching through).
 
-If the server isn't reachable from the host on `127.0.0.1:$RC_PORT`,
-check what interface it bound to — `claude remote-control` needs to
-bind to `0.0.0.0` inside the container for podman's port publish to
-forward correctly (same gotcha as the webapp).
+The first time you connect, pair the session from **claude.ai/code** or the
+**Claude mobile app** — the pairing prompt appears in the session itself.
+Auth persists in the volume, so subsequent launches don't need re-pairing,
+and you can then drive the agent from your phone.

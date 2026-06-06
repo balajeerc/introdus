@@ -55,10 +55,10 @@ handles every cross-host call.
 
 ## Reaching the published ports
 
-`launch.sh` binds `RC_PORT` and the webapp port to `127.0.0.1` on the
-remote host, not `0.0.0.0` — same posture as the local-only setup
-described in [How to connect to container.md](How%20to%20connect%20to%20container.md#connecting-from-your-phone).
-To reach them from your laptop's browser or phone, tunnel them over SSH:
+`launch.sh` binds the webapp port to `127.0.0.1` on the remote host, not
+`0.0.0.0` — same posture as the local-only setup described in
+[How to connect to container.md](How%20to%20connect%20to%20container.md#connecting-from-your-phone).
+To reach it from your laptop's browser or phone, tunnel it over SSH:
 
 ```bash
 ssh -L 8080:127.0.0.1:8080 -L 9090:127.0.0.1:9090 user@remote-host
@@ -74,5 +74,6 @@ session open.
   volume after that, so subsequent attaches are quick.
 - **Terminal latency tracks your RTT.** A laptop in the US talking to a
   Hetzner Helsinki box is usable but noticeable; same-continent is fine.
-- **The pairing URL for `claude remote-control`** uses `127.0.0.1:$RC_PORT`
-  — pair via the SSH tunnel above, not the remote host's public IP.
+- **Claude remote control needs no tunnel.** It polls the Anthropic API
+  over outbound HTTPS, so you can pair from claude.ai/code or the mobile
+  app regardless of where the container runs — no port to forward.

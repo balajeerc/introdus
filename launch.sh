@@ -135,7 +135,6 @@ set +a
 : "${REPO_URL:?REPO_URL must be set}"
 : "${DEPLOY_KEY_PATH:?DEPLOY_KEY_PATH must be set}"
 : "${WEBAPP_PORT:?WEBAPP_PORT must be set}"
-: "${RC_PORT:?RC_PORT must be set}"
 
 ON_LAUNCH_SCRIPT="${ON_LAUNCH_SCRIPT:-}"
 ENABLE_NOTIFY_SH_ALERTS="${ENABLE_NOTIFY_SH_ALERTS:-false}"
@@ -204,8 +203,8 @@ for entry in $EXTRA_PORTS; do
             exit 1
         fi
     done
-    if [[ "$host_port" == "$WEBAPP_PORT" || "$host_port" == "$RC_PORT" ]]; then
-        echo "error: EXTRA_PORTS host port $host_port collides with WEBAPP_PORT/RC_PORT" >&2
+    if [[ "$host_port" == "$WEBAPP_PORT" ]]; then
+        echo "error: EXTRA_PORTS host port $host_port collides with WEBAPP_PORT" >&2
         exit 1
     fi
     EXTRA_PUBLISH_ARGS+=(--publish "127.0.0.1:${host_port}:${container_port}")
@@ -914,7 +913,6 @@ echo
 echo "==> launching container $CONTAINER_NAME (os=$OS, mode=$MODE)"
 echo "    repo:    $REPO_URL"
 echo "    webapp:  port $WEBAPP_PORT"
-echo "    rc:      port $RC_PORT"
 if [[ -n "$ON_LAUNCH_SCRIPT" ]]; then
     echo "    on-launch: $ON_LAUNCH_SCRIPT"
 fi
@@ -951,7 +949,6 @@ PODMAN_ARGS=(
     --env "PROJECT_NAME=$PROJECT_NAME"
     --env "REPO_URL=$REPO_URL"
     --env "WEBAPP_PORT=$WEBAPP_PORT"
-    --env "RC_PORT=$RC_PORT"
     --env "ON_LAUNCH_SCRIPT=$ON_LAUNCH_SCRIPT"
     --env "CANARY_BLOCKED_IP=$CANARY_BLOCKED_IP"
     --env "HOST_OS=$OS"
@@ -961,7 +958,6 @@ PODMAN_ARGS=(
     --env "ENABLE_NOTIFY_SH_ALERTS=$ENABLE_NOTIFY_SH_ALERTS"
     --env "NTFY_SH_TOPIC=$NTFY_SH_TOPIC"
     --publish "127.0.0.1:${WEBAPP_PORT}:${WEBAPP_PORT}"
-    --publish "127.0.0.1:${RC_PORT}:${RC_PORT}"
     ${EXTRA_PUBLISH_ARGS[@]:+"${EXTRA_PUBLISH_ARGS[@]}"}
 )
 
