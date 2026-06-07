@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Manually send an rc-notify event over the UDS mounted in from the
-# host. Use this to verify the host-side listener + notifier pipeline
+# Manually send an rc-notify event to the host listener over the endpoint
+# mounted in at /run/notify (a unix socket on macOS hosts, a FIFO on Linux
+# hosts). Use this to verify the host-side listener + notifier pipeline
 # without waiting for claude to fire a Stop/Notification hook.
 #
 #   ./test_notify.sh           # defaults to 'done'
@@ -9,14 +10,14 @@
 
 set -euo pipefail
 
-SOCKET="/run/notify.sock"
+TARGET="/run/notify"
 EVENT="${1:-done}"
 
-if [[ ! -S "$SOCKET" ]]; then
-    echo "error: UDS not present at $SOCKET" >&2
-    echo "       ensure ./launch.sh on the host started rc-notify.service and mounted the socket" >&2
+if [[ ! -S "$TARGET" && ! -p "$TARGET" ]]; then
+    echo "error: notify endpoint not present at $TARGET" >&2
+    echo "       ensure ./launch.sh on the host started the rc-notify listener and mounted it" >&2
     exit 1
 fi
 
-printf '%s\n' "$EVENT" | nc -U "$SOCKET"
+rc-notify "$EVENT"
 echo "sent '$EVENT' to host"

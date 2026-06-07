@@ -222,19 +222,35 @@ NOTIFY_LISTENER="$SCRIPT_DIR/host_listener.py"
 [[ -f "$SETUP_SCRIPT" ]] || { echo "error: setup.sh not found at $SETUP_SCRIPT" >&2; exit 1; }
 [[ -f "$DOCKERFILE"    ]] || { echo "error: Dockerfile not found at $DOCKERFILE" >&2; exit 1; }
 
-# ---- notify socket path (OS-specific) --------------------------------------
-# Linux: XDG_RUNTIME_DIR (or /run/user/$UID) — standard for user services.
-# macOS: ~/.local/share/containers — this directory is shared into the podman
-#        machine VM via virtiofs (Apple VZ default), so the socket file is
-#        reachable as a volume mount from containers running inside the VM.
-#        The path must be inside the home directory for virtiofs to see it.
+# ---- notify endpoint path (OS-specific) ------------------------------------
+# macOS: a unix socket under ~/.local/share/containers — this directory is
+#        shared into the podman machine VM via virtiofs (Apple VZ default), so
+#        the socket file is reachable as a volume mount from containers running
+#        inside the VM. The path must be inside the home directory for virtiofs
+#        to see it. A FIFO would not work here: its in-kernel pipe buffer does
+#        not cross the host<->VM boundary.
+# Linux: a FIFO under XDG_RUNTIME_DIR. Some kernels refuse to let a process in
+#        the container's mount/user namespace connect() to a bind-mounted unix
+#        socket even when ownership/permissions/LSM all allow it; writing to a
+#        bind-mounted FIFO has no such restriction.
 if [[ $OS == "macos" ]]; then
     NOTIFY_SOCK_DIR="${HOME}/.local/share/containers"
     mkdir -p "$NOTIFY_SOCK_DIR"
     NOTIFY_SOCK="${NOTIFY_SOCK_DIR}/rc-notify.sock"
+    NOTIFY_KIND="socket"
 else
-    NOTIFY_SOCK="${XDG_RUNTIME_DIR:-/run/user/$UID}/rc-notify.sock"
+    NOTIFY_SOCK="${XDG_RUNTIME_DIR:-/run/user/$UID}/rc-notify.fifo"
+    NOTIFY_KIND="fifo"
 fi
+
+# True when the notify endpoint exists with its expected type.
+notify_exists() {
+    if [[ "$NOTIFY_KIND" == "fifo" ]]; then
+        [[ -p "$NOTIFY_SOCK" ]]
+    else
+        [[ -S "$NOTIFY_SOCK" ]]
+    fi
+}
 
 IMAGE_NAME="remote-code-base:latest"
 
@@ -811,7 +827,7 @@ if ! $VERIFY; then
         LISTENER_RUNNING=false
         if [[ -f "$NOTIFY_PID_FILE" ]]; then
             OLD_PID=$(cat "$NOTIFY_PID_FILE" 2>/dev/null || echo "")
-            if [[ -n "$OLD_PID" ]] && kill -0 "$OLD_PID" 2>/dev/null && [[ -S "$NOTIFY_SOCK" ]]; then
+            if [[ -n "$OLD_PID" ]] && kill -0 "$OLD_PID" 2>/dev/null && notify_exists; then
                 LISTENER_RUNNING=true
                 echo "==> rc-notify listener already running (pid $OLD_PID)"
             fi
@@ -822,14 +838,18 @@ if ! $VERIFY; then
             nohup python3 "$NOTIFY_LISTENER" >>/tmp/rc-notify.log 2>&1 &
             echo $! > "$NOTIFY_PID_FILE"
             for _ in 1 2 3 4 5 6 7 8 9 10; do
-                [[ -S "$NOTIFY_SOCK" ]] && break
+                notify_exists && break
                 sleep 0.1
             done
         fi
     else
         # Linux: manage via systemd user service so it persists across launches
         # independently of this shell's lifetime.
-        if systemctl --user is-active --quiet rc-notify.service 2>/dev/null; then
+        # Require the FIFO to actually exist too: a stale service from an older
+        # version (which created a unix socket at a different path) reads as
+        # "active" but won't have the FIFO, so this restarts it to pick up the
+        # current transport.
+        if systemctl --user is-active --quiet rc-notify.service 2>/dev/null && notify_exists; then
             echo "==> rc-notify listener already running"
         elif [[ -f "$NOTIFY_LISTENER" ]] && command -v systemd-run >/dev/null 2>&1; then
             echo "==> starting rc-notify listener on $NOTIFY_SOCK"
@@ -840,7 +860,7 @@ if ! $VERIFY; then
                 --description="remote-code-harness notification listener" \
                 python3 "$NOTIFY_LISTENER"
             for _ in 1 2 3 4 5 6 7 8 9 10; do
-                [[ -S "$NOTIFY_SOCK" ]] && break
+                notify_exists && break
                 sleep 0.1
             done
         fi
@@ -848,23 +868,23 @@ if ! $VERIFY; then
 fi
 
 declare -a NOTIFY_VOLUME_ARGS=()
-if [[ -S "$NOTIFY_SOCK" ]]; then
+if notify_exists; then
     if [[ $OS == "macos" ]]; then
         # Verify the VM can actually see the socket via virtiofs before mounting.
         # If the home directory is not shared (non-default podman machine config),
         # we skip the mount and warn rather than failing hard.
         if podman machine ssh -- "test -S '$NOTIFY_SOCK'" 2>/dev/null; then
-            NOTIFY_VOLUME_ARGS=(--volume "$NOTIFY_SOCK:/run/notify.sock")
+            NOTIFY_VOLUME_ARGS=(--volume "$NOTIFY_SOCK:/run/notify")
         else
             echo "    warn: VM cannot see socket at $NOTIFY_SOCK"
             echo "    warn: virtiofs may not be sharing the home directory in your podman machine config"
             echo "    warn: container notification hooks will fail silently"
         fi
     else
-        NOTIFY_VOLUME_ARGS=(--volume "$NOTIFY_SOCK:/run/notify.sock")
+        NOTIFY_VOLUME_ARGS=(--volume "$NOTIFY_SOCK:/run/notify")
     fi
 else
-    echo "    warn: rc-notify socket not present at $NOTIFY_SOCK — container hooks will fail silently"
+    echo "    warn: rc-notify endpoint not present at $NOTIFY_SOCK — container hooks will fail silently"
 fi
 
 # ---- persistent volume -----------------------------------------------------

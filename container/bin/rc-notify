@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# rc-notify EVENT — send a notification event to the host-side listener.
+#
+# launch.sh bind-mounts the host endpoint at /run/notify. Its type depends on
+# the host OS:
+#   - Linux: a FIFO. Some kernels refuse to let a process in the container's
+#     mount/user namespace connect() to a bind-mounted unix socket even when
+#     ownership/permissions and the LSM all allow it; writing to a bind-mounted
+#     FIFO has no such restriction.
+#   - macOS: a unix socket. The endpoint is shared into the podman VM over
+#     virtiofs, and a FIFO's pipe buffer would not cross that VM boundary.
+#
+# So detect the type and write accordingly. This is best-effort: it never
+# blocks a Claude hook for more than a few seconds and never fails the hook,
+# even if the listener is absent.
+set -u
+
+EVENT="${1:-done}"
+TARGET="/run/notify"
+
+if [[ -S "$TARGET" ]]; then
+    # unix socket (macOS host)
+    printf '%s\n' "$EVENT" | timeout 5 nc -U "$TARGET" 2>/dev/null || true
+elif [[ -p "$TARGET" ]]; then
+    # FIFO (Linux host). Opening for write blocks until the listener is reading;
+    # timeout caps the wait so a missing reader can't wedge the hook.
+    timeout 5 bash -c 'printf "%s\n" "$1" > "$2"' _ "$EVENT" "$TARGET" 2>/dev/null || true
+fi
+
+exit 0

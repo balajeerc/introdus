@@ -56,6 +56,12 @@ RUN curl -fsSL https://mise.jdx.dev/install.sh | sh
 ENV PNPM_HOME="/root/.local/share/pnpm"
 ENV PATH="/root/.local/bin:/root/.local/share/mise/shims:${PNPM_HOME}/bin:${PATH}"
 
+# Claude Code refuses --dangerously-skip-permissions when running as root unless
+# it believes it's in a sandbox. This container *is* the sandbox (egress is
+# filtered, the filesystem is isolated), so opt in explicitly; without this
+# run-claude fails with "cannot be used with root/sudo privileges".
+ENV IS_SANDBOX=1
+
 # Pin node LTS + pnpm, then install claude code via pnpm. Note: node ships
 # npm bundled — it exists on disk but we don't use it anywhere.
 #
@@ -154,12 +160,18 @@ RUN mise completion bash > /etc/bash_completion.d/mise \
  && mise exec -- pnpm completion bash > /etc/bash_completion.d/pnpm
 
 # Seed /root/.claude with a default settings.json wiring Claude's Stop
-# and Notification hooks to the host-side rc-notify UDS that launch.sh
-# mounts at /run/notify.sock. /root is seeded into the persistent
-# volume on first launch, so these files survive across restarts (edit
-# at will; --reset re-seeds).
+# and Notification hooks to the host-side rc-notify listener that launch.sh
+# mounts at /run/notify (a unix socket on macOS, a FIFO on Linux). The hooks
+# call the `rc-notify` helper below, which writes to whichever endpoint type
+# is present. /root is seeded into the persistent volume on first launch, so
+# these files survive across restarts (edit at will; --reset re-seeds).
 COPY container/claude/ /root/.claude/
 RUN chmod +x /root/.claude/test_notify.sh
+
+# `rc-notify EVENT`: deliver a notification event to the host listener over
+# the mounted /run/notify endpoint (socket on macOS, FIFO on Linux).
+COPY container/bin/rc-notify /usr/local/bin/rc-notify
+RUN chmod +x /usr/local/bin/rc-notify
 
 # `run-claude`: cd into the project repo, open a tmux session named 'claude',
 # and start Claude Code with --dangerously-skip-permissions. Remote control is
