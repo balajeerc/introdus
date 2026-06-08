@@ -85,7 +85,42 @@ SSH_CMD="$(command -v autossh) -M 0"
 # instead of hanging on a prompt. ExitOnForwardFailure surfaces a stale remote
 # port binding as a restart instead of a silently-dead forward.
 SSH_OPTS="-N -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3"
-FORWARD="-R 127.0.0.1:${PORT}:127.0.0.1:${PORT}"
+# No bind address on the -R remote side: with the default 'GatewayPorts no',
+# sshd binds the forward to loopback automatically (which is what we want), and
+# rejects an explicit 127.0.0.1: prefix unless GatewayPorts is enabled.
+FORWARD="-R ${PORT}:127.0.0.1:${PORT}"
+
+# Preflight: prove the host actually permits the reverse forward *now*, so a
+# hard misconfig (e.g. sshd 'AllowTcpForwarding no', common in hardening
+# drop-ins) fails here with an actionable message instead of an endless
+# reconnect storm that can trip the host's fail2ban / rate limiting.
+echo "==> Testing the reverse tunnel to '$ALIAS' (port $PORT)..."
+PF_ERR="$(mktemp)"
+if ! timeout 15 ssh -o BatchMode=yes -o ConnectTimeout=8 -o ExitOnForwardFailure=yes \
+        -R "${PORT}:127.0.0.1:${PORT}" "$ALIAS" true 2>"$PF_ERR"; then
+    echo "error: could not establish the reverse tunnel to '$ALIAS'." >&2
+    sed 's/^/    ssh: /' "$PF_ERR" >&2
+    if grep -qi 'remote port forwarding failed' "$PF_ERR"; then
+        cat >&2 <<EOF
+
+This means the host's sshd refuses the remote forward — almost always
+'AllowTcpForwarding no' (or 'local') in a hardening drop-in. Allow it for
+your user only. On the HOST, create /etc/ssh/sshd_config.d/zz-notify-tunnel.conf:
+
+    Match User <your-host-user>
+        AllowTcpForwarding remote
+        PermitListen 127.0.0.1:${PORT}
+
+then validate + reload:  sudo sshd -t && sudo systemctl reload ssh
+(use 'reload sshd' on distros where the unit is named sshd). Re-run this
+installer afterward.
+EOF
+    fi
+    rm -f "$PF_ERR"
+    exit 1
+fi
+rm -f "$PF_ERR"
+echo "==> Reverse tunnel OK."
 
 mkdir -p "$UNIT_DIR"
 
@@ -111,6 +146,11 @@ Description=remote-control-harness reverse tunnel to ${ALIAS} (notifications bac
 Requires=${LISTENER_UNIT}
 After=${LISTENER_UNIT} network-online.target
 Wants=network-online.target
+# If the tunnel can't establish (e.g. host config changed to forbid
+# forwarding), give up after a burst instead of reconnect-storming the host
+# and tripping its fail2ban. Recover with: systemctl --user reset-failed.
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -119,15 +159,19 @@ Type=simple
 Environment=AUTOSSH_GATETIME=0
 ExecStart=${SSH_CMD} ${SSH_OPTS} ${FORWARD} ${ALIAS}
 Restart=always
-RestartSec=5
+RestartSec=15
 
 [Install]
 WantedBy=default.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable --now "$LISTENER_UNIT"
-systemctl --user enable --now "$TUNNEL_UNIT"
+systemctl --user enable "$LISTENER_UNIT" "$TUNNEL_UNIT"
+# reset-failed clears any prior start-limit hit; restart (not just start) so
+# re-running this installer applies unit changes to an already-running service.
+systemctl --user reset-failed "$LISTENER_UNIT" "$TUNNEL_UNIT" 2>/dev/null || true
+systemctl --user restart "$LISTENER_UNIT"
+systemctl --user restart "$TUNNEL_UNIT"
 
 # Linger lets the user manager (and these services) run at boot without an
 # active login session, so notifications work even before you log in.

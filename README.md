@@ -60,15 +60,34 @@ container* (the hardened container itself). See the diagram above.
 - **macOS (Apple Silicon):** `podman` 4.4+ (`brew install podman`) and a
   podman machine in **rootful** mode — see [macOS notes](#macos-apple-silicon-notes)
   below.
+- **Reverse-tunnel notifications (only if this host is remote and forwards
+  alerts to a separate laptop):** the host's `sshd` must permit a reverse
+  (`-R`) TCP forward for your user. Hardened hosts often ship
+  `AllowTcpForwarding no`, which silently blocks it. Allow it narrowly — your
+  user and the one loopback port only — in a drop-in such as
+  `/etc/ssh/sshd_config.d/zz-notify-tunnel.conf`:
+
+  ```
+  Match User <your-host-user>
+      AllowTcpForwarding remote
+      PermitListen 127.0.0.1:8765
+  ```
+
+  then `sudo sshd -t && sudo systemctl reload ssh`. Not needed when the
+  container host is your laptop. See
+  [Running on a remote host](docs/Running%20on%20a%20remote%20host.md).
 
 ### On your dev machine (laptop) — only if it's separate from the host
 
 - An SSH client with key access to the container host (you already use this
-  to reach the box).
+  to reach the box). Use a passphrase-less key, or an agent reachable from your
+  `systemd --user` session — the tunnel runs with `BatchMode=yes`.
 - VS Code with the **Remote-SSH** and **Dev Containers** extensions, to edit
   inside the container.
-- *Optional:* `autossh`, for the always-on task-completion notification
-  tunnel set up by `install_dev_machine_listener.sh`.
+- `autossh` — **required** by `install_dev_machine_listener.sh` for the
+  always-on task-completion notification tunnel (`sudo apt install autossh`,
+  `brew install autossh`, etc.). Only needed if you want desktop notifications
+  forwarded from a remote container host; the installer errors out without it.
 
 > If your laptop **is** the container host, you only need the host
 > prerequisites above — everything renders and runs locally.

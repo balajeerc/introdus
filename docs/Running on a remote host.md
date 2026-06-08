@@ -111,6 +111,22 @@ chars) before it reaches any notification — a compromised container can't
 spoof arbitrary text or inject control characters under the "Claude Code"
 brand.
 
+The laptop reaches that loopback port via an SSH **reverse** (`-R`) tunnel, so
+the host's `sshd` must permit reverse forwarding for your user. Hardened hosts
+commonly ship `AllowTcpForwarding no`, which blocks it (the laptop installer's
+preflight will tell you if so). Allow it narrowly — your user and this one
+loopback port — in `/etc/ssh/sshd_config.d/zz-notify-tunnel.conf`:
+
+```
+Match User <your-host-user>
+    AllowTcpForwarding remote
+    PermitListen 127.0.0.1:8765
+```
+
+then `sudo sshd -t && sudo systemctl reload ssh` (or `reload sshd`). This is
+the only host-hardening change the notification path needs; `-L` forwarding and
+other users stay disabled.
+
 **On your laptop**, from your checkout of this repo, install the always-on
 services (recommended):
 

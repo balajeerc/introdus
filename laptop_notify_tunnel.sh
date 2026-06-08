@@ -60,7 +60,9 @@ SSH_OPTS=(
     -o ExitOnForwardFailure=yes
     -o ServerAliveInterval=30
     -o ServerAliveCountMax=3
-    -R "127.0.0.1:${PORT}:127.0.0.1:${PORT}"
+    # No bind address: default 'GatewayPorts no' binds the forward to loopback
+    # automatically and rejects an explicit 127.0.0.1: prefix.
+    -R "${PORT}:127.0.0.1:${PORT}"
 )
 
 echo "==> reverse tunnel: $REMOTE 127.0.0.1:$PORT -> laptop 127.0.0.1:$PORT"
