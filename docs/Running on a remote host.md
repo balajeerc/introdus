@@ -67,6 +67,84 @@ ssh -L 8080:127.0.0.1:8080 -L 9090:127.0.0.1:9090 user@remote-host
 Or use Tailscale / a WireGuard mesh if you'd rather not keep an SSH
 session open.
 
+## Task-completion notifications back to your laptop
+
+The harness's desktop notification (popup + sound on "task complete" /
+"awaiting input") normally renders on the same machine as the container. On a
+remote host there's no desktop to render to, so the signal has to make a
+second hop back to your laptop. There are two hops in total:
+
+```
+[dev container] --FIFO--> [remote host] host_notify.sh
+    --(TCP to 127.0.0.1:PORT)--> (ssh -R reverse tunnel)
+        --> [laptop] host_listener.py --> popup + sound
+```
+
+The first hop (container → remote host) is the harness's existing FIFO
+transport and is unchanged. The second hop (remote host → laptop) rides an
+SSH **reverse** tunnel: your laptop dials *out* to the remote host (the same
+SSH you already use), so nothing needs an inbound port — which matters when
+your laptop is behind NAT.
+
+This is **host-level**, not per-container: one host relays every container's
+events to one laptop through a single listener. So the setting lives in the
+**harness** `.env` (the one next to `host_notify.sh`), not a per-project
+`.env`. `create-dev-container.sh` asks "laptop or remote host?" and, for
+remote, writes this line to the harness `.env` for you.
+
+**On the remote host**, set in the harness `.env` and relaunch:
+
+```bash
+RC_FORWARD_ADDR=127.0.0.1:8765
+```
+
+`host_notify.sh` now forwards each validated event to that loopback port
+instead of trying to render. The event whitelist runs here and again on the
+laptop, and the container label is stripped to `[A-Za-z0-9._-]` (max 40
+chars) before it reaches any notification — a compromised container can't
+spoof arbitrary text or inject control characters under the "Claude Code"
+brand.
+
+**On your laptop**, from your checkout of this repo, install the always-on
+services (recommended):
+
+```bash
+./install_dev_machine_listener.sh <ssh-alias-for-remote-host> 8765
+```
+
+This installs two `systemd --user` units that survive reboot and sleep:
+
+- `rc-notify-listener.service` — `host_listener.py` in TCP mode, which renders
+  the native popup + plays `notification_sound.wav`.
+- `rc-notify-tunnel.service` — the `ssh -R` reverse tunnel to your alias
+  (autossh if installed, for self-healing reconnects).
+
+The port must match `RC_FORWARD_ADDR`. The alias must accept key-based SSH
+without a prompt (passphrase-less key, or an agent reachable from your
+`systemd --user` session) since the tunnel runs with `BatchMode=yes`. Manage
+with `systemctl --user status rc-notify-tunnel.service` and remove with
+`./install_dev_machine_listener.sh --uninstall`.
+
+For a quick foreground tunnel without systemd (e.g. a one-off), use
+`./laptop_notify_tunnel.sh <ssh-alias> 8765` instead.
+
+### Which container fired it?
+
+Each notification's title is suffixed with the container's project name —
+e.g. *"Claude Code — myproject"* — so when you run many containers on one
+host you can tell them apart at a glance. (Derived from `PROJECT_NAME`;
+override per-container with the `RC_LABEL` env var.)
+
+### Limitations
+
+This path is **best-effort, fire-and-forget**: if the laptop is offline or
+the tunnel is mid-reconnect when an event fires, that desktop notification is
+dropped (there's no queue or retry). The forward never blocks — it fails fast
+on a refused connection and is capped at 5s otherwise, so a down tunnel never
+wedges a Claude hook or one container's event behind another's. For a durable
+record that doesn't depend on the laptop being up, pair this with the ntfy.sh
+phone push above; the two are independent and can run together.
+
 ## Things that feel different vs. local
 
 - **First attach is slow.** VSCode pulls ~100MB of server into the

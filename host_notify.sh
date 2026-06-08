@@ -21,7 +21,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOUND_FILE="${SOUND_FILE:-$SCRIPT_DIR/notification_sound.wav}"
 
 EVENT="${1:-done}"
+# Arg 2 is an optional label identifying which container fired the event. It is
+# the only attacker-influenceable text reaching the notification, so sanitize it
+# to a safe charset and cap its length even though the listener already did —
+# host_notify.sh can also be invoked directly. Never let it carry control chars
+# or spoof additional text under the "Claude Code" brand.
+LABEL="${2:-}"
+LABEL="${LABEL//[^A-Za-z0-9._-]/}"
+LABEL="${LABEL:0:40}"
+
 TITLE="Claude Code"
+[[ -n "$LABEL" ]] && TITLE="Claude Code — $LABEL"
 
 # Whitelist of valid events. Refuse to display arbitrary body text because
 # the notification appears under the trusted "Claude Code" brand —
@@ -38,17 +48,24 @@ esac
 # relying on the long-running listener daemon's environment, so edits to
 # .env take effect without a listener restart. We sandbox the source in a
 # subshell so unrelated variables in .env do not leak into this script.
+# An explicit RC_FORWARD_ADDR in the environment always wins over .env. We
+# capture it before reading .env so a laptop-side listener (which shares this
+# same checkout) can force-disable forwarding via RC_NO_FORWARD regardless of
+# what .env says.
+RC_FORWARD_ADDR_OVERRIDE="${RC_FORWARD_ADDR:-}"
 ENABLE_NOTIFY_SH_ALERTS=""
 NTFY_SH_TOPIC=""
+RC_FORWARD_ADDR=""
 if [[ -r "$SCRIPT_DIR/.env" ]]; then
     eval "$(
         set +eu
         # shellcheck disable=SC1091
         source "$SCRIPT_DIR/.env" >/dev/null 2>&1
-        printf 'ENABLE_NOTIFY_SH_ALERTS=%q\nNTFY_SH_TOPIC=%q\n' \
-            "${ENABLE_NOTIFY_SH_ALERTS:-}" "${NTFY_SH_TOPIC:-}"
+        printf 'ENABLE_NOTIFY_SH_ALERTS=%q\nNTFY_SH_TOPIC=%q\nRC_FORWARD_ADDR=%q\n' \
+            "${ENABLE_NOTIFY_SH_ALERTS:-}" "${NTFY_SH_TOPIC:-}" "${RC_FORWARD_ADDR:-}"
     )"
 fi
+[[ -n "$RC_FORWARD_ADDR_OVERRIDE" ]] && RC_FORWARD_ADDR="$RC_FORWARD_ADDR_OVERRIDE"
 
 send_ntfy() {
     [[ "$ENABLE_NOTIFY_SH_ALERTS" == "true" ]] || return 0
@@ -73,6 +90,45 @@ send_ntfy() {
 }
 
 send_ntfy
+
+# ---------------------------------------------------------------------------
+# Headless forward (remote server with no desktop of its own)
+# ---------------------------------------------------------------------------
+# Two-hop remote setup:
+#
+#   [dev container] --FIFO--> [this remote host] host_notify.sh
+#       --(TCP to RC_FORWARD_ADDR)--> (ssh -R reverse tunnel)
+#           --> [laptop] host_listener.py --> desktop popup + sound
+#
+# When RC_FORWARD_ADDR=host:port is set, this machine is the remote server: it
+# has no desktop, so instead of rendering we forward the already-validated
+# event over TCP to host:port. That is normally 127.0.0.1:<PORT>, which an SSH
+# reverse tunnel opened by the laptop forwards back to a host_listener.py
+# running there; the laptop's listener re-validates against the same whitelist
+# and renders the real notification.
+#
+# RC_NO_FORWARD=1 hard-disables this branch — the laptop-side listener sets it
+# so that, even though it shares this checkout (and possibly an .env with
+# RC_FORWARD_ADDR), it renders locally instead of bouncing the event back.
+#
+# bash's /dev/tcp avoids any netcat dependency; timeout caps the wait so a
+# down tunnel can never wedge the Claude hook that triggered this.
+if [[ -n "$RC_FORWARD_ADDR" && "${RC_NO_FORWARD:-}" != "1" ]]; then
+    fwd_host="${RC_FORWARD_ADDR%:*}"
+    fwd_port="${RC_FORWARD_ADDR##*:}"
+    # Preserve the label across the hop using the same "event<TAB>label" wire
+    # format the container used, so the laptop's listener renders it identically.
+    if [[ -n "$LABEL" ]]; then
+        fwd_msg="${EVENT}"$'\t'"${LABEL}"
+    else
+        fwd_msg="${EVENT}"
+    fi
+    if ! timeout 5 bash -c 'printf "%s\n" "$1" > "/dev/tcp/$2/$3"' _ \
+            "$fwd_msg" "$fwd_host" "$fwd_port" 2>/dev/null; then
+        echo "host_notify: forward to $RC_FORWARD_ADDR failed (tunnel down?)" >&2
+    fi
+    exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # macOS

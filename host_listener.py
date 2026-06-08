@@ -29,6 +29,7 @@ bodies under the "Claude Code" brand.
 
 import os
 import pathlib
+import re
 import signal
 import socket
 import subprocess
@@ -43,6 +44,18 @@ ALLOWED_EVENTS = {"done", "waiting"}
 # Upper bound on bytes read per event.
 READ_LIMIT = 128
 
+# The label (which container fired the event) is the only attacker-influenceable
+# text that reaches the desktop notification, so we strip it to a safe charset
+# and cap its length before it ever leaves this trust boundary. This keeps a
+# compromised container from smuggling arbitrary text under the "Claude Code"
+# brand or injecting control characters.
+_LABEL_STRIP = re.compile(r"[^A-Za-z0-9._-]")
+LABEL_MAX = 40
+
+
+def sanitize_label(label: str) -> str:
+    return _LABEL_STRIP.sub("", label)[:LABEL_MAX]
+
 
 def notify_target() -> "tuple[pathlib.Path, str]":
     """Return (path, kind) where kind is 'fifo' (Linux) or 'socket' (macOS)."""
@@ -55,9 +68,12 @@ def notify_target() -> "tuple[pathlib.Path, str]":
 
 
 def handle_event(raw: str) -> None:
-    event = raw.strip()
-    if not event:
+    line = raw.strip()
+    if not line:
         return
+    # Wire format is "event" or "event<TAB>label".
+    event, _, label = line.partition("\t")
+    event = event.strip()
     if event not in ALLOWED_EVENTS:
         print(
             f"rc-notify: rejecting unknown event {event[:32]!r}",
@@ -65,8 +81,12 @@ def handle_event(raw: str) -> None:
             flush=True,
         )
         return
+    args = [str(NOTIFY_SCRIPT), event]
+    label = sanitize_label(label.strip())
+    if label:
+        args.append(label)
     subprocess.Popen(
-        [str(NOTIFY_SCRIPT), event],
+        args,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -136,7 +156,39 @@ def serve_socket(path: pathlib.Path) -> None:
         handle_event(data.decode("utf-8", errors="replace"))
 
 
+def serve_tcp(host: str, port: int) -> None:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((host, port))
+    sock.listen(8)
+
+    print(f"rc-notify: listening on tcp://{host}:{port}", flush=True)
+
+    while True:
+        conn, _ = sock.accept()
+        try:
+            data = conn.recv(READ_LIMIT)
+        finally:
+            conn.close()
+        handle_event(data.decode("utf-8", errors="replace"))
+
+
 def main() -> None:
+    # Laptop side of the two-hop remote setup: listen on a loopback TCP port
+    # that an SSH reverse tunnel feeds from the remote server, then render
+    # locally. Same validation + host_notify.sh path as the local transports.
+    #
+    # Force RC_NO_FORWARD so the rendered child never re-forwards the event,
+    # even if this checkout's .env happens to carry RC_FORWARD_ADDR.
+    listen_tcp = os.environ.get("RC_LISTEN_TCP")
+    if listen_tcp:
+        os.environ["RC_NO_FORWARD"] = "1"
+        host, sep, port = listen_tcp.rpartition(":")
+        if not sep:
+            host, port = "127.0.0.1", listen_tcp
+        serve_tcp(host or "127.0.0.1", int(port))
+        return
+
     path, kind = notify_target()
     if kind == "fifo":
         serve_fifo(path)

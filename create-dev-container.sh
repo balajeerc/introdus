@@ -254,6 +254,51 @@ if [[ "$ENABLE_NOTIFY_SH_ALERTS" == "true" ]]; then
     prompt_required NTFY_SH_TOPIC "ntfy.sh topic name (treat like a password)"
 fi
 
+# Where will this container run? On your laptop, desktop notifications render
+# locally and nothing extra is needed. On a remote/headless host they must be
+# tunnelled back to your laptop. That is a HOST-level setting (one host relays
+# every container to one laptop via a singleton listener), so it lives in the
+# harness .env — read by host_notify.sh — not in this per-project .env. Leaving
+# it unset (the laptop case) keeps the existing local-rendering flow untouched.
+echo
+echo "  Where will this container run?"
+echo "    1) On this laptop / workstation (notifications render locally)"
+echo "    2) On a remote host (tunnel task-completion notifications to a laptop)"
+HARNESS_ENV="$HARNESS_DIR/.env"
+RUN_LOCATION=""
+while true; do
+    read -r -p "  Choice [1-2]: " RUN_LOCATION
+    case "$RUN_LOCATION" in
+        1) break ;;
+        2)
+            prompt_default RC_FORWARD_PORT \
+                "Loopback port for the laptop notification tunnel (must match install_dev_machine_listener.sh)" \
+                "8765"
+            RC_FORWARD_ADDR="127.0.0.1:${RC_FORWARD_PORT}"
+            if [[ -f "$HARNESS_ENV" ]] && grep -q '^[[:space:]]*RC_FORWARD_ADDR=' "$HARNESS_ENV"; then
+                echo
+                echo "  RC_FORWARD_ADDR already set in $HARNESS_ENV — leaving it as-is:"
+                grep '^[[:space:]]*RC_FORWARD_ADDR=' "$HARNESS_ENV" | sed 's/^/      /'
+            else
+                {
+                    echo ""
+                    echo "# Remote host: forward task-completion notifications to a laptop"
+                    echo "# listener over an SSH reverse tunnel. Host-level (applies to every"
+                    echo "# container on this host). Added by create-dev-container.sh."
+                    echo "RC_FORWARD_ADDR=$RC_FORWARD_ADDR"
+                } >> "$HARNESS_ENV"
+                chmod 600 "$HARNESS_ENV" 2>/dev/null || true
+                echo
+                echo "  ==> Set RC_FORWARD_ADDR=$RC_FORWARD_ADDR in $HARNESS_ENV"
+            fi
+            echo
+            echo "  On your LAPTOP, run (once) from the harness checkout:"
+            echo "      ./install_dev_machine_listener.sh <ssh-alias-for-this-host> ${RC_FORWARD_PORT}"
+            break ;;
+        *) echo "  invalid choice; enter 1 or 2." >&2 ;;
+    esac
+done
+
 # ---- shared_data dir -------------------------------------------------------
 
 SHARED_DATA_PATH="$PROJECT_DIR/shared_data"

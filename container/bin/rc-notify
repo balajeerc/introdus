@@ -18,13 +18,25 @@ set -u
 EVENT="${1:-done}"
 TARGET="/run/notify"
 
+# Tag the event with this container's identity so the host (especially when one
+# host relays many containers' notifications) can show WHICH container finished.
+# PROJECT_NAME is injected by launch.sh; RC_LABEL can override it. The wire
+# format is "event<TAB>label"; the host re-validates the event and sanitizes
+# the label, so anything we send here is treated as untrusted there.
+LABEL="${RC_LABEL:-${PROJECT_NAME:-}}"
+if [[ -n "$LABEL" ]]; then
+    MSG="${EVENT}"$'\t'"${LABEL}"
+else
+    MSG="${EVENT}"
+fi
+
 if [[ -S "$TARGET" ]]; then
     # unix socket (macOS host)
-    printf '%s\n' "$EVENT" | timeout 5 nc -U "$TARGET" 2>/dev/null || true
+    printf '%s\n' "$MSG" | timeout 5 nc -U "$TARGET" 2>/dev/null || true
 elif [[ -p "$TARGET" ]]; then
     # FIFO (Linux host). Opening for write blocks until the listener is reading;
     # timeout caps the wait so a missing reader can't wedge the hook.
-    timeout 5 bash -c 'printf "%s\n" "$1" > "$2"' _ "$EVENT" "$TARGET" 2>/dev/null || true
+    timeout 5 bash -c 'printf "%s\n" "$1" > "$2"' _ "$MSG" "$TARGET" 2>/dev/null || true
 fi
 
 exit 0
