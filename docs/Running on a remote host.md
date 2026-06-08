@@ -120,12 +120,14 @@ loopback port — in `/etc/ssh/sshd_config.d/zz-notify-tunnel.conf`:
 ```
 Match User <your-host-user>
     AllowTcpForwarding remote
-    PermitListen 127.0.0.1:8765
+    PermitListen 127.0.0.1:8765 localhost:8765
 ```
 
 then `sudo sshd -t && sudo systemctl reload ssh` (or `reload sshd`). This is
 the only host-hardening change the notification path needs; `-L` forwarding and
-other users stay disabled.
+other users stay disabled. The `localhost:8765` entry is required because a
+no-bind `-R` reverse forward (used so it works under the default
+`GatewayPorts no`) presents its listen address as `localhost`, not `127.0.0.1`.
 
 **On your laptop**, from your checkout of this repo, install the always-on
 services (recommended):

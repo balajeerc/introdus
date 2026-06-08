@@ -109,8 +109,9 @@ your user only. On the HOST, create /etc/ssh/sshd_config.d/zz-notify-tunnel.conf
 
     Match User <your-host-user>
         AllowTcpForwarding remote
-        PermitListen 127.0.0.1:${PORT}
+        PermitListen 127.0.0.1:${PORT} localhost:${PORT}
 
+(the localhost: form is required — a no-bind -R presents as 'localhost')
 then validate + reload:  sudo sshd -t && sudo systemctl reload ssh
 (use 'reload sshd' on distros where the unit is named sshd). Re-run this
 installer afterward.

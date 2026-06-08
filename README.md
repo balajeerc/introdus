@@ -70,11 +70,12 @@ container* (the hardened container itself). See the diagram above.
   ```
   Match User <your-host-user>
       AllowTcpForwarding remote
-      PermitListen 127.0.0.1:8765
+      PermitListen 127.0.0.1:8765 localhost:8765
   ```
 
-  then `sudo sshd -t && sudo systemctl reload ssh`. Not needed when the
-  container host is your laptop. See
+  then `sudo sshd -t && sudo systemctl reload ssh`. (The `localhost:` form is
+  required — a no-bind `-R` forward presents its listen address as `localhost`.)
+  Not needed when the container host is your laptop. See
   [Running on a remote host](docs/Running%20on%20a%20remote%20host.md).
 
 ### On your dev machine (laptop) — only if it's separate from the host
