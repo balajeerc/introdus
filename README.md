@@ -106,18 +106,22 @@ machine (laptop)** to receive them — see
 ```bash
 cp sample.env .env
 $EDITOR .env      # set PROJECT_NAME, REPO_URL, DEPLOY_KEY_PATH, etc.
-./launch.sh       # rootless mode; prompts for sudo once to install nft rules
-./launch.sh --rootful                 # fallback mode (see Modes above)
-./launch.sh path/to/other.env         # use a different env file
-./launch.sh --rebuild-base            # rebuild the base image
-./launch.sh --reset                   # wipe the persistent volume
-./launch.sh --verify                  # rootless only: run an egress smoke test
-./launch.sh --update                  # in-container refresh (see Updates below)
+./launch_dev_container.sh                    # rootless mode; prompts for sudo once for nft rules
+./launch_dev_container.sh --rootful          # fallback mode (see Modes above)
+./launch_dev_container.sh path/to/other.env  # use a different env file
+./launch_dev_container.sh --rebuild-base     # rebuild the base image
+./launch_dev_container.sh --reset            # wipe the persistent volume
+./launch_dev_container.sh --verify           # rootless only: run an egress smoke test
+./launch_dev_container.sh --update           # in-container refresh (see Updates below)
 ```
 
-When you exit `claude` (or the container otherwise stops), `launch.sh`
-tears down the egress filter (nft table or iptables chain, depending on
-mode), plus the warmup slice / podman network it installed.
+(`./launch.sh` still works — it's a back-compat symlink to
+`launch_dev_container.sh`. The per-project flow above generates a `launch.sh`
+wrapper in each project dir that calls the same engine.)
+
+When you exit `claude` (or the container otherwise stops),
+`launch_dev_container.sh` tears down the egress filter (nft table or iptables
+chain, depending on mode), plus the warmup slice / podman network it installed.
 
 **Note on mode switching:** volumes and images are stored per-mode
 (rootless uses your user's podman store, `--rootful` uses root's). Switching
@@ -126,8 +130,8 @@ it does not destroy data in the other mode's store.
 
 ## macOS (Apple Silicon) notes
 
-`launch.sh` auto-detects macOS. Containers run inside the podman-machine
-Linux VM; the egress filter is installed inside the VM via
+`launch_dev_container.sh` auto-detects macOS. Containers run inside the
+podman-machine Linux VM; the egress filter is installed inside the VM via
 `podman machine ssh -- sudo nft ...`. No firewall changes are made on the
 macOS host itself.
 
@@ -150,7 +154,7 @@ For Macs with limited RAM, configure the VM before starting:
 
 - The `--rootful` flag is **not** supported on macOS (and not needed) —
   the VM boundary already provides equivalent isolation. Use the default
-  invocation: `./launch.sh`.
+  invocation: `./launch_dev_container.sh`.
 - If your ISP blocks outbound port 22, use the SSH-over-443 form for
   `REPO_URL`, e.g. `ssh://git@ssh.github.com:443/owner/repo.git`.
 - The notification socket requires virtiofs home-directory sharing
@@ -161,7 +165,7 @@ For Macs with limited RAM, configure the VM before starting:
 
 ### [Technical details](docs/Technical%20details.md)
 
-- [Overview](docs/Technical%20details.md#overview) — the end-state that `./launch.sh` produces (base image, volume, ports, egress allowlist, container posture).
+- [Overview](docs/Technical%20details.md#overview) — the end-state that `./launch_dev_container.sh` produces (base image, volume, ports, egress allowlist, container posture).
 - [Container capabilities](docs/Technical%20details.md#container-capabilities) — which caps are added back, why, and why it's safe.
 - [Usage Modes](docs/Technical%20details.md#usage-modes) — rootless (default) vs. `--rootful` fallback.
 - [Persistence](docs/Technical%20details.md#persistence) — what survives restarts, how config edits propagate, `--reset` semantics.

@@ -22,7 +22,7 @@ podman's built-in SSH client that doesn't read `~/.ssh/config`).
 2. Clone this repo and run `./host_install.sh` — answer **yes** to forwarding
    notifications and pick a port. Then `create-dev-container.sh` per project
    (or, for the single-project flow, copy `sample.env` to `.env` and run
-   `./launch.sh`).
+   `./launch_dev_container.sh`).
 
 That's it on the host — no podman socket to enable.
 
@@ -59,7 +59,7 @@ handles every cross-host call.
 
 ## Reaching the published ports
 
-`launch.sh` binds the webapp port to `127.0.0.1` on the remote host, not
+`launch_dev_container.sh` binds the webapp port to `127.0.0.1` on the remote host, not
 `0.0.0.0` — same posture as the local-only setup described in
 [How to connect to container.md](How%20to%20connect%20to%20container.md#connecting-from-your-phone).
 To reach it from your laptop's browser or phone, tunnel it over SSH:

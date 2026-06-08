@@ -28,7 +28,7 @@ The URL is stable for the container's lifetime and rotates on relaunch.
 No Cloudflare account or domain required. The egress allowlist is
 auto-extended with `api.trycloudflare.com` (for tunnel registration)
 plus a pinned set of Cloudflare argotunnel edge IPs — these are
-hardcoded in [launch.sh](../launch.sh) since cloudflared's normal SRV-
+hardcoded in [launch_dev_container.sh](../launch_dev_container.sh) since cloudflared's normal SRV-
 based edge discovery doesn't survive the container's restricted DNS.
 If Cloudflare ever rotates these edges and the tunnel stops connecting,
 refresh them by running `dig +short SRV _v2-origintunneld._tcp.argotunnel.com`

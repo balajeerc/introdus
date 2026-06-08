@@ -111,7 +111,7 @@ container's overlay and only survives as long as the container itself.
 **How config edits propagate.** `podman run` flags (capabilities,
 volumes, env vars, published ports, `--memory`, `--cpus`) are frozen at
 container-create time. `podman start` does not re-apply them. So editing
-`launch.sh` — adding a cap, bumping `MEM_LIMIT` via `.env`, exposing a
+`launch_dev_container.sh` — adding a cap, bumping `MEM_LIMIT` via `.env`, exposing a
 new port — does not affect an already-created container. To pick up
 those changes, remove the container:
 
@@ -190,7 +190,7 @@ case; `--rebuild-base --reset` is the escape hatch for anything structural.
 ## Sharing host data (read-only)
 
 Set `SHARED_DATA_PATH` in `.env` to an absolute host directory and
-`launch.sh` mounts it read-only at `/root/shared_data` inside the
+`launch_dev_container.sh` mounts it read-only at `/root/shared_data` inside the
 container. Use this to feed in datasets, reference material, or anything
 else the container should read but never modify. Leave the var unset to
 skip the mount.
