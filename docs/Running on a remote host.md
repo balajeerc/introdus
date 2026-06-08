@@ -123,7 +123,7 @@ This installs two `systemd --user` units that survive reboot and sleep:
 - `rc-notify-listener.service` — `host_listener.py` in TCP mode, which renders
   the native popup + plays `notification_sound.wav`.
 - `rc-notify-tunnel.service` — the `ssh -R` reverse tunnel to your alias
-  (autossh if installed, for self-healing reconnects).
+  (autossh, for self-healing reconnects — the installer requires it).
 
 The port must match `RC_FORWARD_ADDR`. The alias must accept key-based SSH
 without a prompt (passphrase-less key, or an agent reachable from your

@@ -10,8 +10,8 @@
 #                                  for events arriving on 127.0.0.1:PORT.
 #   rc-notify-tunnel.service    -- an SSH reverse tunnel (ssh -R) to ALIAS that
 #                                  maps the remote host's 127.0.0.1:PORT to this
-#                                  laptop's listener. autossh is used when
-#                                  available so it self-heals across drops.
+#                                  laptop's listener. Requires autossh, which
+#                                  with systemd self-heals across drops/suspend.
 #
 # ALIAS is an entry in your ~/.ssh/config for the remote host (the same alias
 # you already `ssh` into). PORT must match RC_FORWARD_ADDR=127.0.0.1:PORT in the
@@ -62,18 +62,29 @@ PORT="${2:-8765}"
 
 PYTHON="$(command -v python3)" || err "python3 not found"
 
-# Prefer autossh (auto-reconnect); fall back to plain ssh with keepalives.
-if command -v autossh >/dev/null 2>&1; then
-    SSH_CMD="$(command -v autossh) -M 0"
-else
-    SSH_CMD="$(command -v ssh)"
-    echo "note: autossh not installed — using plain ssh. Install autossh for faster reconnects."
+# Require autossh: combined with systemd's Restart it self-heals across dropped
+# connections, suspend/resume, and network changes far more reliably than plain
+# ssh. Error out with an install hint rather than silently degrading.
+if ! command -v autossh >/dev/null 2>&1; then
+    cat >&2 <<'MSG'
+error: autossh is not installed.
+
+The reverse tunnel uses autossh so it reconnects cleanly across network
+changes, suspend/resume, and dropped connections. Install it, then re-run:
+
+  Debian/Ubuntu:  sudo apt install autossh
+  Fedora:         sudo dnf install autossh
+  Arch:           sudo pacman -S autossh
+  macOS:          brew install autossh
+MSG
+    exit 1
 fi
+SSH_CMD="$(command -v autossh) -M 0"
 
 # BatchMode=yes so a missing/passphrase-locked key fails fast under systemd
 # instead of hanging on a prompt. ExitOnForwardFailure surfaces a stale remote
 # port binding as a restart instead of a silently-dead forward.
-SSH_OPTS="-N -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountInterval=3"
+SSH_OPTS="-N -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3"
 FORWARD="-R 127.0.0.1:${PORT}:127.0.0.1:${PORT}"
 
 mkdir -p "$UNIT_DIR"
@@ -103,6 +114,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# AUTOSSH_GATETIME=0: keep retrying even if the very first connection dies
+# quickly (otherwise autossh gives up when ssh exits within its gate time).
+Environment=AUTOSSH_GATETIME=0
 ExecStart=${SSH_CMD} ${SSH_OPTS} ${FORWARD} ${ALIAS}
 Restart=always
 RestartSec=5

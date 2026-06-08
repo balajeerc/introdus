@@ -59,7 +59,7 @@ SSH_OPTS=(
     -N
     -o ExitOnForwardFailure=yes
     -o ServerAliveInterval=30
-    -o ServerAliveCountInterval=3
+    -o ServerAliveCountMax=3
     -R "127.0.0.1:${PORT}:127.0.0.1:${PORT}"
 )
 
