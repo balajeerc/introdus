@@ -2,12 +2,16 @@
 
 Back to the [project README](../README.md).
 
+Throughout this doc, **container host** is the box running podman (a remote
+machine or your laptop) and **dev machine** is the laptop you sit at. When
+they're the same machine, "container host" and "dev machine" collapse.
+
 ## Connecting from your phone
 
-Both published ports bind to `127.0.0.1` on the host, not `0.0.0.0`. To
-reach them from a phone you need your own secure tunnel to the host
-(Tailscale, SSH port forward, etc.) — this repo deliberately doesn't
-expose anything on your LAN.
+Both published ports bind to `127.0.0.1` on the **container host**, not
+`0.0.0.0`. To reach them from a phone you need your own secure tunnel to the
+container host (Tailscale, SSH port forward, etc.) — this repo deliberately
+doesn't expose anything on your LAN.
 
 ### Public tunnel for the webapp (opt-in)
 
@@ -75,8 +79,8 @@ podman's docker-compat socket. You get a VSCode window whose filesystem,
 terminal, and extensions all live inside the container — the Claude Code
 extension you install there uses the `claude` binary already in the image.
 
-If you launched the container on **this same machine**, the only setting
-you need in your local VSCode `settings.json` is:
+If the container host **is your dev machine** (you launched the container
+locally), the only setting you need in your local VSCode `settings.json` is:
 
 ```jsonc
 "dev.containers.dockerPath": "podman"
@@ -86,7 +90,7 @@ That tells the Dev Containers extension to drive `podman` instead of
 `docker`; everything else (socket discovery, container listing) is
 handled by the local podman binary.
 
-If the container is on a **different host** (Hetzner, Oracle Cloud,
+If the container host is a **separate remote machine** (Hetzner, Oracle Cloud,
 etc.), don't try to expose podman's socket over SSH — the
 `docker.host` setting that used to do this was deprecated when the
 Docker extension was renamed to Container Tools, and podman's built-in
@@ -120,7 +124,8 @@ the container, so there's nothing to publish or tunnel for pairing.
 
 Start a session with the bundled `run-claude` helper, which cds into the
 repo, opens a tmux session named `claude`, and launches Claude Code with
-`--dangerously-skip-permissions`:
+`--dangerously-skip-permissions`. Run this **on the container host** (over SSH
+if it's remote), or from a VS Code terminal already attached to the container:
 
 ```bash
 podman exec -it remote-code-<project> run-claude

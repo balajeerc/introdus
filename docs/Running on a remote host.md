@@ -2,10 +2,12 @@
 
 Back to the [project README](../README.md).
 
-The harness runs identically on a remote Linux box (Hetzner, AWS, DO,
-Oracle Cloud, etc.) — including aarch64 instances. You launch the
-container on the remote host and attach VSCode to it from your laptop.
-Nothing in the harness itself changes.
+This is the three-tier setup: your **dev machine** (laptop) drives a **container
+host** — a remote Linux box (Hetzner, AWS, DO, Oracle Cloud, etc., including
+aarch64) — which runs the **dev container**. You launch the container on the
+remote container host and attach VS Code to it from your laptop; task-completion
+notifications tunnel back to the laptop. Nothing in the harness itself changes
+versus running it all on one machine.
 
 The recommended VSCode flow is **Remote-SSH first, then attach to
 container**. From the remote VSCode window's perspective, the container
@@ -13,14 +15,16 @@ is local, so you skip the entire dance of exposing podman's socket over
 SSH (which used to rely on the now-deprecated `docker.host` setting and
 podman's built-in SSH client that doesn't read `~/.ssh/config`).
 
-## On the remote host (one-time)
+## On the remote container host (one-time)
 
 1. Install the [prerequisites](../README.md#prerequisites) for your launch
    mode (rootless is recommended for remote — fewer SSH-side gotchas).
-2. Clone this repo, copy `sample.env` to `.env`, fill it in, and run
-   `./launch.sh` the same way you would locally.
+2. Clone this repo and run `./host_install.sh` — answer **yes** to forwarding
+   notifications and pick a port. Then `create-dev-container.sh` per project
+   (or, for the single-project flow, copy `sample.env` to `.env` and run
+   `./launch.sh`).
 
-That's it on the remote — no podman socket to enable, no extra services.
+That's it on the host — no podman socket to enable.
 
 ## On your laptop
 
@@ -89,10 +93,12 @@ your laptop is behind NAT.
 This is **host-level**, not per-container: one host relays every container's
 events to one laptop through a single listener. So the setting lives in the
 **harness** `.env` (the one next to `host_notify.sh`), not a per-project
-`.env`. `create-dev-container.sh` asks "laptop or remote host?" and, for
-remote, writes this line to the harness `.env` for you.
+`.env`. `host_install.sh` asks "forward to another machine?" and, if yes,
+writes this line to the harness `.env` for you and installs the persistent
+listener service.
 
-**On the remote host**, set in the harness `.env` and relaunch:
+**On the remote host**, this is what `host_install.sh` records in the harness
+`.env` (you can also set it by hand):
 
 ```bash
 RC_FORWARD_ADDR=127.0.0.1:8765

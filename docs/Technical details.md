@@ -4,7 +4,15 @@ Back to the [project README](../README.md).
 
 ## Overview
 
-You run `./launch.sh` on a host machine, and you end up with:
+The harness spans three roles: your **dev machine** (the laptop you sit at),
+the **container host** (the box running podman — a remote machine or the same
+laptop), and the **dev container** itself. This document is mostly about the
+container host and the dev container; for the dev-machine side (VS Code,
+notification listener) see [How to connect to container](How%20to%20connect%20to%20container.md)
+and [Running on a remote host](Running%20on%20a%20remote%20host.md).
+
+You run `./launch_dev_container.sh` (usually via the per-project wrapper, or
+`create-dev-container.sh`) **on the container host**, and you end up with:
 
 - A local base image (`remote-code-base:latest`) built once from the
   checked-in [Dockerfile](../Dockerfile) and reused across all projects.
@@ -16,14 +24,14 @@ You run `./launch.sh` on a host machine, and you end up with:
   survive across launches. The volume is seeded from the image's `/root`
   on first mount, so mise/node/pnpm/claude come along for free.
 - The project's dev webapp running under `nohup`, forwarded to
-  `127.0.0.1:$WEBAPP_PORT` on the host.
+  `127.0.0.1:$WEBAPP_PORT` on the container host.
 - Claude Code with remote control enabled by default
   (`"remoteControlAtStartup": true`), which you pair from claude.ai/code or
   the mobile app and drive from your phone. Start a session with the bundled
   `run-claude` helper. Remote control polls the Anthropic API over outbound
   HTTPS and opens no inbound port.
-- A per-project egress allowlist on the host that drops every outbound
-  connection except to hostnames you named in `WHITELIST_HOSTS`.
+- A per-project egress allowlist on the container host that drops every
+  outbound connection except to hostnames you named in `WHITELIST_HOSTS`.
 
 Container posture: `--cap-drop=ALL` with a narrow allowlist added back
 (see [Container capabilities](#container-capabilities)),
@@ -70,7 +78,7 @@ Notable caps deliberately **not** added:
 
 ## Usage Modes
 
-`launch.sh` runs in one of two modes:
+`launch_dev_container.sh` runs in one of two modes (both on the container host):
 
 - **rootless (default)** — rootless podman + `--network=pasta` + native
   nftables. The container and pasta helper sit in a dedicated systemd
@@ -127,8 +135,8 @@ in-progress work.
 compromised session — a bad dep's postinstall, a modified `/usr/bin`, an
 agent going off the rails — carries into subsequent launches until you
 `--reset`. This is an intentional relaxation: the real security boundary
-is the host (rootless userns, egress nftables filter, read-only deploy
-key, 127.0.0.1-only port binds), not the container's internal rootfs.
+is the container host (rootless userns, egress nftables filter, read-only
+deploy key, 127.0.0.1-only port binds), not the container's internal rootfs.
 The container is treated as a trusted dev environment, not as a
 sandbox-per-session.
 
@@ -199,11 +207,36 @@ allowlist only costs you a container restart.
 - [sample.env](../sample.env) — config template; copy to `.env`.
 - [Dockerfile](../Dockerfile) — base image. Holds everything shared across
   projects: apt packages, mise, Node LTS, claude code. Built once by
-  `launch.sh`, reused for every project, rebuilt with `--rebuild-base`.
-- [launch.sh](../launch.sh) — host side. Validates env, builds the base
-  image if missing, resolves the allowlist, installs the per-mode egress
-  filter (nft table + warmup slice for rootless; iptables chain + bridge
-  network for `--rootful`), runs the container, cleans up on exit.
+  `launch_dev_container.sh`, reused for every project, rebuilt with
+  `--rebuild-base`.
+- [launch_dev_container.sh](../launch_dev_container.sh) — host side (the engine;
+  a `launch.sh` symlink and the per-project wrapper both point here). Validates
+  env, builds the base image if missing, resolves the allowlist, installs the
+  per-mode egress filter (nft table + warmup slice for rootless; iptables chain
+  + bridge network for `--rootful`), runs the container, cleans up on exit.
+- [host_install.sh](../host_install.sh) — one-time **container-host** setup:
+  puts create-dev-container.sh on PATH, records notification forwarding
+  (`RC_FORWARD_ADDR`), and installs the persistent rc-notify listener service.
+- [create-dev-container.sh](../create-dev-container.sh) — run on the **container
+  host**, per project: walks through repo + deploy key, writes the project
+  `.env` + a `launch.sh` wrapper, and launches the container.
+
+The notification path spans all three roles:
+
+- [container/bin/rc-notify](../container/bin/rc-notify) — in the **dev
+  container**. Claude's Stop/Notification hooks call it; it writes
+  `event<TAB>project` to the host endpoint mounted at `/run/notify`.
+- [host_listener.py](../host_listener.py) — on the **container host** it reads
+  that endpoint and spawns host_notify.sh; on the **dev machine** (TCP mode,
+  via `install_dev_machine_listener.sh`) it receives forwarded events and
+  renders them.
+- [host_notify.sh](../host_notify.sh) — on the **container host**: renders the
+  desktop popup + sound locally, or — when `RC_FORWARD_ADDR` is set — forwards
+  the event over the SSH reverse tunnel to the dev machine. Also fires the
+  optional ntfy.sh push.
+- [install_dev_machine_listener.sh](../install_dev_machine_listener.sh) — run on
+  the **dev machine** (laptop): installs systemd `--user` units for the TCP
+  listener + `ssh -R` reverse tunnel so notifications arrive as native alerts.
 - [setup.sh](../setup.sh) — runs inside the container as the entrypoint.
   Installs the deploy key, clones the repo (or reuses an existing
   checkout), optionally starts a `tunnel` tmux session running `cloudflared`
