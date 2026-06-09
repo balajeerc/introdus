@@ -60,22 +60,31 @@ container* (the hardened container itself). See the diagram above.
 - **macOS (Apple Silicon):** `podman` 4.4+ (`brew install podman`) and a
   podman machine in **rootful** mode — see [macOS notes](#macos-apple-silicon-notes)
   below.
-- **Reverse-tunnel notifications (only if this host is remote and forwards
-  alerts to a separate laptop):** the host's `sshd` must permit a reverse
-  (`-R`) TCP forward for your user. Hardened hosts often ship
-  `AllowTcpForwarding no`, which silently blocks it. Allow it narrowly — your
-  user and the one loopback port only — in a drop-in such as
-  `/etc/ssh/sshd_config.d/zz-notify-tunnel.conf`:
+- **SSH forwarding (only if the container host is a separate box you reach over
+  SSH):** hardened hosts often ship `AllowTcpForwarding no`, which silently
+  blocks the features below. Grant the minimum for your user in a drop-in such
+  as `/etc/ssh/sshd_config.d/zz-notify-tunnel.conf`:
+  - **Task-completion notifications** need a reverse (`-R`) forward.
+  - **VS Code Remote-SSH** (if you edit inside the container that way) needs a
+    local (`-L`) forward.
+
+  For notifications **only**, `AllowTcpForwarding remote` suffices. If you also
+  use VS Code Remote-SSH, use `all`, and keep it tight with `PermitListen` (pins
+  the `-R` notify listener) and `PermitOpen` (confines `-L` to loopback, so the
+  host can't be turned into a network pivot):
 
   ```
   Match User <your-host-user>
-      AllowTcpForwarding remote
-      PermitListen 127.0.0.1:8765 localhost:8765
+      AllowTcpForwarding all                      # 'remote' if notifications only
+      PermitListen 127.0.0.1:8765 localhost:8765  # the -R notify port
+      PermitOpen 127.0.0.1:* localhost:* [::1]:*  # confine -L to loopback (VS Code)
   ```
 
-  then `sudo sshd -t && sudo systemctl reload ssh`. (The `localhost:` form is
-  required — a no-bind `-R` forward presents its listen address as `localhost`.)
-  Not needed when the container host is your laptop. See
+  then `sudo sshd -t && sudo systemctl reload ssh`. Notes: the `localhost:` form
+  in `PermitListen` is **required** — a no-bind `-R` forward presents its listen
+  address as `localhost`, not `127.0.0.1`. If the host runs file-integrity
+  monitoring (AIDE, etc.), refresh its baseline after editing `/etc/ssh`. None of
+  this is needed when the container host is your laptop. See
   [Running on a remote host](docs/Running%20on%20a%20remote%20host.md).
 
 ### On your dev machine (laptop) — only if it's separate from the host

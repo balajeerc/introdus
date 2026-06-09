@@ -114,8 +114,9 @@ brand.
 The laptop reaches that loopback port via an SSH **reverse** (`-R`) tunnel, so
 the host's `sshd` must permit reverse forwarding for your user. Hardened hosts
 commonly ship `AllowTcpForwarding no`, which blocks it (the laptop installer's
-preflight will tell you if so). Allow it narrowly — your user and this one
-loopback port — in `/etc/ssh/sshd_config.d/zz-notify-tunnel.conf`:
+preflight will tell you if so). Allow it narrowly — for your user only — in
+`/etc/ssh/sshd_config.d/zz-notify-tunnel.conf`. For notifications **only**,
+`AllowTcpForwarding remote` is enough:
 
 ```
 Match User <your-host-user>
@@ -123,11 +124,24 @@ Match User <your-host-user>
     PermitListen 127.0.0.1:8765 localhost:8765
 ```
 
-then `sudo sshd -t && sudo systemctl reload ssh` (or `reload sshd`). This is
-the only host-hardening change the notification path needs; `-L` forwarding and
-other users stay disabled. The `localhost:8765` entry is required because a
-no-bind `-R` reverse forward (used so it works under the default
-`GatewayPorts no`) presents its listen address as `localhost`, not `127.0.0.1`.
+If you **also** attach to the container with **VS Code Remote-SSH**, that needs
+*local* (`-L`) forwarding too, so use `all` instead of `remote` — and add
+`PermitOpen` to confine `-L` to loopback (VS Code only forwards to `127.0.0.1`),
+so the box can't be used as a network pivot to the LAN or cloud metadata:
+
+```
+Match User <your-host-user>
+    AllowTcpForwarding all
+    PermitListen 127.0.0.1:8765 localhost:8765
+    PermitOpen 127.0.0.1:* localhost:* [::1]:*
+```
+
+then `sudo sshd -t && sudo systemctl reload ssh` (or `reload sshd`); other users
+stay at `AllowTcpForwarding no`. Two gotchas: the **`localhost:8765`** entry in
+`PermitListen` is required — a no-bind `-R` forward (used so it works under the
+default `GatewayPorts no`) presents its listen address as `localhost`, not
+`127.0.0.1`; and if the host runs file-integrity monitoring (AIDE, etc.),
+refresh its baseline after editing `/etc/ssh`.
 
 **On your laptop**, from your checkout of this repo, install the always-on
 services (recommended):
