@@ -60,32 +60,12 @@ container* (the hardened container itself). See the diagram above.
 - **macOS (Apple Silicon):** `podman` 4.4+ (`brew install podman`) and a
   podman machine in **rootful** mode — see [macOS notes](#macos-apple-silicon-notes)
   below.
-- **SSH forwarding (only if the container host is a separate box you reach over
-  SSH):** hardened hosts often ship `AllowTcpForwarding no`, which silently
-  blocks the features below. Grant the minimum for your user in a drop-in such
-  as `/etc/ssh/sshd_config.d/zz-notify-tunnel.conf`:
-  - **Task-completion notifications** need a reverse (`-R`) forward.
-  - **VS Code Remote-SSH** (if you edit inside the container that way) needs a
-    local (`-L`) forward.
-
-  For notifications **only**, `AllowTcpForwarding remote` suffices. If you also
-  use VS Code Remote-SSH, use `all`, and keep it tight with `PermitListen` (pins
-  the `-R` notify listener) and `PermitOpen` (confines `-L` to loopback, so the
-  host can't be turned into a network pivot):
-
-  ```
-  Match User <your-host-user>
-      AllowTcpForwarding all                      # 'remote' if notifications only
-      PermitListen 127.0.0.1:8765 localhost:8765  # the -R notify port
-      PermitOpen 127.0.0.1:* localhost:* [::1]:*  # confine -L to loopback (VS Code)
-  ```
-
-  then `sudo sshd -t && sudo systemctl reload ssh`. Notes: the `localhost:` form
-  in `PermitListen` is **required** — a no-bind `-R` forward presents its listen
-  address as `localhost`, not `127.0.0.1`. If the host runs file-integrity
-  monitoring (AIDE, etc.), refresh its baseline after editing `/etc/ssh`. None of
-  this is needed when the container host is your laptop. See
-  [Running on a remote host](docs/Running%20on%20a%20remote%20host.md).
+- **SSH forwarding** is needed only if the container host is a **separate box**
+  and you want desktop notifications on your laptop and/or VS Code Remote-SSH —
+  hardened hosts often ship `AllowTcpForwarding no`, which blocks both. The
+  exact (narrow) `sshd` allowance is in
+  [Notifications → host SSH-forwarding requirement](docs/Notifications.md#host-ssh-forwarding-requirement).
+  Not needed when the container host is your laptop.
 
 ### On your dev machine (laptop) — only if it's separate from the host
 
@@ -94,10 +74,9 @@ container* (the hardened container itself). See the diagram above.
   `systemd --user` session — the tunnel runs with `BatchMode=yes`.
 - VS Code with the **Remote-SSH** and **Dev Containers** extensions, to edit
   inside the container.
-- `autossh` — **required** by `install_dev_machine_listener.sh` for the
-  always-on task-completion notification tunnel (`sudo apt install autossh`,
-  `brew install autossh`, etc.). Only needed if you want desktop notifications
-  forwarded from a remote container host; the installer errors out without it.
+- `autossh` — required only if you want desktop notifications forwarded from a
+  *remote* container host (`install_dev_machine_listener.sh` errors out without
+  it). See [Notifications](docs/Notifications.md).
 
 > If your laptop **is** the container host, you only need the host
 > prerequisites above — everything renders and runs locally.
@@ -127,8 +106,7 @@ create-dev-container.sh            # walks through repo + deploy key, writes .en
 `host_install.sh` also asks whether this host should forward task-completion
 notifications to another machine (e.g. a remote box reporting back to your
 laptop). If so, run `install_dev_machine_listener.sh` once **on your dev
-machine (laptop)** to receive them — see
-[Running on a remote host](docs/Running%20on%20a%20remote%20host.md).
+machine (laptop)** to receive them — see [Notifications](docs/Notifications.md).
 
 ### Direct: single project in place
 
@@ -213,3 +191,7 @@ For Macs with limited RAM, configure the VM before starting:
 ### [Running on a remote host](docs/Running%20on%20a%20remote%20host.md)
 
 - Launching the harness on a remote Linux box (Hetzner/AWS/DO, x86_64 or aarch64) and attaching to it from your laptop's VSCode over SSH.
+
+### [Notifications](docs/Notifications.md)
+
+- How "task complete / awaiting input" reaches you — local render vs. the two-hop SSH reverse tunnel to your laptop, the [host SSH-forwarding requirement](docs/Notifications.md#host-ssh-forwarding-requirement), per-container labels, ntfy phone push, and the best-effort limitations.

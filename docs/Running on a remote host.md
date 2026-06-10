@@ -57,6 +57,12 @@ No `docker.host`, `DOCKER_HOST`, `dev.containers.dockerPath`, or podman
 connection plumbing is needed on your laptop. The Remote-SSH layer
 handles every cross-host call.
 
+> **VS Code Remote-SSH needs local (`-L`) forwarding**, which hardened hosts
+> block with `AllowTcpForwarding no` (you'll hang on "Waiting for port
+> forwarding to be ready"). The same per-user `sshd` allowance that enables
+> notifications covers this — see
+> [Notifications → host SSH-forwarding requirement](Notifications.md#host-ssh-forwarding-requirement).
+
 ## Reaching the published ports
 
 `launch_dev_container.sh` binds the webapp port to `127.0.0.1` on the remote host, not
@@ -73,115 +79,14 @@ session open.
 
 ## Task-completion notifications back to your laptop
 
-The harness's desktop notification (popup + sound on "task complete" /
-"awaiting input") normally renders on the same machine as the container. On a
-remote host there's no desktop to render to, so the signal has to make a
-second hop back to your laptop. There are two hops in total:
-
-```
-[dev container] --FIFO--> [remote host] host_notify.sh
-    --(TCP to 127.0.0.1:PORT)--> (ssh -R reverse tunnel)
-        --> [laptop] host_listener.py --> popup + sound
-```
-
-The first hop (container → remote host) is the harness's existing FIFO
-transport and is unchanged. The second hop (remote host → laptop) rides an
-SSH **reverse** tunnel: your laptop dials *out* to the remote host (the same
-SSH you already use), so nothing needs an inbound port — which matters when
-your laptop is behind NAT.
-
-This is **host-level**, not per-container: one host relays every container's
-events to one laptop through a single listener. So the setting lives in the
-**harness** `.env` (the one next to `host_notify.sh`), not a per-project
-`.env`. `host_install.sh` asks "forward to another machine?" and, if yes,
-writes this line to the harness `.env` for you and installs the persistent
-listener service.
-
-**On the remote host**, this is what `host_install.sh` records in the harness
-`.env` (you can also set it by hand):
-
-```bash
-RC_FORWARD_ADDR=127.0.0.1:8765
-```
-
-`host_notify.sh` now forwards each validated event to that loopback port
-instead of trying to render. The event whitelist runs here and again on the
-laptop, and the container label is stripped to `[A-Za-z0-9._-]` (max 40
-chars) before it reaches any notification — a compromised container can't
-spoof arbitrary text or inject control characters under the "Claude Code"
-brand.
-
-The laptop reaches that loopback port via an SSH **reverse** (`-R`) tunnel, so
-the host's `sshd` must permit reverse forwarding for your user. Hardened hosts
-commonly ship `AllowTcpForwarding no`, which blocks it (the laptop installer's
-preflight will tell you if so). Allow it narrowly — for your user only — in
-`/etc/ssh/sshd_config.d/zz-notify-tunnel.conf`. For notifications **only**,
-`AllowTcpForwarding remote` is enough:
-
-```
-Match User <your-host-user>
-    AllowTcpForwarding remote
-    PermitListen 127.0.0.1:8765 localhost:8765
-```
-
-If you **also** attach to the container with **VS Code Remote-SSH**, that needs
-*local* (`-L`) forwarding too, so use `all` instead of `remote` — and add
-`PermitOpen` to confine `-L` to loopback (VS Code only forwards to `127.0.0.1`),
-so the box can't be used as a network pivot to the LAN or cloud metadata:
-
-```
-Match User <your-host-user>
-    AllowTcpForwarding all
-    PermitListen 127.0.0.1:8765 localhost:8765
-    PermitOpen 127.0.0.1:* localhost:* [::1]:*
-```
-
-then `sudo sshd -t && sudo systemctl reload ssh` (or `reload sshd`); other users
-stay at `AllowTcpForwarding no`. Two gotchas: the **`localhost:8765`** entry in
-`PermitListen` is required — a no-bind `-R` forward (used so it works under the
-default `GatewayPorts no`) presents its listen address as `localhost`, not
-`127.0.0.1`; and if the host runs file-integrity monitoring (AIDE, etc.),
-refresh its baseline after editing `/etc/ssh`.
-
-**On your laptop**, from your checkout of this repo, install the always-on
-services (recommended):
-
-```bash
-./install_dev_machine_listener.sh <ssh-alias-for-remote-host> 8765
-```
-
-This installs two `systemd --user` units that survive reboot and sleep:
-
-- `rc-notify-listener.service` — `host_listener.py` in TCP mode, which renders
-  the native popup + plays `notification_sound.wav`.
-- `rc-notify-tunnel.service` — the `ssh -R` reverse tunnel to your alias
-  (autossh, for self-healing reconnects — the installer requires it).
-
-The port must match `RC_FORWARD_ADDR`. The alias must accept key-based SSH
-without a prompt (passphrase-less key, or an agent reachable from your
-`systemd --user` session) since the tunnel runs with `BatchMode=yes`. Manage
-with `systemctl --user status rc-notify-tunnel.service` and remove with
-`./install_dev_machine_listener.sh --uninstall`.
-
-For a quick foreground tunnel without systemd (e.g. a one-off), use
-`./laptop_notify_tunnel.sh <ssh-alias> 8765` instead.
-
-### Which container fired it?
-
-Each notification's title is suffixed with the container's project name —
-e.g. *"Claude Code — myproject"* — so when you run many containers on one
-host you can tell them apart at a glance. (Derived from `PROJECT_NAME`;
-override per-container with the `RC_LABEL` env var.)
-
-### Limitations
-
-This path is **best-effort, fire-and-forget**: if the laptop is offline or
-the tunnel is mid-reconnect when an event fires, that desktop notification is
-dropped (there's no queue or retry). The forward never blocks — it fails fast
-on a refused connection and is capped at 5s otherwise, so a down tunnel never
-wedges a Claude hook or one container's event behind another's. For a durable
-record that doesn't depend on the laptop being up, pair this with the ntfy.sh
-phone push above; the two are independent and can run together.
+When the container host is remote rather than your laptop, "task complete /
+awaiting input" alerts tunnel back to a native popup + sound on your laptop over
+an SSH reverse tunnel. Setup is one command on the host (`./host_install.sh`,
+answer yes to forwarding) and one on the laptop
+(`./install_dev_machine_listener.sh <ssh-alias> 8765`), plus a small per-user
+`sshd` forwarding allowance. The full mechanics, the exact SSH config, the
+per-container label, and the optional ntfy phone-push live in
+[Notifications](Notifications.md).
 
 ## Things that feel different vs. local
 
