@@ -69,8 +69,9 @@ no tunnel is started and no extra hosts are added to the allowlist.
 
 To pick up a change to `EXPOSE_WEBAPP` on an existing container, you
 need to remove the container so the new env var is applied at create
-time: `podman rm -f remote-code-<project>` (or `./launch.sh --reset`,
-which also wipes the volume).
+time: `podman rm -f remote-code-<project>-<suffix>` (or `./launch.sh --reset`,
+which also wipes the volume). The container name carries a per-project
+`<suffix>` — run `podman ps` to see the exact name.
 
 ## Connecting from VSCode
 
@@ -99,7 +100,9 @@ Use VSCode's Remote-SSH flow instead — see
 [Running on a remote host.md](Running%20on%20a%20remote%20host.md).
 
 Then: Command Palette → **Dev Containers: Attach to Running Container…** →
-pick `remote-code-<project>`. From the new window, install the Claude
+pick `remote-code-<project>-<suffix>` (the per-project suffix keeps each
+project's container — and VS Code's cached attach config for it — distinct,
+even when the same project runs on more than one host). From the new window, install the Claude
 Code extension — it lands in `/root/.vscode-server/extensions/` on the
 persistent volume and survives across launches.
 
@@ -128,7 +131,7 @@ repo, opens a tmux session named `claude`, and launches Claude Code with
 if it's remote), or from a VS Code terminal already attached to the container:
 
 ```bash
-podman exec -it remote-code-<project> run-claude
+podman exec -it remote-code-<project>-<suffix> run-claude
 ```
 
 Re-running `run-claude` re-attaches to the existing `claude` session instead

@@ -46,8 +46,11 @@ That's it on the host — no podman socket to enable.
    is independent of any Dev Containers install on your laptop.
 
 5. F1 → **Dev Containers: Attach to Running Container…** →
-   `remote-code-<project>` shows up because, from this VSCode's vantage
-   point, podman is just local.
+   `remote-code-<project>-<suffix>` shows up because, from this VSCode's
+   vantage point, podman is just local. The per-project `<suffix>` (distinct
+   per host) ensures this remote container's name doesn't collide with a
+   same-named project's container on your laptop, so VS Code keeps their
+   attach configs separate.
 
 6. Once attached, install the **Claude Code** extension. It lands in
    `/root/.vscode-server/extensions/` on the persistent volume and

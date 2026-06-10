@@ -19,6 +19,12 @@ DISABLE_NETWORK_BLOCK="${DISABLE_NETWORK_BLOCK:-false}"
 
 WORKDIR="/root/work/${PROJECT_NAME}"
 
+# Container name as created by launch.sh (carries the per-project suffix, so it
+# is not simply remote-code-$PROJECT_NAME). Used only to print correct host-side
+# exec/stop commands. Fall back to the pre-suffix name if an older launch.sh
+# didn't pass CONTAINER_NAME in.
+CNAME="${CONTAINER_NAME:-remote-code-$PROJECT_NAME}"
+
 log() { printf '\n==> %s\n' "$*"; }
 
 # Non-interactive bash (`/bin/bash /setup.sh`) does not source .bashrc,
@@ -132,11 +138,9 @@ if [[ "$EXPOSE_WEBAPP" == "true" ]]; then
     done
     tmux new-session -d -s tunnel "cloudflared tunnel --protocol http2 $EDGE_ARGS --url http://localhost:$WEBAPP_PORT 2>&1; echo '[cloudflared exited]'; exec bash"
     tmux pipe-pane -t tunnel -o 'cat >>/root/.logs/tunnel.log'
-    echo "  attach: podman exec -it remote-code-$PROJECT_NAME tmux attach -t tunnel"
-    echo "  tail:   podman exec -it remote-code-$PROJECT_NAME tail -f /root/.logs/tunnel.log"
+    echo "  attach: podman exec -it $CNAME tmux attach -t tunnel"
+    echo "  tail:   podman exec -it $CNAME tail -f /root/.logs/tunnel.log"
 fi
-
-CNAME="remote-code-$PROJECT_NAME"
 
 # VSCode connection instructions are OS- and locality-aware. macOS launches
 # always need the podman-machine socket path (containers live inside the VM);

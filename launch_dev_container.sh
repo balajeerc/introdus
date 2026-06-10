@@ -254,20 +254,8 @@ notify_exists() {
 
 # Shared base image: built once, cached, and reused across all projects as the
 # build target. Each project then gets its own *tag* of this image (IMAGE_NAME,
-# computed below) for the actual container, so VS Code Dev Containers — which
-# caches attach configuration keyed by image NAME, not container name — treats
-# every project's container as distinct.
+# computed below) for the actual container.
 BASE_IMAGE_NAME="remote-code-base:latest"
-
-# ---- identifiers derived from project name ---------------------------------
-
-CONTAINER_NAME="remote-code-${PROJECT_NAME}"
-VOLUME_NAME="remote-code-vol-${PROJECT_NAME}"
-
-# Used by both macOS (bridge in VM) and Linux rootful (bridge on host).
-NET_NAME="remote-code-net-${PROJECT_NAME}"
-SLUG=$(printf '%s' "$PROJECT_NAME" | tr -c 'A-Za-z0-9' _ | cut -c1-14)
-CHAIN_NAME="REMOTE-CODE-${SLUG}"   # Linux rootful iptables chain name
 
 # md5 differs between Linux (md5sum) and macOS (md5).
 md5_hex() {
@@ -278,24 +266,43 @@ md5_hex() {
     fi
 }
 
-# Per-project image tag. VS Code Dev Containers caches attach configuration
-# keyed by image NAME (under imageConfigs/), so when every project shared the
-# single base image name, attaching to one container could drag in another
-# project's cached workspace/remote context — even across hosts. Give each
-# project its own tag: the slugified project name plus a 4-char suffix.
+# ---- per-project suffix ----------------------------------------------------
+# VS Code Dev Containers caches attach configuration under BOTH imageConfigs/
+# (keyed by image NAME) and nameConfigs/ (keyed by container NAME). When every
+# project shared one base image name — and the same project on two hosts shared
+# one container name — attaching to one container could drag in another's cached
+# workspace/remote context. So both the image tag and the container name below
+# carry a per-project suffix.
 #
 # The suffix normally comes from IMAGE_SUFFIX in .env, which create-dev-container.sh
 # generates randomly per project. Since each host runs that wizard to build its
 # own .env, the same project on two hosts gets two different suffixes — that is
-# what keeps their images (and VS Code state) distinct across hosts. For legacy
-# .env files that predate IMAGE_SUFFIX, fall back to a deterministic hash of
-# project+hostname (stable across launches, still distinct per host).
-#
-# Image names must be lowercase and limited to [a-z0-9._-], so PROJECT_NAME is
-# re-slugified here (the container/volume names above tolerate uppercase).
+# what keeps their images and container names (and VS Code state) distinct across
+# hosts. For legacy .env files that predate IMAGE_SUFFIX, fall back to a
+# deterministic hash of project+hostname (stable across launches, distinct per host).
+IMAGE_SUFFIX="${IMAGE_SUFFIX:-$(md5_hex "${PROJECT_NAME}@$(hostname 2>/dev/null)" | cut -c1-4)}"
+
+# ---- identifiers derived from project name ---------------------------------
+
+# Container name carries the suffix (nameConfigs/ cache key, above). The volume
+# and network stay keyed by project only: they're host-local (never a VS Code
+# key), and a stable volume name keeps persistent data from being orphaned if
+# the suffix ever changes. LEGACY_CONTAINER_NAME is the old un-suffixed name,
+# kept so launch can clean up a pre-upgrade container left behind by the rename.
+CONTAINER_NAME="remote-code-${PROJECT_NAME}-${IMAGE_SUFFIX}"
+LEGACY_CONTAINER_NAME="remote-code-${PROJECT_NAME}"
+VOLUME_NAME="remote-code-vol-${PROJECT_NAME}"
+
+# Used by both macOS (bridge in VM) and Linux rootful (bridge on host).
+NET_NAME="remote-code-net-${PROJECT_NAME}"
+SLUG=$(printf '%s' "$PROJECT_NAME" | tr -c 'A-Za-z0-9' _ | cut -c1-14)
+CHAIN_NAME="REMOTE-CODE-${SLUG}"   # Linux rootful iptables chain name
+
+# Per-project image tag (imageConfigs/ cache key, above). Image names must be
+# lowercase and limited to [a-z0-9._-], so PROJECT_NAME is re-slugified here
+# (the container/volume names tolerate uppercase; image names do not).
 IMAGE_PROJECT_SLUG=$(printf '%s' "$PROJECT_NAME" \
     | tr 'A-Z' 'a-z' | tr -c 'a-z0-9_.-' '-' | sed -E 's/-+/-/g; s/^-//; s/-$//')
-IMAGE_SUFFIX="${IMAGE_SUFFIX:-$(md5_hex "${PROJECT_NAME}@$(hostname 2>/dev/null)" | cut -c1-4)}"
 IMAGE_NAME="remote-code-${IMAGE_PROJECT_SLUG}-${IMAGE_SUFFIX}:latest"
 
 SUBNET_HEX=$(md5_hex "$PROJECT_NAME" | cut -c1-2)
@@ -966,6 +973,16 @@ fi
 # ---- persistent volume -----------------------------------------------------
 
 if ! $VERIFY; then
+    # Migration: pre-suffix containers used the un-suffixed name. Now that the
+    # container name carries a suffix, any such container is orphaned by the
+    # rename. It pins the same shared volume (the volume name is unchanged), so
+    # the new suffixed container reuses that data — nothing is lost. Remove the
+    # orphan so it doesn't linger or keep showing the bare name in VS Code.
+    if [[ "$LEGACY_CONTAINER_NAME" != "$CONTAINER_NAME" ]] \
+       && "${PODMAN[@]}" container inspect "$LEGACY_CONTAINER_NAME" >/dev/null 2>&1; then
+        echo "==> removing legacy pre-suffix container $LEGACY_CONTAINER_NAME (volume $VOLUME_NAME preserved)"
+        "${PODMAN[@]}" rm -f "$LEGACY_CONTAINER_NAME" >/dev/null 2>&1 || true
+    fi
     if $RESET; then
         echo "==> --reset: removing container $CONTAINER_NAME and wiping volume $VOLUME_NAME (os=$OS)"
         "${PODMAN[@]}" rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
@@ -1043,6 +1060,7 @@ PODMAN_ARGS=(
     ${SHARED_DATA_VOLUME_ARGS[@]:+"${SHARED_DATA_VOLUME_ARGS[@]}"}
     ${NOTIFY_VOLUME_ARGS[@]:+"${NOTIFY_VOLUME_ARGS[@]}"}
     --env "PROJECT_NAME=$PROJECT_NAME"
+    --env "CONTAINER_NAME=$CONTAINER_NAME"
     --env "REPO_URL=$REPO_URL"
     --env "WEBAPP_PORT=$WEBAPP_PORT"
     --env "ON_LAUNCH_SCRIPT=$ON_LAUNCH_SCRIPT"

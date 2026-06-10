@@ -21,20 +21,22 @@ You run `./launch_dev_container.sh` (usually via the per-project wrapper, or
   install chain needs to run at container start. Each project's container
   is then created from a cheap per-project *tag* of this image
   (`remote-code-<project>-<suffix>:latest`, a `podman tag` alias — no
-  rebuild). VS Code Dev Containers caches its attach configuration keyed by
-  image *name*, so a shared image name made attaching to one project's
-  container drag in another's cached workspace/remote context; the distinct
-  per-project tag keeps them separate. The 4-char `IMAGE_SUFFIX` is generated
-  randomly per project by `create-dev-container.sh` and persisted in `.env`,
-  so it's stable across launches — and because each host runs the wizard to
-  build its own `.env`, the same project on two hosts gets two different
-  suffixes, keeping their images (and VS Code state) distinct across hosts.
-  Legacy `.env` files without `IMAGE_SUFFIX` fall back to a deterministic
-  hash of project name + hostname. On each launch, stale per-project tags
-  (from a previous suffix or a `--rebuild-base`) are untagged automatically;
-  the shared base tag is kept since it's the build cache. Pre-upgrade
-  containers created directly from the base image keep showing the base name
-  in VS Code until you recreate them (`./launch.sh --recreate`).
+  rebuild), and the container itself is named `remote-code-<project>-<suffix>`.
+  VS Code Dev Containers caches its attach configuration under **both**
+  `imageConfigs/` (keyed by image name) and `nameConfigs/` (keyed by container
+  name), so a shared image name — or, for the same project on two hosts, a
+  shared container name — made attaching to one container drag in another's
+  cached workspace/remote context. The per-project suffix on both names keeps
+  them separate. The 4-char `IMAGE_SUFFIX` is generated randomly per project by
+  `create-dev-container.sh` and persisted in `.env`, so it's stable across
+  launches — and because each host runs the wizard to build its own `.env`, the
+  same project on two hosts gets two different suffixes, keeping their images,
+  container names, and VS Code state distinct across hosts. Legacy `.env` files
+  without `IMAGE_SUFFIX` fall back to a deterministic hash of project name +
+  hostname. On each launch, stale per-project image tags (from a previous
+  suffix or a `--rebuild-base`) are untagged automatically and a pre-upgrade
+  un-suffixed container is removed (its volume is reused, so no data is lost);
+  the shared base tag is kept since it's the build cache.
 - The repo cloned inside the resulting container, on a per-project
   persistent volume so uncommitted work, branches, and `node_modules`
   survive across launches. The volume is seeded from the image's `/root`
@@ -132,7 +134,9 @@ new port — does not affect an already-created container. To pick up
 those changes, remove the container:
 
 ```bash
-podman rm -f remote-code-$PROJECT_NAME   # keeps /root volume
+./launch.sh --recreate                    # removes container, keeps /root volume
+# or
+podman rm -f remote-code-<project>-<suffix>   # same; see `podman ps` for the exact name
 # or
 ./launch.sh --reset                       # removes container AND wipes /root
 ```
