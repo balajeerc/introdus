@@ -252,7 +252,12 @@ notify_exists() {
     fi
 }
 
-IMAGE_NAME="remote-code-base:latest"
+# Shared base image: built once, cached, and reused across all projects as the
+# build target. Each project then gets its own *tag* of this image (IMAGE_NAME,
+# computed below) for the actual container, so VS Code Dev Containers — which
+# caches attach configuration keyed by image NAME, not container name — treats
+# every project's container as distinct.
+BASE_IMAGE_NAME="remote-code-base:latest"
 
 # ---- identifiers derived from project name ---------------------------------
 
@@ -272,6 +277,26 @@ md5_hex() {
         printf '%s' "$1" | md5sum | awk '{print $1}'
     fi
 }
+
+# Per-project image tag. VS Code Dev Containers caches attach configuration
+# keyed by image NAME (under imageConfigs/), so when every project shared the
+# single base image name, attaching to one container could drag in another
+# project's cached workspace/remote context — even across hosts. Give each
+# project its own tag: the slugified project name plus a 4-char suffix.
+#
+# The suffix normally comes from IMAGE_SUFFIX in .env, which create-dev-container.sh
+# generates randomly per project. Since each host runs that wizard to build its
+# own .env, the same project on two hosts gets two different suffixes — that is
+# what keeps their images (and VS Code state) distinct across hosts. For legacy
+# .env files that predate IMAGE_SUFFIX, fall back to a deterministic hash of
+# project+hostname (stable across launches, still distinct per host).
+#
+# Image names must be lowercase and limited to [a-z0-9._-], so PROJECT_NAME is
+# re-slugified here (the container/volume names above tolerate uppercase).
+IMAGE_PROJECT_SLUG=$(printf '%s' "$PROJECT_NAME" \
+    | tr 'A-Z' 'a-z' | tr -c 'a-z0-9_.-' '-' | sed -E 's/-+/-/g; s/^-//; s/-$//')
+IMAGE_SUFFIX="${IMAGE_SUFFIX:-$(md5_hex "${PROJECT_NAME}@$(hostname 2>/dev/null)" | cut -c1-4)}"
+IMAGE_NAME="remote-code-${IMAGE_PROJECT_SLUG}-${IMAGE_SUFFIX}:latest"
 
 SUBNET_HEX=$(md5_hex "$PROJECT_NAME" | cut -c1-2)
 SUBNET_OCTET=$(( 16#${SUBNET_HEX} % 200 + 40 ))
@@ -474,12 +499,12 @@ fi
 
 if ! $VERIFY && $RESET; then
     if "${PODMAN[@]}" volume inspect "$VOLUME_NAME" >/dev/null 2>&1 \
-       && "${PODMAN[@]}" image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+       && "${PODMAN[@]}" image inspect "$BASE_IMAGE_NAME" >/dev/null 2>&1; then
         echo "==> --reset: scanning /root/work for uncommitted/unpushed git state"
         DIRTY_REPORT=$(
             "${PODMAN[@]}" run --rm \
                 --volume "$VOLUME_NAME:/root:ro" \
-                "$IMAGE_NAME" \
+                "$BASE_IMAGE_NAME" \
                 bash -c '
 set +e
 while IFS= read -r gitpath; do
@@ -525,17 +550,45 @@ fi
 if $VERIFY; then
     echo "==> --verify: skipping base image build"
 elif $REBUILD_BASE; then
-    echo "==> rebuilding base image $IMAGE_NAME from scratch (os=$OS, --no-cache)"
-    "${PODMAN[@]}" build --no-cache -t "$IMAGE_NAME" -f "$DOCKERFILE" "$SCRIPT_DIR"
+    echo "==> rebuilding base image $BASE_IMAGE_NAME from scratch (os=$OS, --no-cache)"
+    "${PODMAN[@]}" build --no-cache -t "$BASE_IMAGE_NAME" -f "$DOCKERFILE" "$SCRIPT_DIR"
     if "${PODMAN[@]}" container inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
         echo "    note: container $CONTAINER_NAME still references the old image layers."
         echo "    run --reset (or 'podman rm -f $CONTAINER_NAME') to create a fresh one."
     fi
-elif ! "${PODMAN[@]}" image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
-    echo "==> building base image $IMAGE_NAME (os=$OS)"
-    "${PODMAN[@]}" build -t "$IMAGE_NAME" -f "$DOCKERFILE" "$SCRIPT_DIR"
+elif ! "${PODMAN[@]}" image inspect "$BASE_IMAGE_NAME" >/dev/null 2>&1; then
+    echo "==> building base image $BASE_IMAGE_NAME (os=$OS)"
+    "${PODMAN[@]}" build -t "$BASE_IMAGE_NAME" -f "$DOCKERFILE" "$SCRIPT_DIR"
 else
-    echo "==> using cached base image $IMAGE_NAME"
+    echo "==> using cached base image $BASE_IMAGE_NAME"
+fi
+
+# Point this project's tag at the (freshly built or cached) base image. Cheap
+# alias — no rebuild, no extra layers — that gives the container a per-project
+# image name so VS Code Dev Containers keeps each project's attach config
+# separate. Idempotent; re-tagging just moves the name onto the current image.
+if ! $VERIFY; then
+    "${PODMAN[@]}" image tag "$BASE_IMAGE_NAME" "$IMAGE_NAME"
+    echo "==> tagged base image as $IMAGE_NAME"
+
+    # Prune stale per-project tags left by earlier launches (a different
+    # IMAGE_SUFFIX, or a --rebuild-base that moved the base onto a new image
+    # ID). Untag only — never deletes layers (the base tag still references the
+    # image) and never affects an existing container (containers reference
+    # images by ID, not tag). Only our own 4-char-suffixed tags for THIS
+    # project slug are touched; the current tag and the shared base tag are
+    # kept. Matched with a bash glob (?=any one char) to avoid clobbering tags
+    # of projects whose slug merely starts with this one (e.g. foo vs foo-bar).
+    while IFS= read -r ref; do
+        ref=${ref#localhost/}
+        [[ "$ref" == "$IMAGE_NAME" ]] && continue
+        case "$ref" in
+            "remote-code-${IMAGE_PROJECT_SLUG}-"????":latest")
+                echo "==> removing stale project image tag $ref"
+                "${PODMAN[@]}" untag "$ref" >/dev/null 2>&1 || true
+                ;;
+        esac
+    done < <("${PODMAN[@]}" image ls --format '{{.Repository}}:{{.Tag}}' 2>/dev/null)
 fi
 
 # ---- resolve allowlist -----------------------------------------------------

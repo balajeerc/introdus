@@ -273,6 +273,20 @@ if [[ -z "$WHITELIST_BLOCK" ]]; then
     exit 1
 fi
 
+# ---- per-project image suffix ----------------------------------------------
+# Each project's container is created from its own tag of the shared base image
+# (remote-code-<project>-<suffix>) so VS Code Dev Containers — which caches
+# attach config keyed by image NAME — keeps each project's container distinct.
+# Generate a random 4-char suffix and persist it so the tag is stable across
+# launches. Because every host runs this wizard to build its own .env, the SAME
+# project bootstrapped on two hosts gets two different suffixes, so their images
+# (and VS Code's cached state) never collide across hosts.
+IMAGE_SUFFIX="$(od -An -N2 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')"
+if [[ ${#IMAGE_SUFFIX} -ne 4 ]]; then
+    # Fallback if /dev/urandom is unavailable: hash of project name + pid.
+    IMAGE_SUFFIX="$(printf '%s' "${PROJECT_NAME}-$$" | cksum | cut -c1-4)"
+fi
+
 # ---- write .env ------------------------------------------------------------
 
 ENV_OUT="$PROJECT_DIR/.env"
@@ -283,6 +297,7 @@ ENV_OUT="$PROJECT_DIR/.env"
     echo "# CANARY_BLOCKED_IP, RESOLVE_INTERVAL, etc.) — add them here as needed."
     echo
     echo "PROJECT_NAME=$PROJECT_NAME"
+    echo "IMAGE_SUFFIX=$IMAGE_SUFFIX"
     echo "REPO_URL=$REPO_URL"
     echo "DEPLOY_KEY_PATH=$DEPLOY_KEY_PATH"
     echo "WEBAPP_PORT=$WEBAPP_PORT"

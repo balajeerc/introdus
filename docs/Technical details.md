@@ -18,7 +18,23 @@ You run `./launch_dev_container.sh` (usually via the per-project wrapper, or
   checked-in [Dockerfile](../Dockerfile) and reused across all projects.
   The image bakes in apt packages (`git`, `curl`, `openssh-client`,
   `ca-certificates`), `mise`, Node LTS, and Claude Code — nothing in the
-  install chain needs to run at container start.
+  install chain needs to run at container start. Each project's container
+  is then created from a cheap per-project *tag* of this image
+  (`remote-code-<project>-<suffix>:latest`, a `podman tag` alias — no
+  rebuild). VS Code Dev Containers caches its attach configuration keyed by
+  image *name*, so a shared image name made attaching to one project's
+  container drag in another's cached workspace/remote context; the distinct
+  per-project tag keeps them separate. The 4-char `IMAGE_SUFFIX` is generated
+  randomly per project by `create-dev-container.sh` and persisted in `.env`,
+  so it's stable across launches — and because each host runs the wizard to
+  build its own `.env`, the same project on two hosts gets two different
+  suffixes, keeping their images (and VS Code state) distinct across hosts.
+  Legacy `.env` files without `IMAGE_SUFFIX` fall back to a deterministic
+  hash of project name + hostname. On each launch, stale per-project tags
+  (from a previous suffix or a `--rebuild-base`) are untagged automatically;
+  the shared base tag is kept since it's the build cache. Pre-upgrade
+  containers created directly from the base image keep showing the base name
+  in VS Code until you recreate them (`./launch.sh --recreate`).
 - The repo cloned inside the resulting container, on a per-project
   persistent volume so uncommitted work, branches, and `node_modules`
   survive across launches. The volume is seeded from the image's `/root`
