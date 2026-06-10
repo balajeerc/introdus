@@ -798,6 +798,7 @@ fi
 RESOLVE_LOOP_PID=""
 SUDO_KEEPALIVE_PID=""
 RESOLVE_STATE_FILE=""
+RESOLVE_LOG=""
 
 allowlist_add_ips() {
     local -a ips=("$@")
@@ -861,13 +862,22 @@ if ! $DISABLE_NETWORK_BLOCK && ! $VERIFY && [[ "$RESOLVE_INTERVAL" -gt 0 ]]; the
         SUDO_KEEPALIVE_PID=$!
     fi
 
+    # This loop runs on the host (it mutates nft/iptables, or reaches into the
+    # podman machine VM on macOS), so it can't live inside the container's tmux.
+    # Its per-tick "[resolve] adding N new IP(s)" lines used to interleave with
+    # the attached container terminal and clutter it. They're operational noise,
+    # not something the user needs to watch, so send them to a per-project
+    # logfile instead. Truncated each launch; `tail -f` it to inspect.
+    RESOLVE_LOG="${TMPDIR:-/tmp}/rcode-resolve-${PROJECT_NAME}.log"
+    : > "$RESOLVE_LOG" 2>/dev/null || RESOLVE_LOG="$(mktemp -t rcode-resolve-XXXXXX 2>/dev/null || mktemp)"
+
     (
         while sleep "$RESOLVE_INTERVAL"; do
             update_allowlist_once
         done
-    ) &
+    ) >>"$RESOLVE_LOG" 2>&1 &
     RESOLVE_LOOP_PID=$!
-    echo "==> egress re-resolve loop running (every ${RESOLVE_INTERVAL}s, pid $RESOLVE_LOOP_PID)"
+    echo "==> egress re-resolve loop running (every ${RESOLVE_INTERVAL}s, pid $RESOLVE_LOOP_PID); logging to $RESOLVE_LOG"
 fi
 
 # ---- host-side notification listener ---------------------------------------

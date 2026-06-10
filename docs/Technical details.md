@@ -218,6 +218,15 @@ call, it's almost always a missing host in `WHITELIST_HOSTS`. Add the
 hostname, relaunch. IPs are re-resolved on each launch, so a stale
 allowlist only costs you a container restart.
 
+While the container runs, a host-side loop re-resolves `WHITELIST_HOSTS`
+every `RESOLVE_INTERVAL` seconds and adds any new IPs to the live filter
+(CDN-fronted hosts rotate A records mid-session). This loop runs on the
+host, not in the container, since it mutates nft/iptables — so its output
+goes to a per-project logfile (`$TMPDIR/rcode-resolve-<project>.log`,
+truncated each launch and printed at startup) rather than cluttering the
+attached container terminal. `tail -f` it if you want to watch IPs being
+added.
+
 ## What goes where
 
 - [sample.env](../sample.env) — config template; copy to `.env`.
