@@ -134,5 +134,9 @@ if [[ -n "$PROBE_IP" ]]; then
     log "ok: direct dial to ${PROBE_HOST} IP (${PROBE_IP}) is blocked — no IP bypass"
 fi
 
-# ---- 5. hand off to the workload as the unprivileged dev user --------------
+# ---- 5. hand off (or, for --verify, stop here having proven the filter) ----
+if [[ "${VERIFY_ONLY:-false}" == "true" ]]; then
+    log "VERIFY_ONLY=true — egress filter + proxy verified; exiting without workload"
+    exit 0
+fi
 exec_workload
