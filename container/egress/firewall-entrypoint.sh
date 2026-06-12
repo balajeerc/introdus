@@ -98,7 +98,11 @@ log "nft egress filter installed (proxy uid ${PROXY_UID} = egress; workload = de
 
 # ---- 3. start the forward proxy (drops to rcproxy via its config) ----------
 install -d -m 755 -o "$PROXY_USER" -g "$PROXY_USER" /var/log/tinyproxy /run/tinyproxy
-tinyproxy -c /etc/tinyproxy/tinyproxy.conf
+# -d keeps tinyproxy in the foreground (deterministic across versions, some of
+# which daemonize by default); we background it ourselves so it survives the
+# exec into the workload as a child of PID 1. It still setuids to rcproxy via
+# the User/Group directives in the config.
+tinyproxy -d -c /etc/tinyproxy/tinyproxy.conf &
 for _ in $(seq 1 25); do
     if (exec 3<>"/dev/tcp/127.0.0.1/${PROXY_PORT}") 2>/dev/null; then break; fi
     sleep 0.2
