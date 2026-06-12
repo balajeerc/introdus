@@ -4,7 +4,7 @@ Back to the [project README](../README.md).
 
 This is the three-tier setup: your **dev machine** (laptop) drives a **container
 host** — a remote Linux box (Hetzner, AWS, DO, Oracle Cloud, etc., including
-aarch64) — which runs the **dev container**. You launch the container on the
+aarch64) running **rootless podman** — which runs the **dev container**. You launch the container on the
 remote container host and attach VS Code to it from your laptop; task-completion
 notifications tunnel back to the laptop. Nothing in the harness itself changes
 versus running it all on one machine.
@@ -17,8 +17,10 @@ podman's built-in SSH client that doesn't read `~/.ssh/config`).
 
 ## On the remote container host (one-time)
 
-1. Install the [prerequisites](../README.md#prerequisites) for your launch
-   mode (rootless is recommended for remote — fewer SSH-side gotchas).
+1. Install the [prerequisites](../README.md#prerequisites): rootless podman
+   and pasta. Egress is filtered **inside** the container (a default-deny nft
+   filter plus a hostname proxy), so the host does no firewall work and needs
+   no sudo for it.
 2. Clone this repo and run `./host_install.sh` — answer **yes** to forwarding
    notifications and pick a port. Then `create-dev-container.sh` per project
    (or, for the single-project flow, copy `sample.env` to `.env` and run
@@ -53,7 +55,7 @@ That's it on the host — no podman socket to enable.
    attach configs separate.
 
 6. Once attached, install the **Claude Code** extension. It lands in
-   `/root/.vscode-server/extensions/` on the persistent volume and
+   `/home/dev/.vscode-server/extensions/` on the persistent volume and
    survives across launches (same as local mode).
 
 No `docker.host`, `DOCKER_HOST`, `dev.containers.dockerPath`, or podman

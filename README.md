@@ -12,9 +12,9 @@ It spans up to three tiers, and any of them can collapse onto a single machine:
 1. **Your dev machine** — the laptop you sit at. Attach VS Code over SSH, drive
    Claude Code, and receive native desktop task-completion notifications.
 2. **Container host** — a remote KVM/VPS ([Hetzner/AWS/DigitalOcean](docs/Running%20on%20a%20remote%20host.md))
-   or the same laptop. Runs podman, the egress filter, and the notification listener.
-3. **Dev container** — your repo clone + Claude Code, with enforced egress rules
-   so it can only reach whitelisted hosts.
+   or the same laptop. Runs rootless podman and the notification listener.
+3. **Dev container** — your repo clone + Claude Code, with egress filtering
+   enforced *inside* the container so it can only reach whitelisted hosts.
 
 Run everything on one laptop, or push the container host onto a beefy remote box
 and keep your laptop thin — the same control path and task-completion
@@ -32,34 +32,29 @@ Each item is tagged with **where** it runs — *dev machine* (your laptop),
 container* (the hardened container itself). See the diagram above.
 
 - **[Container host]** Runs your dev containers in rootless mode using podman, cloning your code into each one.
-- **[Container host]** Cross-platform: Linux (rootless + nftables) and macOS / Apple Silicon (containers inside the podman-machine VM, no host firewall changes).
-- **[Container host]** Enforces egress rules that block the dev container from reaching any non-whitelisted host — with a startup self-check that the filter is actually active.
+- **[Container host]** Linux rootless podman — no host firewall changes, no sudo; egress filtering runs entirely inside each container.
+- **[Dev container]** Enforces egress rules that block the workload from reaching any non-whitelisted host: an in-container hostname-allowlist proxy backed by a default-deny nft filter, with a startup self-check that the filter is actually active.
 - **[Dev container]** Persists container data (repo, `node_modules`, toolchains) across restarts on a per-project volume.
 - **[Dev machine]** Attach VS Code to the running container ("Attach to Running Container") — directly when the host is local, or via Remote-SSH first when it's remote.
 - **[Dev container]** Claude Code pre-installed (with the NodeJS + pnpm it needs), remote-control on by default so you can drive it from your phone.
-- **[Dev container]** LazyVim built in for a fully capable terminal editor (handy inside `podman exec -it <container> /bin/bash`).
+- **[Dev container]** LazyVim built in for a fully capable terminal editor (handy inside `podman exec -it --user dev <container> /bin/bash`).
 - **[Dev container]** `mise` installed to set up any other toolchains you need.
 - **[Container host → dev container]** Optionally mounts a host directory read-only into the container (`SHARED_DATA_PATH` in `.env`).
 - **[Dev container]** Optional per-project launch hook on every container start — bring up your dev server, run migrations, warm caches, etc. (`ON_LAUNCH_SCRIPT` in `.env`).
 - **[Container host]** Optionally publishes extra container ports to `127.0.0.1` for local tools (DBeaver against an in-container ClickHouse, a debugger attaching, `redis-cli`, etc.) via `EXTRA_PORTS` in `.env`.
 - **[Container host]** Optionally exposes the webapp to the public internet via a Cloudflare quick tunnel (opt-in via `EXPOSE_WEBAPP` in `.env`).
 - **[Container host]** On teardown, checks every repo for uncommitted / un-pushed work before taking the container down.
-- **[Dev container → host → dev machine]** Built-in task-completion notifications: the container signals the host (FIFO on Linux, unix socket on macOS); when the host is remote, the host forwards to your laptop over an SSH reverse tunnel as a native popup + sound, each tagged with the project name so you can tell many containers apart.
+- **[Dev container → host → dev machine]** Built-in task-completion notifications: the container signals the host over a FIFO; when the host is remote, the host forwards to your laptop over an SSH reverse tunnel as a native popup + sound, each tagged with the project name so you can tell many containers apart.
 - **[Container host → phone]** Optional mobile push via [ntfy.sh](https://ntfy.sh) alongside the desktop alert whenever Claude Code is awaiting input or finishes a task (opt-in via `ENABLE_NOTIFY_SH_ALERTS` + `NTFY_SH_TOPIC` in `.env`).
 
 ## Prerequisites
 
 ### On the container host (where podman runs — a remote box or your laptop)
 
-- **Linux rootless mode:** `podman` 4.4+, `passt` (provides `pasta`),
-  `nftables`, a working systemd `--user` session
-  (`loginctl enable-linger $USER` if you're not always logged in),
-  kernel ≥ 5.x with cgroup v2.
-- **Linux `--rootful` mode:** `podman`, `iptables` (legacy or nft-backed),
-  `sudo`.
-- **macOS (Apple Silicon):** `podman` 4.4+ (`brew install podman`) and a
-  podman machine in **rootful** mode — see [macOS notes](#macos-apple-silicon-notes)
-  below.
+- **Linux rootless podman** (the only supported configuration): `podman` 4.4+,
+  `pasta` (`apt install passt`), kernel ≥ 5.x with cgroup v2. No host nftables,
+  no systemd-host requirement, and no sudo — the egress filter is installed and
+  enforced inside each container, not on the host.
 - **SSH forwarding** is needed only if the container host is a **separate box**
   and you want desktop notifications on your laptop and/or VS Code Remote-SSH —
   hardened hosts often ship `AllowTcpForwarding no`, which blocks both. The
@@ -113,12 +108,11 @@ machine (laptop)** to receive them — see [Notifications](docs/Notifications.md
 ```bash
 cp sample.env .env
 $EDITOR .env      # set PROJECT_NAME, REPO_URL, DEPLOY_KEY_PATH, etc.
-./launch_dev_container.sh                    # rootless mode; prompts for sudo once for nft rules
-./launch_dev_container.sh --rootful          # fallback mode (see Modes above)
+./launch_dev_container.sh                    # rootless; egress filter runs inside the container
 ./launch_dev_container.sh path/to/other.env  # use a different env file
 ./launch_dev_container.sh --rebuild-base     # rebuild the base image
 ./launch_dev_container.sh --reset            # wipe the persistent volume
-./launch_dev_container.sh --verify           # rootless only: run an egress smoke test
+./launch_dev_container.sh --verify           # run an egress smoke test
 ./launch_dev_container.sh --update           # in-container refresh (see Updates below)
 ```
 
@@ -126,47 +120,36 @@ $EDITOR .env      # set PROJECT_NAME, REPO_URL, DEPLOY_KEY_PATH, etc.
 `launch_dev_container.sh`. The per-project flow above generates a `launch.sh`
 wrapper in each project dir that calls the same engine.)
 
-When you exit `claude` (or the container otherwise stops),
-`launch_dev_container.sh` tears down the egress filter (nft table or iptables
-chain, depending on mode), plus the warmup slice / podman network it installed.
+The egress filter lives inside the container, so there is nothing to tear down
+on the host when you exit `claude` (or the container otherwise stops);
+`launch_dev_container.sh` removes only the podman network / warmup slice it
+installed.
 
-**Note on mode switching:** volumes and images are stored per-mode
-(rootless uses your user's podman store, `--rootful` uses root's). Switching
-modes means a first-launch rebuild of the base image and an empty volume;
-it does not destroy data in the other mode's store.
+## How egress hardening works
 
-## macOS (Apple Silicon) notes
+Egress filtering runs *inside* the container, not on the host. PID 1 is
+`firewall-entrypoint.sh`, which starts as root with `CAP_NET_ADMIN`. It:
 
-`launch_dev_container.sh` auto-detects macOS. Containers run inside the
-podman-machine Linux VM; the egress filter is installed inside the VM via
-`podman machine ssh -- sudo nft ...`. No firewall changes are made on the
-macOS host itself.
+1. Installs an nft **default-deny** egress filter — only the proxy's uid may
+   reach the internet.
+2. Starts a loopback hostname-allowlist forward proxy (tinyproxy).
+3. Runs an egress self-check to confirm the filter is actually active.
+4. Drops `CAP_NET_ADMIN` and `exec`s the workload as the non-root **`dev`**
+   user.
 
-First-time setup:
+The workload — Claude Code and your code — therefore runs as non-root `dev`
+with **no direct internet egress**. Its only way out is the proxy, which
+permits only hostnames listed in `WHITELIST_HOSTS` (subdomain matches count;
+the git host and `api.trycloudflare.com` are auto-added). A direct dial to a
+raw IP is dropped, so a whitelisted host that shares a CDN IP with something
+else is not a bypass. `INTERNAL_ALLOW_CIDRS` permits direct-IP access to fixed
+internal targets. DNS stays open, which leaves DNS tunnelling as the residual
+exfiltration channel. The workload cannot disable the firewall: it is non-root,
+has no `NET_ADMIN`, and runs with `no-new-privileges`.
 
-```bash
-podman machine init
-podman machine set --rootful
-podman machine start
-```
-
-> **Why rootful?** Rootless podman inside the VM uses `pasta` (userspace
-> networking) which bypasses the kernel's netfilter — nft rules have no
-> effect. Rootful mode uses real bridge networking that goes through the
-> FORWARD chain. This only affects the daemon inside the VM; on the macOS
-> host you still run `podman` without sudo.
-
-For Macs with limited RAM, configure the VM before starting:
-`podman machine set --memory 4096 --cpus 2`.
-
-- The `--rootful` flag is **not** supported on macOS (and not needed) —
-  the VM boundary already provides equivalent isolation. Use the default
-  invocation: `./launch_dev_container.sh`.
-- If your ISP blocks outbound port 22, use the SSH-over-443 form for
-  `REPO_URL`, e.g. `ssh://git@ssh.github.com:443/owner/repo.git`.
-- The notification socket requires virtiofs home-directory sharing
-  (default in podman machine). If disabled, container hooks fail silently
-  with a warning at launch.
+Concretely: git-over-SSH clones tunnel through the proxy (via an `ssh`
+`ProxyCommand`), `apt` and HTTP(S) tools are proxy-configured, and
+cloudflared's edge IPs are allowed directly by IP (they can't be proxied).
 
 ## More docs
 
@@ -174,7 +157,6 @@ For Macs with limited RAM, configure the VM before starting:
 
 - [Overview](docs/Technical%20details.md#overview) — the end-state that `./launch_dev_container.sh` produces (base image, volume, ports, egress allowlist, container posture).
 - [Container capabilities](docs/Technical%20details.md#container-capabilities) — which caps are added back, why, and why it's safe.
-- [Usage Modes](docs/Technical%20details.md#usage-modes) — rootless (default) vs. `--rootful` fallback.
 - [Persistence](docs/Technical%20details.md#persistence) — what survives restarts, how config edits propagate, `--reset` semantics.
 - [Updates](docs/Technical%20details.md#updates) — what `--update` refreshes and what it deliberately won't touch.
 - [Sharing host data (read-only)](docs/Technical%20details.md#sharing-host-data-read-only) — `SHARED_DATA_PATH`.

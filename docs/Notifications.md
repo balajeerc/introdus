@@ -10,7 +10,7 @@ depends on whether the container host is your laptop or a separate remote box.
 ## The path
 
 ```
-[dev container] rc-notify --FIFO/socket--> [container host] host_listener.py
+[dev container] rc-notify --FIFO--> [container host] host_listener.py
     --> host_notify.sh
           ├── host IS your laptop  -> render popup + sound here
           └── host is remote       -> forward over the SSH reverse (-R) tunnel
@@ -19,9 +19,9 @@ depends on whether the container host is your laptop or a separate remote box.
 
 - **Dev container:** Claude's `Stop` / `Notification` / `PermissionRequest`
   hooks call [`rc-notify`](../container/bin/rc-notify), which writes
-  `event<TAB>project` to the host endpoint mounted at `/run/notify` (a FIFO on
-  Linux, a unix socket on macOS). It never blocks a hook for more than a few
-  seconds and never fails it, even if no listener is present.
+  `event<TAB>project` to the host endpoint mounted at `/run/notify` (a Linux
+  FIFO under `XDG_RUNTIME_DIR` on the host). It never blocks a hook for more
+  than a few seconds and never fails it, even if no listener is present.
 - **Container host:** a single [`host_listener.py`](../host_listener.py) service
   reads the endpoint and runs [`host_notify.sh`](../host_notify.sh). The event
   is validated against a fixed whitelist (`done` / `waiting`) and the project
@@ -35,8 +35,8 @@ setup, not per-project.
 ## Local host (host = laptop)
 
 Nothing to configure. `./host_install.sh` installs the listener as a persistent
-`systemd --user` service (or a background process on macOS), and `host_notify.sh`
-renders the popup + plays `notification_sound.wav` on the same machine.
+`systemd --user` service, and `host_notify.sh` renders the popup + plays
+`notification_sound.wav` on the same machine.
 
 ## Remote host → laptop (two hops)
 
@@ -110,7 +110,7 @@ It installs two `systemd --user` units:
   popup + plays `notification_sound.wav`.
 - `rc-notify-tunnel.service` — the `ssh -R` reverse tunnel to your alias
   (requires `autossh` for self-healing reconnects; the installer errors out
-  without it — `sudo apt install autossh`, `brew install autossh`, etc.).
+  without it — `sudo apt install autossh`, etc.).
 
 The port must match `RC_FORWARD_ADDR`. The alias must accept key-based SSH
 without a prompt (passphrase-less key, or an agent reachable from your

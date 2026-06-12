@@ -21,7 +21,7 @@ in `.env` and the next launch will:
 
 - start `cloudflared` in a `tunnel` tmux session inside the container
 - print a stable `https://*.trycloudflare.com` URL in the startup banner
-- cache the URL at `/root/.logs/tunnel-url.txt` (also retrievable from
+- cache the URL at `/home/dev/.logs/tunnel-url.txt` (also retrievable from
   inside the container via the `tunnel-url` command on `$PATH`)
 
 The URL is stable for the container's lifetime and rotates on relaunch.
@@ -81,35 +81,38 @@ terminal, and extensions all live inside the container — the Claude Code
 extension you install there uses the `claude` binary already in the image.
 
 If the container host **is your dev machine** (you launched the container
-locally), the only setting you need in your local VSCode `settings.json` is:
+locally on Linux with rootless podman), the only setting you need in your
+local VSCode `settings.json` is:
 
 ```jsonc
 "dev.containers.dockerPath": "podman"
 ```
 
 That tells the Dev Containers extension to drive `podman` instead of
-`docker`; everything else (socket discovery, container listing) is
-handled by the local podman binary.
+`docker`; everything else (container listing) is handled by the local
+rootless podman binary.
 
-If the container host is a **separate remote machine** (Hetzner, Oracle Cloud,
-etc.), don't try to expose podman's socket over SSH — the
-`docker.host` setting that used to do this was deprecated when the
-Docker extension was renamed to Container Tools, and podman's built-in
-SSH client is awkward to configure (it doesn't read `~/.ssh/config`).
-Use VSCode's Remote-SSH flow instead — see
+If the container host is a **separate remote Linux machine** (Hetzner, Oracle
+Cloud, etc.), don't try to expose podman's socket over SSH. Use VSCode's
+Remote-SSH flow instead — see
 [Running on a remote host.md](Running%20on%20a%20remote%20host.md).
 
 Then: Command Palette → **Dev Containers: Attach to Running Container…** →
-pick `remote-code-<project>-<suffix>` (the per-project suffix keeps each
-project's container — and VS Code's cached attach config for it — distinct,
-even when the same project runs on more than one host). From the new window, install the Claude
-Code extension — it lands in `/root/.vscode-server/extensions/` on the
-persistent volume and survives across launches.
+pick `remote-code-<project>-<suffix>` (run `podman ps` for the exact name;
+the per-project suffix keeps each project's container — and VS Code's cached
+attach config for it — distinct, even when the same project runs on more than
+one host). From the new window, install the Claude Code extension — it lands
+in `/home/dev/.vscode-server/extensions/` on the persistent volume and
+survives across launches.
 
-First attach downloads VSCode server (~100MB) into `/root/.vscode-server/`;
+First attach downloads VSCode server (~100MB) into `/home/dev/.vscode-server/`.
+The download goes through the in-container egress proxy (default-deny);
 `update.code.visualstudio.com`, `vscode.download.prss.microsoft.com`, and
-`marketplace.visualstudio.com` are in the default [sample.env](../sample.env)
-allowlist for this reason. Subsequent launches reuse the cached server.
+`marketplace.visualstudio.com` are already in the default `WHITELIST_HOSTS`
+allowlist ([sample.env](../sample.env)) for this reason. Any extension or VSIX
+you install pulls through the same proxy, so its hostnames must be in
+`WHITELIST_HOSTS` too — the marketplace hosts already are. Subsequent launches
+reuse the cached server.
 
 The extension starts its own `claude` when you open it — it does not
 share state with the tmux `claude` session that [`run-claude`](#claude-remote-control)
@@ -131,8 +134,12 @@ repo, opens a tmux session named `claude`, and launches Claude Code with
 if it's remote), or from a VS Code terminal already attached to the container:
 
 ```bash
-podman exec -it remote-code-<project>-<suffix> run-claude
+podman exec -it --user dev remote-code-<project>-<suffix> run-claude
 ```
+
+The `--user dev` is required: the workload, its files under `/home/dev`, and
+its per-uid tmux socket all belong to the non-root `dev` user. Drop in with a
+shell the same way — `podman exec -it --user dev remote-code-<project>-<suffix> bash`.
 
 Re-running `run-claude` re-attaches to the existing `claude` session instead
 of spawning a second one (`Ctrl-a d` detaches without killing it; the
