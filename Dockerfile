@@ -96,7 +96,11 @@ RUN printf '%s\n' \
     > /etc/tmux.conf
 
 # ---- users: dev (workload) + rcproxy (egress proxy) ------------------------
-RUN useradd --create-home --uid 1000 --shell /bin/bash dev \
+# Ubuntu 24.04's base image ships a default `ubuntu` user at uid 1000; remove it
+# so `dev` can take 1000. Nothing references the numeric uid (we use the names),
+# but a stable, conventional uid keeps the persistent volume's ownership sane.
+RUN userdel --remove ubuntu 2>/dev/null || true \
+ && useradd --create-home --uid 1000 --shell /bin/bash dev \
  && useradd --system   --uid 1001 --shell /usr/sbin/nologin rcproxy
 
 # ---- egress firewall + proxy config (root) ---------------------------------
