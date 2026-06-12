@@ -6,17 +6,20 @@ FROM ubuntu:24.04
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
+# Workload runs as the non-root user `dev` (home /home/dev). The container
+# *starts* as root (the firewall entrypoint needs CAP_NET_ADMIN to install nft),
+# then drops to dev. The egress proxy runs as its own uid `rcproxy` so the nft
+# filter can grant egress to the proxy alone, by uid.
+
 # Disable apt's _apt sandbox user. The running container drops all caps
-# (--cap-drop=ALL --security-opt=no-new-privileges), so apt can't setuid
-# to _apt at runtime — without this, `apt update` fails inside the
-# container. The sandbox only hardens against untrusted-repo fetcher
-# exploits; we run as root in the container regardless, so the threat
-# model is unchanged. We also chown the partial dirs (mode-700 _apt-owned
-# by default) to root, since --cap-drop=ALL strips CAP_DAC_OVERRIDE and
-# root can no longer bypass DAC on foreign-owned paths.
+# (--cap-drop=ALL --security-opt=no-new-privileges), so apt can't setuid to
+# _apt at runtime. apt runs as root both at build time and at runtime (via the
+# proxy), so the threat model is unchanged.
 RUN echo 'APT::Sandbox::User "root";' > /etc/apt/apt.conf.d/99-no-sandbox \
  && chown -R root:root /var/cache/apt /var/lib/apt
 
+# Note: nftables + tinyproxy are the egress-filter stack; netcat-openbsd
+# provides `nc -X connect` for the git-over-SSH ProxyCommand.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       bash-completion \
@@ -32,12 +35,12 @@ RUN apt-get update \
       sudo \
       iproute2 \
       netcat-openbsd \
+      nftables \
+      tinyproxy \
  && rm -rf /var/lib/apt/lists/*
 
 # Neovim from the official prebuilt tarball — Ubuntu 24.04's apt nvim (0.9.5)
-# is older than what current LazyVim requires. `stable` is a moving tag that
-# points at the latest stable release; pin if you need reproducibility across
-# base-image rebuilds.
+# is older than what current LazyVim requires.
 RUN set -eu; arch="$(uname -m)"; \
     case "$arch" in \
       x86_64)  nvim_arch=x86_64 ;; \
@@ -48,34 +51,7 @@ RUN set -eu; arch="$(uname -m)"; \
       | tar -xz -C /opt \
  && ln -s "/opt/nvim-linux-${nvim_arch}/bin/nvim" /usr/local/bin/nvim
 
-# Install mise under /root/.local so it lands inside the project's persistent
-# volume on first launch (podman initializes empty named volumes from the
-# image's contents of the mount target).
-RUN curl -fsSL https://mise.jdx.dev/install.sh | sh
-
-ENV PNPM_HOME="/root/.local/share/pnpm"
-ENV PATH="/root/.local/bin:/root/.local/share/mise/shims:${PNPM_HOME}/bin:${PATH}"
-
-# Claude Code refuses --dangerously-skip-permissions when running as root unless
-# it believes it's in a sandbox. This container *is* the sandbox (egress is
-# filtered, the filesystem is isolated), so opt in explicitly; without this
-# run-claude fails with "cannot be used with root/sudo privileges".
-ENV IS_SANDBOX=1
-
-# Pin node LTS + pnpm, then install claude code via pnpm. Note: node ships
-# npm bundled — it exists on disk but we don't use it anywhere.
-#
-# pnpm v10+ blocks postinstall scripts by default; claude-code's install.cjs
-# downloads the native binary, so we whitelist it via --allow-build.
-RUN mkdir -p "$PNPM_HOME" \
- && mise use -g node@lts pnpm@latest \
- && mise exec -- pnpm add -g --allow-build=@anthropic-ai/claude-code @anthropic-ai/claude-code
-
-# tree-sitter CLI: LazyVim's treesitter config invokes this at first nvim
-# startup to compile/verify parser grammars. Installing via pnpm would emit
-# the "Ignored build scripts" warning because the npm package's only job is a
-# postinstall that downloads this same binary from GitHub releases — and pnpm
-# v10 blocks postinstall on global installs. Skip the middleman.
+# tree-sitter CLI (used by LazyVim's treesitter config at first nvim startup).
 RUN set -eu; arch="$(uname -m)"; \
     case "$arch" in \
       x86_64)  ts_arch=x64   ;; \
@@ -86,23 +62,10 @@ RUN set -eu; arch="$(uname -m)"; \
       | gunzip > /usr/local/bin/tree-sitter \
  && chmod +x /usr/local/bin/tree-sitter
 
-# Seed the LazyVim starter config into /root/.config/nvim, then pre-install
-# plugins and treesitter parsers so the first interactive `nvim` run doesn't
-# race async installers (opening a .tsx before the tsx parser finishes
-# downloading throws "No parser for language 'tsx'"). /root is copied into
-# the project's persistent volume on first launch, so /root/.local/share/nvim
-# (plugins) and /root/.local/state/nvim (parsers) land in the volume too.
-RUN git clone --depth 1 https://github.com/LazyVim/starter /root/.config/nvim \
- && rm -rf /root/.config/nvim/.git \
- && nvim --headless "+Lazy! sync" +qa \
- && nvim --headless \
-      "+Lazy! load nvim-treesitter" \
-      "+TSInstallSync bash c diff html javascript jsdoc json jsonc lua luadoc markdown markdown_inline python query regex toml tsx typescript vim vimdoc xml yaml" \
-      +qa
-
-# cloudflared: optional public tunnel for the webapp port. Only invoked
-# at runtime when EXPOSE_WEBAPP=true in .env (see setup.sh). Single static
-# binary from cloudflare's GitHub releases.
+# cloudflared: optional public tunnel for the webapp port. Only invoked at
+# runtime when EXPOSE_WEBAPP=true (see setup.sh). It speaks a bespoke protocol
+# to the Cloudflare edge on 7844, NOT HTTP, so it cannot go through the egress
+# proxy — its edge IPs are allowed directly by the nft filter instead.
 RUN set -eu; arch="$(uname -m)"; \
     case "$arch" in \
       x86_64)  cf_arch=amd64 ;; \
@@ -114,12 +77,10 @@ RUN set -eu; arch="$(uname -m)"; \
  && chmod +x /usr/local/bin/cloudflared
 
 # Convenience: `tunnel-url` prints the cached cloudflared quick-tunnel URL.
-# setup.sh writes the URL to /root/.logs/tunnel-url.txt at startup when
-# EXPOSE_WEBAPP=true. Useful for piping into curl/qrencode from inside.
 RUN printf '%s\n' \
     '#!/bin/sh' \
-    'if [ -s /root/.logs/tunnel-url.txt ]; then' \
-    '  cat /root/.logs/tunnel-url.txt' \
+    'if [ -s /home/dev/.logs/tunnel-url.txt ]; then' \
+    '  cat /home/dev/.logs/tunnel-url.txt' \
     'else' \
     '  echo "no tunnel URL cached — is EXPOSE_WEBAPP=true and cloudflared running?" >&2' \
     '  exit 1' \
@@ -127,55 +88,124 @@ RUN printf '%s\n' \
     > /usr/local/bin/tunnel-url \
  && chmod +x /usr/local/bin/tunnel-url
 
-# Remap tmux prefix from C-b to C-a so it doesn't collide with a host-side
-# tmux when attaching from a local tmux pane. Written to /etc/tmux.conf so
-# the change survives across persistent-volume reuse (a /root/.tmux.conf
-# would only seed on first launch / --reset).
+# Remap tmux prefix C-b -> C-a so it doesn't collide with a host-side tmux.
 RUN printf '%s\n' \
     'unbind C-b' \
     'set -g prefix C-a' \
     'bind C-a send-prefix' \
     > /etc/tmux.conf
 
-# Interactive shells inside the container should get mise + pnpm on PATH.
-# Ubuntu's stock /etc/bash.bashrc has the bash-completion sourcing block
-# commented out, so we source it ourselves here. apt-installed tools (git,
-# ssh, tmux, sudo, ip, fd, rg) ship their own completion files; tools
-# installed outside apt get completions generated below into
-# /etc/bash_completion.d/, which the loader picks up.
+# ---- users: dev (workload) + rcproxy (egress proxy) ------------------------
+RUN useradd --create-home --uid 1000 --shell /bin/bash dev \
+ && useradd --system   --uid 1001 --shell /usr/sbin/nologin rcproxy
+
+# ---- egress firewall + proxy config (root) ---------------------------------
+COPY container/egress/tinyproxy.conf /etc/tinyproxy/tinyproxy.conf
+COPY container/egress/firewall-entrypoint.sh /usr/local/bin/firewall-entrypoint.sh
+RUN chmod +x /usr/local/bin/firewall-entrypoint.sh \
+ && mkdir -p /etc/tinyproxy \
+ && : > /etc/tinyproxy/egress-allowlist.txt \
+ && chown rcproxy:rcproxy /etc/tinyproxy/egress-allowlist.txt
+
+# apt through the proxy at runtime (apt ignores HTTP_PROXY; needs its own conf).
+# Build-time apt above already ran with direct egress and is unaffected.
+RUN printf '%s\n' \
+    'Acquire::http::Proxy  "http://127.0.0.1:8888";' \
+    'Acquire::https::Proxy "http://127.0.0.1:8888";' \
+    > /etc/apt/apt.conf.d/01proxy
+
+# git-over-SSH through the proxy: ssh CONNECTs via the HTTP proxy (nc -X
+# connect). accept-new means the first clone records the host key over that
+# tunnel — we can't use ssh-keyscan here because it dials :22 directly and the
+# firewall would drop it.
+RUN install -d -m 700 -o dev -g dev /home/dev/.ssh \
+ && printf '%s\n' \
+    'Host *' \
+    '    ProxyCommand nc -X connect -x 127.0.0.1:8888 %h %p' \
+    '    StrictHostKeyChecking accept-new' \
+    > /home/dev/.ssh/config \
+ && chown dev:dev /home/dev/.ssh/config \
+ && chmod 600 /home/dev/.ssh/config
+
+# Claude Code refuses --dangerously-skip-permissions as root unless it believes
+# it's in a sandbox. The workload normally runs as dev (no issue), but ad-hoc
+# `podman exec` sessions default to root, so keep the opt-in for those.
+ENV IS_SANDBOX=1
+
+# ---- dev-user toolchain (mise / node / pnpm / claude / nvim) ---------------
+# Installed under /home/dev so it lands in the project's persistent volume on
+# first launch. These steps run with DIRECT build-time egress; the HTTP_PROXY
+# env is set further down, AFTER all network build steps, so it only affects
+# runtime (a build-time proxy var would point at a proxy that isn't running).
+ENV PNPM_HOME="/home/dev/.local/share/pnpm"
+ENV PATH="/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/home/dev/.local/share/pnpm/bin:${PATH}"
+
+USER dev
+WORKDIR /home/dev
+
+RUN curl -fsSL https://mise.jdx.dev/install.sh | sh
+
+# pnpm v10+ blocks postinstall scripts; claude-code's install.cjs downloads the
+# native binary, so whitelist it via --allow-build.
+RUN mkdir -p "$PNPM_HOME" \
+ && mise use -g node@lts pnpm@latest \
+ && mise exec -- pnpm add -g --allow-build=@anthropic-ai/claude-code @anthropic-ai/claude-code
+
+# Seed LazyVim and pre-install plugins + treesitter parsers so the first
+# interactive nvim doesn't race async installers.
+RUN git clone --depth 1 https://github.com/LazyVim/starter /home/dev/.config/nvim \
+ && rm -rf /home/dev/.config/nvim/.git \
+ && nvim --headless "+Lazy! sync" +qa \
+ && nvim --headless \
+      "+Lazy! load nvim-treesitter" \
+      "+TSInstallSync bash c diff html javascript jsdoc json jsonc lua luadoc markdown markdown_inline python query regex toml tsx typescript vim vimdoc xml yaml" \
+      +qa
+
+# Interactive shells get mise + pnpm on PATH and bash-completion sourced.
 RUN printf '%s\n' \
     '# --- remote-code-harness ---' \
-    'export PATH="/root/.local/bin:$PATH"' \
-    'export PNPM_HOME="/root/.local/share/pnpm"' \
+    'export PATH="/home/dev/.local/bin:$PATH"' \
+    'export PNPM_HOME="/home/dev/.local/share/pnpm"' \
     'export PATH="$PNPM_HOME/bin:$PATH"' \
-    'eval "$(/root/.local/bin/mise activate bash)"' \
+    'eval "$(/home/dev/.local/bin/mise activate bash)"' \
     '[ -f /usr/share/bash-completion/bash_completion ] && . /usr/share/bash-completion/bash_completion' \
     '# --- end remote-code-harness ---' \
-    >> /root/.bashrc
+    >> /home/dev/.bashrc
 
-# Generate completions for tools we installed outside apt (mise via curl,
-# pnpm via mise). Files in /etc/bash_completion.d/ are sourced eagerly by
-# the bash-completion loader on interactive-shell startup.
-RUN mise completion bash > /etc/bash_completion.d/mise \
- && mise exec -- pnpm completion bash > /etc/bash_completion.d/pnpm
+# ---- back to root: runtime proxy env, completions, copies ------------------
+USER root
 
-# Seed /root/.claude with a default settings.json wiring Claude's Stop
-# and Notification hooks to the host-side rc-notify listener that launch.sh
-# mounts at /run/notify (a unix socket on macOS, a FIFO on Linux). The hooks
-# call the `rc-notify` helper below, which writes to whichever endpoint type
-# is present. /root is seeded into the persistent volume on first launch, so
-# these files survive across restarts (edit at will; --reset re-seeds).
-COPY container/claude/ /root/.claude/
-RUN chmod +x /root/.claude/test_notify.sh
+# Runtime egress proxy for proxy-aware tools (mise, pnpm, claude, curl, git over
+# https, ...). Set HERE — after every network build step — so the build itself
+# never tries to use a proxy that isn't listening yet. NO_PROXY keeps loopback
+# and link-local direct; launch.sh/setup.sh extend it with INTERNAL_ALLOW_CIDRS.
+ENV HTTP_PROXY="http://127.0.0.1:8888" \
+    HTTPS_PROXY="http://127.0.0.1:8888" \
+    http_proxy="http://127.0.0.1:8888" \
+    https_proxy="http://127.0.0.1:8888" \
+    NO_PROXY="localhost,127.0.0.1,::1" \
+    no_proxy="localhost,127.0.0.1,::1"
 
-# `rc-notify EVENT`: deliver a notification event to the host listener over
-# the mounted /run/notify endpoint (socket on macOS, FIFO on Linux).
+# Completions for tools installed under dev (root executes dev's binaries).
+RUN HOME=/home/dev /home/dev/.local/bin/mise completion bash > /etc/bash_completion.d/mise \
+ && HOME=/home/dev /home/dev/.local/bin/mise exec -- pnpm completion bash > /etc/bash_completion.d/pnpm
+
+# Claude settings/hooks (Stop / Notification -> rc-notify). Owned by dev so the
+# dev-user claude can read/write them on the persistent volume.
+COPY container/claude/ /home/dev/.claude/
+RUN chown -R dev:dev /home/dev/.claude \
+ && chmod +x /home/dev/.claude/test_notify.sh
+
+# rc-notify: deliver a notification event to the host listener over /run/notify.
 COPY container/bin/rc-notify /usr/local/bin/rc-notify
 RUN chmod +x /usr/local/bin/rc-notify
 
-# `run-claude`: cd into the project repo, open a tmux session named 'claude',
-# and start Claude Code with --dangerously-skip-permissions. Remote control is
-# enabled by default for every session (see container/claude/settings.json), so
-# the session is reachable from claude.ai/code and the mobile app once paired.
+# run-claude: cd into the repo, open the 'claude' tmux session, start Claude
+# Code with --dangerously-skip-permissions. Self-drops to dev if run as root.
 COPY container/bin/run-claude /usr/local/bin/run-claude
 RUN chmod +x /usr/local/bin/run-claude
+
+# Default command. launch.sh overrides it with the same path explicitly; the
+# entrypoint must run as root (the image's default user) to install nft, then
+# it drops to dev.
+CMD ["/usr/local/bin/firewall-entrypoint.sh"]

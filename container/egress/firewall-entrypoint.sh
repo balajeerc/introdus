@@ -30,8 +30,12 @@ warn() { printf '    [egress] warning: %s\n' "$*" >&2; }
 # workload starts with no privilege and (no-new-privileges) can never escalate.
 exec_workload() {
     log "dropping to '$WORK_USER' and starting /setup.sh"
+    # setpriv does not reset the environment, so HOME/USER still point at root's
+    # values; set them explicitly or dev's tools (mise, git, claude) look in
+    # /root, which dev cannot write.
     exec setpriv --reuid "$WORK_USER" --regid "$WORK_USER" --init-groups \
-        --inh-caps=-all --bounding-set=-all -- /bin/bash /setup.sh
+        --inh-caps=-all --bounding-set=-all -- \
+        env HOME="$WORK_HOME" USER="$WORK_USER" LOGNAME="$WORK_USER" /bin/bash /setup.sh
 }
 
 # ---- 0. stage the deploy key for the dev user ------------------------------
