@@ -209,6 +209,12 @@ RUN chmod +x /usr/local/bin/rc-notify
 COPY container/bin/run-claude /usr/local/bin/run-claude
 RUN chmod +x /usr/local/bin/run-claude
 
+# VS Code Dev Containers reads this label on "Attach to Running Container" and
+# runs its server, terminals, and extensions as `dev` instead of the container's
+# start user (root). Without it, attaching lands you in root with HOME=/root and
+# no view of dev's tmux sessions or /home/dev ownership.
+LABEL devcontainer.metadata='[{"remoteUser":"dev"}]'
+
 # Default command. launch.sh overrides it with the same path explicitly; the
 # entrypoint must run as root (the image's default user) to install nft, then
 # it drops to dev.
