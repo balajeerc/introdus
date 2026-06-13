@@ -30,11 +30,13 @@ warn() { printf '    [egress] warning: %s\n' "$*" >&2; }
 # workload starts with no privilege and (no-new-privileges) can never escalate.
 exec_workload() {
     log "dropping to '$WORK_USER' and starting /setup.sh"
-    # setpriv does not reset the environment, so HOME/USER still point at root's
-    # values; set them explicitly or dev's tools (mise, git, claude) look in
-    # /root, which dev cannot write.
-    exec setpriv --reuid "$WORK_USER" --regid "$WORK_USER" --init-groups \
-        --inh-caps=-all --bounding-set=-all -- \
+    # reuid to a non-root user clears the permitted/effective cap sets, and the
+    # container's no-new-privileges flag stops dev from ever regaining them, so
+    # dev is fully unprivileged without touching the bounding set (editing which
+    # would need CAP_SETPCAP that we deliberately don't grant). setpriv does not
+    # reset the environment, so set HOME/USER explicitly or dev's tools (mise,
+    # git, claude) look in /root, which dev cannot write.
+    exec setpriv --reuid "$WORK_USER" --regid "$WORK_USER" --init-groups -- \
         env HOME="$WORK_HOME" USER="$WORK_USER" LOGNAME="$WORK_USER" /bin/bash /setup.sh
 }
 

@@ -17,7 +17,7 @@ set -euo pipefail
 # default to root, so if invoked as root, re-exec as dev (with dev's HOME) so
 # Claude runs unprivileged and finds /home/dev/.claude.
 if [[ "$(id -u)" -eq 0 ]]; then
-    exec setpriv --reuid dev --regid dev --init-groups --inh-caps=-all --bounding-set=-all -- \
+    exec setpriv --reuid dev --regid dev --init-groups -- \
         env HOME=/home/dev USER=dev LOGNAME=dev /usr/local/bin/run-claude "$@"
 fi
 
