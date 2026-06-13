@@ -324,11 +324,30 @@ fi
 
 # ---- base image ------------------------------------------------------------
 
+# True when the Dockerfile or any baked-in container/ source file is newer than
+# the current base image — i.e. a pull/edit changed something the image embeds.
+# mtime is only the trigger; the rebuild below is cache-enabled, so podman's own
+# content hashing does the real work (an unchanged COPY is a cache hit, ~instant)
+# and a false positive costs a second, never a full rebuild. Edits/pulls always
+# move mtimes forward past the image, so it won't miss a real change.
+base_image_is_stale() {
+    local created epoch newest
+    created=$(podman image inspect --format '{{.Created}}' "$BASE_IMAGE_NAME" 2>/dev/null) || return 1
+    epoch=$(date -d "$created" +%s 2>/dev/null) || return 0
+    newest=$(find "$DOCKERFILE" "$SCRIPT_DIR/container" -type f -printf '%T@\n' 2>/dev/null \
+        | sort -rn | head -1 | cut -d. -f1)
+    [[ -n "$newest" && "$newest" -gt "$epoch" ]]
+}
+
 if $REBUILD_BASE; then
     echo "==> rebuilding base image $BASE_IMAGE_NAME (--no-cache)"
     podman build --no-cache -t "$BASE_IMAGE_NAME" -f "$DOCKERFILE" "$SCRIPT_DIR"
 elif ! podman image inspect "$BASE_IMAGE_NAME" >/dev/null 2>&1; then
     echo "==> building base image $BASE_IMAGE_NAME"
+    podman build -t "$BASE_IMAGE_NAME" -f "$DOCKERFILE" "$SCRIPT_DIR"
+elif base_image_is_stale; then
+    echo "==> base image is older than the Dockerfile/container files — cached rebuild"
+    echo "    (use --rebuild-base to force a full --no-cache rebuild)"
     podman build -t "$BASE_IMAGE_NAME" -f "$DOCKERFILE" "$SCRIPT_DIR"
 else
     echo "==> using cached base image $BASE_IMAGE_NAME"
