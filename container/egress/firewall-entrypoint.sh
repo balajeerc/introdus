@@ -40,6 +40,16 @@ exec_workload() {
         env HOME="$WORK_HOME" USER="$WORK_USER" LOGNAME="$WORK_USER" /bin/bash /setup.sh
 }
 
+# ---- 0a. ensure the persistent volume is owned by dev ----------------------
+# A volume freshly seeded from the image is already dev-owned. But a volume
+# carried over from the old /root-based layout (same project-only volume name)
+# is root-owned, leaving dev unable to write. The cheap ownership check means the
+# recursive chown runs only once, on the first launch after migrating.
+if [[ "$(stat -c %U /home/dev 2>/dev/null)" != "$WORK_USER" ]]; then
+    log "fixing ownership of /home/dev for '$WORK_USER' (migrated or root-owned volume)"
+    chown -R "$WORK_USER":"$WORK_USER" /home/dev
+fi
+
 # ---- 0. stage the deploy key for the dev user ------------------------------
 # The host-mounted key at /tmp/deploy_key is root/host-owned and unreadable by
 # the unprivileged dev user. Copy it into dev's ~/.ssh now, while we are root.
