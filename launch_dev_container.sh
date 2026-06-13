@@ -224,9 +224,16 @@ IMAGE_NAME="remote-code-${IMAGE_PROJECT_SLUG}-${IMAGE_SUFFIX}:latest"
 EXPOSE_WEBAPP="${EXPOSE_WEBAPP:-false}"
 TUNNEL_HOSTS=""
 TUNNEL_EDGE_IPS=""
+TUNNEL_API_IPS=""
 if [[ "$EXPOSE_WEBAPP" == "true" ]]; then
     TUNNEL_HOSTS="api.trycloudflare.com"
     TUNNEL_EDGE_IPS="198.41.192.167 198.41.192.227 198.41.200.13 198.41.200.193"
+    # cloudflared registers the quick tunnel with a direct POST to
+    # api.trycloudflare.com:443 and does NOT honor HTTP_PROXY for it, so the
+    # proxy allowlist alone isn't enough — resolve it and allow those IPs
+    # directly on :443 (like the edge IPs on :7844). Cloudflare anycast, stable.
+    TUNNEL_API_IPS="$(getent ahostsv4 api.trycloudflare.com 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' ')"
+    [[ -n "$TUNNEL_API_IPS" ]] || echo "    warn: could not resolve api.trycloudflare.com — tunnel registration may fail" >&2
 fi
 
 # The proxy allowlist the container enforces = WHITELIST_HOSTS plus the git host
@@ -399,6 +406,7 @@ if $VERIFY; then
         --env "WHITELIST_HOSTS=$CONTAINER_WHITELIST_HOSTS" \
         --env "INTERNAL_ALLOW_CIDRS=$INTERNAL_ALLOW_CIDRS" \
         --env "TUNNEL_EDGE_IPS=$TUNNEL_EDGE_IPS" \
+        --env "TUNNEL_API_IPS=$TUNNEL_API_IPS" \
         --env "CANARY_BLOCKED_IP=$CANARY_BLOCKED_IP" \
         --env "REPO_URL=$REPO_URL" \
         --volume "$ENTRYPOINT_SCRIPT:/usr/local/bin/firewall-entrypoint.sh:ro" \
@@ -522,6 +530,7 @@ declare -a PODMAN_ARGS=(
     --env "DISABLE_NETWORK_BLOCK=$DISABLE_NETWORK_BLOCK"
     --env "EXPOSE_WEBAPP=$EXPOSE_WEBAPP"
     --env "TUNNEL_EDGE_IPS=$TUNNEL_EDGE_IPS"
+    --env "TUNNEL_API_IPS=$TUNNEL_API_IPS"
     --env "WHITELIST_HOSTS=$CONTAINER_WHITELIST_HOSTS"
     --env "INTERNAL_ALLOW_CIDRS=$INTERNAL_ALLOW_CIDRS"
     --env "ENABLE_NOTIFY_SH_ALERTS=$ENABLE_NOTIFY_SH_ALERTS"

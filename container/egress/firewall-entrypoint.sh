@@ -97,6 +97,7 @@ PROXY_UID=$(id -u "$PROXY_USER")
 mk_set() { printf '%s' "$1" | tr ' ' '\n' | grep -E '.' | paste -sd, - || true; }
 INTERNAL_ELEMS=$(mk_set "${INTERNAL_ALLOW_CIDRS:-}")
 EDGE_ELEMS=$(mk_set "${TUNNEL_EDGE_IPS:-}")
+API_ELEMS=$(mk_set "${TUNNEL_API_IPS:-}")
 
 {
     echo "table inet egress {"
@@ -108,6 +109,7 @@ EDGE_ELEMS=$(mk_set "${TUNNEL_EDGE_IPS:-}")
     [[ -n "$RESOLVER_IPS" ]]  && echo "        ip daddr { ${RESOLVER_IPS} } meta l4proto { tcp, udp } th dport 53 accept"
     [[ -n "$INTERNAL_ELEMS" ]] && echo "        ip daddr { ${INTERNAL_ELEMS} } accept"
     [[ -n "$EDGE_ELEMS" ]]     && echo "        ip daddr { ${EDGE_ELEMS} } tcp dport 7844 accept"
+    [[ -n "$API_ELEMS" ]]      && echo "        ip daddr { ${API_ELEMS} } tcp dport 443 accept"
     echo "        counter drop"
     echo "    }"
     echo "}"
