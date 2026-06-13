@@ -115,12 +115,15 @@ EDGE_ELEMS=$(mk_set "${TUNNEL_EDGE_IPS:-}")
 log "nft egress filter installed (proxy uid ${PROXY_UID} = egress; workload = default-deny)"
 
 # ---- 3. start the forward proxy (drops to rcproxy via its config) ----------
+PROXY_LOG=/var/log/tinyproxy/tinyproxy.log
 install -d -m 755 -o "$PROXY_USER" -g "$PROXY_USER" /var/log/tinyproxy /run/tinyproxy
 # -d keeps tinyproxy in the foreground (deterministic across versions, some of
-# which daemonize by default); we background it ourselves so it survives the
-# exec into the workload as a child of PID 1. It still setuids to rcproxy via
-# the User/Group directives in the config.
-tinyproxy -d -c /etc/tinyproxy/tinyproxy.conf &
+# which daemonize by default) and makes it log to the console; we redirect that
+# to a world-readable file so `egress-log` (run as dev) can show which hostnames
+# the proxy blocked, then background it so it survives the exec into the workload
+# as a child of PID 1. It still setuids to rcproxy via the config's User/Group.
+: > "$PROXY_LOG"; chmod 644 "$PROXY_LOG"
+tinyproxy -d -c /etc/tinyproxy/tinyproxy.conf >> "$PROXY_LOG" 2>&1 &
 for _ in $(seq 1 25); do
     if (exec 3<>"/dev/tcp/127.0.0.1/${PROXY_PORT}") 2>/dev/null; then break; fi
     sleep 0.2

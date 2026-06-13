@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# egress-log — show egress requests the proxy BLOCKED (hostnames not in
+# WHITELIST_HOSTS), so you can spot legitimate ones to allowlist.
+#
+#   egress-log            distinct blocked hostnames seen so far, with counts
+#   egress-log -f         live stream of blocked hostnames as they happen
+#   egress-log -a         tail the full proxy log (allowed + blocked + errors)
+#
+# Reads the tinyproxy log (world-readable). Run it via:
+#   podman exec -it --user dev <container> egress-log
+set -euo pipefail
+
+LOG=/var/log/tinyproxy/tinyproxy.log
+# tinyproxy logs a denial as: ... Proxying refused on filtered domain "host"
+DENY_RE='refused on filtered domain'
+EXTRACT='s/.*filtered domain "([^"]+)".*/\1/'
+
+if [[ ! -r "$LOG" ]]; then
+    echo "egress-log: $LOG not readable — is the egress proxy running?" >&2
+    exit 1
+fi
+
+case "${1:-}" in
+    -f|--follow)
+        echo "# streaming blocked hostnames (Ctrl-C to stop)…" >&2
+        tail -n0 -F "$LOG" | grep --line-buffered -i "$DENY_RE" | sed -uE "$EXTRACT"
+        ;;
+    -a|--all)
+        tail -F "$LOG"
+        ;;
+    -h|--help)
+        sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+        ;;
+    "")
+        if ! grep -qi "$DENY_RE" "$LOG" 2>/dev/null; then
+            echo "(no blocked requests logged yet)"
+            exit 0
+        fi
+        echo "count  blocked-hostname  (add legitimate ones to WHITELIST_HOSTS)"
+        grep -i "$DENY_RE" "$LOG" | sed -E "$EXTRACT" | sort | uniq -c | sort -rn
+        ;;
+    *)
+        echo "egress-log: unknown argument '$1' (try -f, -a, -h)" >&2
+        exit 1
+        ;;
+esac

@@ -209,6 +209,10 @@ RUN chmod +x /usr/local/bin/rc-notify
 COPY container/bin/run-claude /usr/local/bin/run-claude
 RUN chmod +x /usr/local/bin/run-claude
 
+# egress-log: show hostnames the egress proxy blocked (to spot what to allowlist).
+COPY container/bin/egress-log /usr/local/bin/egress-log
+RUN chmod +x /usr/local/bin/egress-log
+
 # Egress firewall entrypoint + proxy config — COPY'd LAST so iterating on them
 # doesn't invalidate the heavy nvim/mise/claude layers above. Both are also
 # bind-mounted by launch.sh at runtime (so edits apply with no rebuild); the
