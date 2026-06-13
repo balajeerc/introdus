@@ -334,8 +334,11 @@ base_image_is_stale() {
     local created epoch newest
     created=$(podman image inspect --format '{{.Created}}' "$BASE_IMAGE_NAME" 2>/dev/null) || return 1
     epoch=$(date -d "$created" +%s 2>/dev/null) || return 0
-    newest=$(find "$DOCKERFILE" "$SCRIPT_DIR/container" -type f -printf '%T@\n' 2>/dev/null \
-        | sort -rn | head -1 | cut -d. -f1)
+    # Only files BAKED into the image count. container/egress/* and setup.sh are
+    # bind-mounted at runtime, so editing them applies on the next launch with no
+    # rebuild — don't trigger one for them.
+    newest=$(find "$DOCKERFILE" "$SCRIPT_DIR/container/bin" "$SCRIPT_DIR/container/claude" \
+        -type f -printf '%T@\n' 2>/dev/null | sort -rn | head -1 | cut -d. -f1)
     [[ -n "$newest" && "$newest" -gt "$epoch" ]]
 }
 

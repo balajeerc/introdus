@@ -103,13 +103,13 @@ RUN userdel --remove ubuntu 2>/dev/null || true \
  && useradd --create-home --uid 1000 --shell /bin/bash dev \
  && useradd --system   --uid 1001 --shell /usr/sbin/nologin rcproxy
 
-# ---- egress firewall + proxy config (root) ---------------------------------
-COPY container/egress/tinyproxy.conf /etc/tinyproxy/tinyproxy.conf
-COPY container/egress/firewall-entrypoint.sh /usr/local/bin/firewall-entrypoint.sh
-RUN chmod +x /usr/local/bin/firewall-entrypoint.sh \
- && mkdir -p /etc/tinyproxy \
+# ---- egress proxy: runtime dirs --------------------------------------------
+# The proxy config + firewall entrypoint themselves are COPY'd at the END of
+# this file (after the heavy toolchain layers) so iterating on them doesn't
+# invalidate the nvim/mise/claude cache. Here we just prep the dirs.
+RUN mkdir -p /etc/tinyproxy /var/log/tinyproxy /run/tinyproxy \
  && : > /etc/tinyproxy/egress-allowlist.txt \
- && chown rcproxy:rcproxy /etc/tinyproxy/egress-allowlist.txt
+ && chown rcproxy:rcproxy /etc/tinyproxy/egress-allowlist.txt /var/log/tinyproxy /run/tinyproxy
 
 # apt through the proxy at runtime (apt ignores HTTP_PROXY; needs its own conf).
 # Build-time apt above already ran with direct egress and is unaffected.
@@ -208,6 +208,14 @@ RUN chmod +x /usr/local/bin/rc-notify
 # Code with --dangerously-skip-permissions. Self-drops to dev if run as root.
 COPY container/bin/run-claude /usr/local/bin/run-claude
 RUN chmod +x /usr/local/bin/run-claude
+
+# Egress firewall entrypoint + proxy config — COPY'd LAST so iterating on them
+# doesn't invalidate the heavy nvim/mise/claude layers above. Both are also
+# bind-mounted by launch.sh at runtime (so edits apply with no rebuild); the
+# baked copies are a fallback for running the image directly.
+COPY container/egress/tinyproxy.conf /etc/tinyproxy/tinyproxy.conf
+COPY container/egress/firewall-entrypoint.sh /usr/local/bin/firewall-entrypoint.sh
+RUN chmod +x /usr/local/bin/firewall-entrypoint.sh
 
 # VS Code Dev Containers reads this label on "Attach to Running Container" and
 # runs its server, terminals, and extensions as `dev` instead of the container's
