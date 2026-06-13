@@ -235,6 +235,22 @@ fi
 GIT_HOST="$(echo "$REPO_URL" | sed -E 's#^(git@|ssh://git@|https://)##; s#[:/].*$##')"
 CONTAINER_WHITELIST_HOSTS="$GIT_HOST ${WHITELIST_HOSTS:-} $TUNNEL_HOSTS"
 
+# Generate the proxy hostname allowlist on the host and bind-mount it into the
+# container (below). Because launch.sh runs on every invocation and the
+# entrypoint reads this file at start, editing WHITELIST_HOSTS in .env and then
+# a plain `./launch.sh` (which `podman start`s the existing container, re-running
+# the entrypoint) updates the allowlist WITHOUT --recreate — so you don't have to
+# destroy the container (and its apt-installed packages) just to allow a new host.
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/remote-code-harness"
+mkdir -p "$STATE_DIR"
+ALLOWLIST_FILE="$STATE_DIR/allowlist-${CONTAINER_NAME}.txt"
+: > "$ALLOWLIST_FILE"
+for _h in $CONTAINER_WHITELIST_HOSTS; do
+    _esc=$(printf '%s' "$_h" | sed 's/[.[\*^$()+?{|]/\\&/g')
+    printf '(^|\\.)%s$\n' "$_esc" >> "$ALLOWLIST_FILE"
+done
+chmod 644 "$ALLOWLIST_FILE"
+
 # ---- --update: in-container refresh ----------------------------------------
 if $UPDATE; then
     if ! podman container inspect -f '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null | grep -qi true; then
@@ -387,6 +403,7 @@ if $VERIFY; then
         --env "REPO_URL=$REPO_URL" \
         --volume "$ENTRYPOINT_SCRIPT:/usr/local/bin/firewall-entrypoint.sh:ro" \
         --volume "$TINYPROXY_CONF:/etc/tinyproxy/tinyproxy.conf:ro" \
+        --volume "$ALLOWLIST_FILE:/etc/tinyproxy/egress-allowlist.txt:ro" \
         "$IMAGE_NAME" /usr/local/bin/firewall-entrypoint.sh
     echo "==> verify passed"
     exit 0
@@ -492,6 +509,7 @@ declare -a PODMAN_ARGS=(
     --volume "$SETUP_SCRIPT:/setup.sh:ro"
     --volume "$ENTRYPOINT_SCRIPT:/usr/local/bin/firewall-entrypoint.sh:ro"
     --volume "$TINYPROXY_CONF:/etc/tinyproxy/tinyproxy.conf:ro"
+    --volume "$ALLOWLIST_FILE:/etc/tinyproxy/egress-allowlist.txt:ro"
     ${SHARED_DATA_VOLUME_ARGS[@]:+"${SHARED_DATA_VOLUME_ARGS[@]}"}
     ${NOTIFY_VOLUME_ARGS[@]:+"${NOTIFY_VOLUME_ARGS[@]}"}
     --env "PROJECT_NAME=$PROJECT_NAME"

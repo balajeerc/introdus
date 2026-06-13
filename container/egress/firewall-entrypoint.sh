@@ -73,14 +73,20 @@ command -v tinyproxy  >/dev/null || { echo "FATAL: tinyproxy not found in image"
 # Anchor each host as an extended regex so "github.com" matches "github.com" and
 # "api.github.com" but not "notgithub.com" or "github.com.evil.test".
 ALLOWLIST=/etc/tinyproxy/egress-allowlist.txt
-: > "$ALLOWLIST"
-for h in ${WHITELIST_HOSTS:-}; do
-    esc=$(printf '%s' "$h" | sed 's/[.[\*^$()+?{|]/\\&/g')
-    printf '(^|\\.)%s$\n' "$esc" >> "$ALLOWLIST"
-done
-hosts_n=$(grep -c . "$ALLOWLIST" || true)
-chown "$PROXY_USER":"$PROXY_USER" "$ALLOWLIST"
-log "proxy allowlist: ${hosts_n} hostname pattern(s) from WHITELIST_HOSTS"
+if [[ -s "$ALLOWLIST" ]]; then
+    # Pre-populated by launch.sh (bind-mounted, read-only). Use as-is: this is
+    # what lets editing WHITELIST_HOSTS + a plain relaunch update the allowlist
+    # without --recreate (launch.sh rewrites this host file each run).
+    log "proxy allowlist: $(grep -c . "$ALLOWLIST" 2>/dev/null || echo 0) pattern(s) (from launch.sh)"
+else
+    # Fallback (e.g. running the image directly, no mount): build from the env.
+    for h in ${WHITELIST_HOSTS:-}; do
+        esc=$(printf '%s' "$h" | sed 's/[.[\*^$()+?{|]/\\&/g')
+        printf '(^|\\.)%s$\n' "$esc" >> "$ALLOWLIST"
+    done
+    chown "$PROXY_USER":"$PROXY_USER" "$ALLOWLIST" 2>/dev/null || true
+    log "proxy allowlist: $(grep -c . "$ALLOWLIST" 2>/dev/null || echo 0) pattern(s) from WHITELIST_HOSTS"
+fi
 
 # ---- 2. nft default-deny egress, segregated by uid -------------------------
 # resolver IPs come from the container's own /etc/resolv.conf (pasta sets it).
