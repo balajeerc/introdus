@@ -65,7 +65,10 @@ run_workload() {
     fi
 
     log "phase 3/3: starting workload (as '$WORK_USER')"
-    exec run_as_dev /bin/bash /setup.sh serve
+    # Inline the setpriv exec rather than `exec run_as_dev …`: exec replaces the
+    # process with an external program and cannot exec a shell function.
+    exec setpriv --reuid "$WORK_USER" --regid "$WORK_USER" --init-groups -- \
+        env HOME="$WORK_HOME" USER="$WORK_USER" LOGNAME="$WORK_USER" /bin/bash /setup.sh serve
 }
 
 # ---- 0a. ensure the persistent volume is owned by dev ----------------------
