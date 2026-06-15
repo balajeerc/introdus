@@ -106,6 +106,10 @@ set +a
 : "${WEBAPP_PORT:?WEBAPP_PORT must be set}"
 
 ON_LAUNCH_SCRIPT="${ON_LAUNCH_SCRIPT:-}"
+# Runs as ROOT, from the repo dir, after the clone and before ON_LAUNCH_SCRIPT.
+# Multi-line is fine (executed as a script). Use for root-only launch setup
+# (apt install, starting a system service like clickhouse-server, etc.).
+ON_LAUNCH_ROOT_SCRIPT="${ON_LAUNCH_ROOT_SCRIPT:-}"
 ENABLE_NOTIFY_SH_ALERTS="${ENABLE_NOTIFY_SH_ALERTS:-false}"
 NTFY_SH_TOPIC="${NTFY_SH_TOPIC:-}"
 if [[ "$ENABLE_NOTIFY_SH_ALERTS" == "true" && -z "$NTFY_SH_TOPIC" ]]; then
@@ -484,7 +488,8 @@ echo
 echo "==> launching container $CONTAINER_NAME (linux rootless)"
 echo "    repo:    $REPO_URL"
 echo "    webapp:  port $WEBAPP_PORT"
-[[ -n "$ON_LAUNCH_SCRIPT" ]] && echo "    on-launch: $ON_LAUNCH_SCRIPT"
+[[ -n "$ON_LAUNCH_ROOT_SCRIPT" ]] && echo "    on-launch (root): set"
+[[ -n "$ON_LAUNCH_SCRIPT" ]] && echo "    on-launch (dev): set"
 $DISABLE_NETWORK_BLOCK && echo "    WARNING: --disable-network-block — egress filtering OFF"
 
 if $CONTAINER_EXISTS; then
@@ -525,6 +530,7 @@ declare -a PODMAN_ARGS=(
     --env "REPO_URL=$REPO_URL"
     --env "WEBAPP_PORT=$WEBAPP_PORT"
     --env "ON_LAUNCH_SCRIPT=$ON_LAUNCH_SCRIPT"
+    --env "ON_LAUNCH_ROOT_SCRIPT=$ON_LAUNCH_ROOT_SCRIPT"
     --env "CANARY_BLOCKED_IP=$CANARY_BLOCKED_IP"
     --env "HOST_OS=linux"
     --env "DISABLE_NETWORK_BLOCK=$DISABLE_NETWORK_BLOCK"

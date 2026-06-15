@@ -25,19 +25,35 @@ CANARY_BLOCKED_IP="${CANARY_BLOCKED_IP:-93.184.216.34}"
 log()  { printf '\n==> [egress] %s\n' "$*"; }
 warn() { printf '    [egress] warning: %s\n' "$*" >&2; }
 
-# Hand off to the workload as the unprivileged dev user. setpriv drops the uid,
-# the supplementary groups, and every capability/bounding-set bit, so the
-# workload starts with no privilege and (no-new-privileges) can never escalate.
-exec_workload() {
-    log "dropping to '$WORK_USER' and starting /setup.sh"
-    # reuid to a non-root user clears the permitted/effective cap sets, and the
-    # container's no-new-privileges flag stops dev from ever regaining them, so
-    # dev is fully unprivileged without touching the bounding set (editing which
-    # would need CAP_SETPCAP that we deliberately don't grant). setpriv does not
-    # reset the environment, so set HOME/USER explicitly or dev's tools (mise,
-    # git, claude) look in /root, which dev cannot write.
-    exec setpriv --reuid "$WORK_USER" --regid "$WORK_USER" --init-groups -- \
-        env HOME="$WORK_HOME" USER="$WORK_USER" LOGNAME="$WORK_USER" /bin/bash /setup.sh
+# Run a command as the unprivileged dev user. reuid to a non-root user clears
+# the permitted/effective cap sets, and the container's no-new-privileges flag
+# stops dev from ever regaining them, so dev is fully unprivileged without
+# touching the bounding set (editing which would need CAP_SETPCAP that we
+# deliberately don't grant). setpriv does not reset the environment, so set
+# HOME/USER explicitly or dev's tools (mise, git, claude) look in /root.
+run_as_dev() {
+    setpriv --reuid "$WORK_USER" --regid "$WORK_USER" --init-groups -- \
+        env HOME="$WORK_HOME" USER="$WORK_USER" LOGNAME="$WORK_USER" "$@"
+}
+
+# Orchestrate the launch in phases so optional root-owned setup can run AFTER the
+# repo is cloned (so it can use repo files) but BEFORE the dev workload starts:
+#   1. setup.sh prepare  — clone + --pull, as dev (repo ends up dev-owned)
+#   2. ON_LAUNCH_ROOT_SCRIPT — as root, from the repo dir (e.g. start a DB server)
+#   3. setup.sh serve    — tunnel + ON_LAUNCH_SCRIPT (dev) + banner + idle
+run_workload() {
+    log "phase 1/3: clone + repo prep (as '$WORK_USER')"
+    run_as_dev /bin/bash /setup.sh prepare
+
+    if [[ -n "${ON_LAUNCH_ROOT_SCRIPT:-}" ]]; then
+        local wd="${WORK_HOME}/work/${PROJECT_NAME:-}"
+        cd "$wd" 2>/dev/null || cd "$WORK_HOME"
+        log "phase 2/3: running ON_LAUNCH_ROOT_SCRIPT as root (cwd=$(pwd))"
+        bash -c "$ON_LAUNCH_ROOT_SCRIPT" || warn "ON_LAUNCH_ROOT_SCRIPT exited non-zero"
+    fi
+
+    log "phase 3/3: starting workload (as '$WORK_USER')"
+    exec run_as_dev /bin/bash /setup.sh serve
 }
 
 # ---- 0a. ensure the persistent volume is owned by dev ----------------------
@@ -61,7 +77,7 @@ fi
 # ---- escape hatch ----------------------------------------------------------
 if [[ "$DISABLE_NETWORK_BLOCK" == "true" ]]; then
     log "DISABLE_NETWORK_BLOCK=true — NO firewall, NO proxy (unfiltered egress)"
-    exec_workload
+    run_workload
 fi
 
 command -v nft        >/dev/null || { echo "FATAL: nft not found in image" >&2; exit 1; }
@@ -166,4 +182,4 @@ if [[ "${VERIFY_ONLY:-false}" == "true" ]]; then
     log "VERIFY_ONLY=true — egress filter + proxy verified; exiting without workload"
     exit 0
 fi
-exec_workload
+run_workload
