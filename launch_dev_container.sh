@@ -310,9 +310,13 @@ fi
 
 # ---- --reset: confirm destroy up-front -------------------------------------
 
-if ! $VERIFY && $RESET; then
-    if podman volume inspect "$VOLUME_NAME" >/dev/null 2>&1 \
-       && podman image inspect "$BASE_IMAGE_NAME" >/dev/null 2>&1; then
+# --reset WIPES the persistent volume — everything under /home/dev: the repo,
+# uncommitted changes, branches, stashes, installed packages. ALWAYS require a
+# typed confirmation (even if the dirty-scan below finds nothing — the scan is
+# best-effort and must never be the sole guard on a destructive wipe).
+if ! $VERIFY && $RESET && podman volume inspect "$VOLUME_NAME" >/dev/null 2>&1; then
+    DIRTY_REPORT=""
+    if podman image inspect "$BASE_IMAGE_NAME" >/dev/null 2>&1; then
         echo "==> --reset: scanning /home/dev/work for uncommitted/unpushed git state"
         DIRTY_REPORT=$(
             podman run --rm --network=none \
@@ -320,6 +324,10 @@ if ! $VERIFY && $RESET; then
                 "$BASE_IMAGE_NAME" \
                 bash -c '
 set +e
+# GIT_CONFIG_GLOBAL to a writable path so safe.directory applies regardless of
+# HOME (the repo is owned by dev/uid-1000; this scan runs as root). safe.directory
+# is ONLY honored from system/global config, never -c, so --global is required.
+export GIT_CONFIG_GLOBAL=/tmp/scan-gitconfig
 git config --global --add safe.directory "*" 2>/dev/null
 while IFS= read -r gitpath; do
     repo=${gitpath%/.git}
@@ -341,14 +349,20 @@ while IFS= read -r gitpath; do
 done < <(find /home/dev/work -maxdepth 5 -name .git \( -type d -o -type f \) 2>/dev/null)
 ' 2>/dev/null
         )
-        if [[ -n "$DIRTY_REPORT" ]]; then
-            echo
-            echo "$DIRTY_REPORT"
-            echo "The above state in /home/dev/work would be LOST on --reset (volume wipe)."
-            read -r -p "Type 'yes' to proceed: " confirm
-            [[ "$confirm" == "yes" ]] || { echo "aborted."; exit 1; }
-        fi
     fi
+    echo
+    echo "  !!  --reset will PERMANENTLY WIPE volume $VOLUME_NAME — everything under"
+    echo "      /home/dev: the repo, uncommitted changes, branches, installed packages."
+    if [[ -n "$DIRTY_REPORT" ]]; then
+        echo
+        echo "  Uncommitted / unpushed git state that would be LOST:"
+        echo "$DIRTY_REPORT" | sed 's/^/    /'
+    else
+        echo "      (no uncommitted git state detected — but double-check anyway.)"
+    fi
+    echo
+    read -r -p "  Type 'yes' to permanently wipe it (anything else aborts): " confirm
+    [[ "$confirm" == "yes" ]] || { echo "aborted."; exit 1; }
 fi
 
 # ---- base image ------------------------------------------------------------
@@ -438,7 +452,10 @@ if $RESET; then
     podman volume rm -f "$VOLUME_NAME" >/dev/null 2>&1 || true
 elif $RECREATE; then
     if podman container inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
-        echo "==> --recreate: removing container $CONTAINER_NAME (volume $VOLUME_NAME preserved)"
+        echo "==> --recreate: removing container $CONTAINER_NAME"
+        echo "    (volume $VOLUME_NAME preserved — your repo, git state, and Claude"
+        echo "     state under /home/dev survive; apt-installed packages and other"
+        echo "     ephemeral container state do NOT)"
         podman rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
     fi
 fi
