@@ -110,6 +110,8 @@ ON_LAUNCH_SCRIPT="${ON_LAUNCH_SCRIPT:-}"
 # Multi-line is fine (executed as a script). Use for root-only launch setup
 # (apt install, starting a system service like clickhouse-server, etc.).
 ON_LAUNCH_ROOT_SCRIPT="${ON_LAUNCH_ROOT_SCRIPT:-}"
+# Safety cap (seconds) so a hung ON_LAUNCH_ROOT_SCRIPT can't block startup.
+ON_LAUNCH_ROOT_TIMEOUT="${ON_LAUNCH_ROOT_TIMEOUT:-600}"
 ENABLE_NOTIFY_SH_ALERTS="${ENABLE_NOTIFY_SH_ALERTS:-false}"
 NTFY_SH_TOPIC="${NTFY_SH_TOPIC:-}"
 if [[ "$ENABLE_NOTIFY_SH_ALERTS" == "true" && -z "$NTFY_SH_TOPIC" ]]; then
@@ -531,6 +533,7 @@ declare -a PODMAN_ARGS=(
     --env "WEBAPP_PORT=$WEBAPP_PORT"
     --env "ON_LAUNCH_SCRIPT=$ON_LAUNCH_SCRIPT"
     --env "ON_LAUNCH_ROOT_SCRIPT=$ON_LAUNCH_ROOT_SCRIPT"
+    --env "ON_LAUNCH_ROOT_TIMEOUT=$ON_LAUNCH_ROOT_TIMEOUT"
     --env "CANARY_BLOCKED_IP=$CANARY_BLOCKED_IP"
     --env "HOST_OS=linux"
     --env "DISABLE_NETWORK_BLOCK=$DISABLE_NETWORK_BLOCK"

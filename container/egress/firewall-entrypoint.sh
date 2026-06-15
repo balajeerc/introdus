@@ -48,8 +48,20 @@ run_workload() {
     if [[ -n "${ON_LAUNCH_ROOT_SCRIPT:-}" ]]; then
         local wd="${WORK_HOME}/work/${PROJECT_NAME:-}"
         cd "$wd" 2>/dev/null || cd "$WORK_HOME"
-        log "phase 2/3: running ON_LAUNCH_ROOT_SCRIPT as root (cwd=$(pwd))"
-        bash -c "$ON_LAUNCH_ROOT_SCRIPT" || warn "ON_LAUNCH_ROOT_SCRIPT exited non-zero"
+        local t="${ON_LAUNCH_ROOT_TIMEOUT:-600}"
+        log "phase 2/3: running ON_LAUNCH_ROOT_SCRIPT as root (cwd=$(pwd), timeout ${t}s)"
+        # Never let a failing OR hanging root script block startup: a non-zero
+        # exit is logged and we continue; a script that doesn't return is killed
+        # by `timeout` (124) and we continue. Either way the dev workload starts.
+        # (Long-running services should be backgrounded/daemonized so the script
+        # returns promptly; the timeout is only a safety net.)
+        local rc=0
+        timeout "$t" bash -c "$ON_LAUNCH_ROOT_SCRIPT" || rc=$?
+        if [[ $rc -eq 124 ]]; then
+            warn "ON_LAUNCH_ROOT_SCRIPT timed out after ${t}s — continuing launch without it"
+        elif [[ $rc -ne 0 ]]; then
+            warn "ON_LAUNCH_ROOT_SCRIPT exited non-zero ($rc) — continuing launch"
+        fi
     fi
 
     log "phase 3/3: starting workload (as '$WORK_USER')"
