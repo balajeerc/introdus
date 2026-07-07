@@ -95,8 +95,24 @@ if [[ "$DISABLE_NETWORK_BLOCK" == "true" ]]; then
     run_workload
 fi
 
-command -v nft        >/dev/null || { echo "FATAL: nft not found in image" >&2; exit 1; }
-command -v tinyproxy  >/dev/null || { echo "FATAL: tinyproxy not found in image" >&2; exit 1; }
+# Run tinyproxy via a copied binary, NEVER the packaged /usr/bin/tinyproxy: the
+# host's Canonical AppArmor profile (/etc/apparmor.d/tinyproxy, shipped on Ubuntu
+# 24.10+/26.04) attaches by exec PATH and so confines /usr/bin/tinyproxy inside
+# the container too — even with the container unconfined and even under
+# `apparmor=unconfined` (the profile transitions on exec regardless). That
+# profile only permits reading /etc/tinyproxy/tinyproxy.conf, so our custom
+# `Filter /etc/tinyproxy/egress-allowlist.txt` gets EACCES and the proxy never
+# starts. A copy at a path no host profile matches runs unconfined — correct,
+# since the egress guarantee comes from the in-container nft filter + this proxy,
+# never the host's tinyproxy profile. The Dockerfile bakes this copy; we also
+# (re)create it here at runtime so an already-built container picks up the fix on
+# a plain relaunch (no --recreate) — the entrypoint is bind-mounted, /usr/local/bin
+# is root-writable. Hardcopy (not symlink): AppArmor matches the resolved path.
+PROXY_BIN=/usr/local/bin/rc-egress-proxy
+[[ -x "$PROXY_BIN" ]] || cp /usr/bin/tinyproxy "$PROXY_BIN" 2>/dev/null || PROXY_BIN=tinyproxy
+
+command -v nft          >/dev/null || { echo "FATAL: nft not found in image" >&2; exit 1; }
+command -v "$PROXY_BIN" >/dev/null || { echo "FATAL: tinyproxy not found in image" >&2; exit 1; }
 
 # ---- 1. (re)generate the proxy hostname allowlist from WHITELIST_HOSTS ------
 # WHITELIST_HOSTS is the same whitespace-separated hostname list the previous
@@ -156,7 +172,7 @@ install -d -m 755 -o "$PROXY_USER" -g "$PROXY_USER" /var/log/tinyproxy /run/tiny
 # the proxy blocked, then background it so it survives the exec into the workload
 # as a child of PID 1. It still setuids to rcproxy via the config's User/Group.
 : > "$PROXY_LOG"; chmod 644 "$PROXY_LOG"
-tinyproxy -d -c /etc/tinyproxy/tinyproxy.conf >> "$PROXY_LOG" 2>&1 &
+"$PROXY_BIN" -d -c /etc/tinyproxy/tinyproxy.conf >> "$PROXY_LOG" 2>&1 &
 for _ in $(seq 1 25); do
     if (exec 3<>"/dev/tcp/127.0.0.1/${PROXY_PORT}") 2>/dev/null; then break; fi
     sleep 0.2

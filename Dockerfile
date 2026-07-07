@@ -111,6 +111,20 @@ RUN mkdir -p /etc/tinyproxy /var/log/tinyproxy /run/tinyproxy \
  && : > /etc/tinyproxy/egress-allowlist.txt \
  && chown rcproxy:rcproxy /etc/tinyproxy/egress-allowlist.txt /var/log/tinyproxy /run/tinyproxy
 
+# Run tinyproxy from a copied path, NOT the packaged /usr/bin/tinyproxy.
+# Ubuntu 24.10+ (and 26.04 on the host) ships /etc/apparmor.d/tinyproxy, a
+# Canonical AppArmor profile attached to the binary PATH "/usr/bin/tinyproxy".
+# AppArmor is enforced host-wide by the kernel on the exec path, so it confines
+# the containerized binary too — even with the container itself unconfined and
+# even under `apparmor=unconfined` (the profile transitions on exec regardless).
+# That profile only permits reading /etc/tinyproxy/tinyproxy.conf, so our custom
+# `Filter /etc/tinyproxy/egress-allowlist.txt` gets EACCES and the proxy never
+# starts. Executing an identical binary from a path no host profile matches runs
+# it unconfined inside the container — which is correct: the container's egress
+# guarantee comes from the in-container nft filter + this proxy, never from the
+# host's tinyproxy profile. Hardcopy (not symlink) so AppArmor sees a new path.
+RUN cp /usr/bin/tinyproxy /usr/local/bin/rc-egress-proxy
+
 # apt through the proxy at runtime (apt ignores HTTP_PROXY; needs its own conf).
 # Build-time apt above already ran with direct egress and is unaffected.
 RUN printf '%s\n' \
