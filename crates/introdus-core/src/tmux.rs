@@ -47,6 +47,18 @@ pub fn new_window(
     c.arg(command).run()
 }
 
+/// Kill a specific window (`session:window`) if present; ignores absence.
+pub fn kill_window(session: &str, window: &str) -> Result<()> {
+    let target = format!("{session}:{window}");
+    if tmux()
+        .args(["list-windows", "-t", session, "-F", "#{window_name}"])
+        .ok()
+    {
+        let _ = tmux().args(["kill-window", "-t", &target]).run();
+    }
+    Ok(())
+}
+
 /// Kill a session if it exists.
 pub fn kill_session(session: &str) -> Result<()> {
     if has_session(session) {

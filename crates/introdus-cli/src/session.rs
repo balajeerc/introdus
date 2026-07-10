@@ -62,7 +62,10 @@ fn ensure_session_name(config: &mut Config, env: &Path) -> Result<String> {
 /// Build the shell command a tmux window runs: `exec '<bin>' <sub>` so the
 /// window's shell is replaced by introdus (the window closes when it exits).
 fn window_cmd(bin: &Path, sub: &str) -> String {
-    format!("exec {} {sub}", shell_quote(&bin.to_string_lossy()))
+    format!(
+        "exec {} {sub}",
+        crate::util::shell_quote(&bin.to_string_lossy())
+    )
 }
 
 /// Attach the terminal to `session` (never returns on success).
@@ -74,20 +77,9 @@ fn current_exe() -> Result<PathBuf> {
     std::env::current_exe().context("cannot determine the introdus binary path")
 }
 
-/// Single-quote a string for safe embedding in a `sh -c` command.
-fn shell_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn shell_quote_escapes() {
-        assert_eq!(shell_quote("/opt/introdus"), "'/opt/introdus'");
-        assert_eq!(shell_quote("a'b"), r"'a'\''b'");
-    }
 
     #[test]
     fn window_cmd_execs_binary() {

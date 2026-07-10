@@ -2,13 +2,15 @@
 //! Walks the user through the required `.env` fields, the agent checklist, and
 //! deploy-key setup, then writes the project's `.env`.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use inquire::{Confirm, CustomType, MultiSelect, Text};
 use introdus_core::agents::{self, Agent};
 use introdus_core::process::Cmd;
 use introdus_core::Config;
+
+use crate::util::expand_tilde;
 
 /// Run the wizard for a project rooted at `project_dir`, writing `.env` and
 /// returning the resulting config.
@@ -164,15 +166,6 @@ fn generate_deploy_key(path: &Path, repo_url: &str) -> Result<()> {
     Ok(())
 }
 
-fn expand_tilde(raw: &str) -> PathBuf {
-    if let Some(rest) = raw.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(rest);
-        }
-    }
-    PathBuf::from(raw)
-}
-
 fn ask_nonempty(prompt: &str) -> Result<String> {
     loop {
         let value = Text::new(prompt).prompt()?;
@@ -207,13 +200,5 @@ mod tests {
         // codex's hosts (api.openai.com, ...) were appended.
         assert!(c.whitelist_hosts.contains(&"api.openai.com".to_owned()));
         assert!(c.whitelist_hosts.len() > before);
-    }
-
-    #[test]
-    fn expand_tilde_resolves_home() {
-        if let Some(home) = dirs::home_dir() {
-            assert_eq!(expand_tilde("~/x/y"), home.join("x/y"));
-        }
-        assert_eq!(expand_tilde("/abs/p"), PathBuf::from("/abs/p"));
     }
 }

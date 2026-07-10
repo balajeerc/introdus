@@ -6,9 +6,12 @@ mod context;
 mod image;
 mod launch;
 mod lifecycle;
+mod menu;
+mod menu_actions;
 mod preflight;
 mod run;
 mod session;
+mod util;
 mod wizard;
 
 use anyhow::Result;
@@ -86,7 +89,7 @@ fn main() -> Result<()> {
         Command::Verify => launch::run_verify(),
         Command::Update => launch::run_update(),
         Command::RebuildBase => launch::run_rebuild_base(),
-        Command::Menu => not_yet("menu"),
+        Command::Menu => menu::run(),
         Command::NotifyHost => not_yet("notify-host"),
         Command::NotifyListen => not_yet("notify-listen"),
         Command::Install => not_yet("install"),

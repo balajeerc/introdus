@@ -181,8 +181,14 @@ introdus install            # put binary on PATH + set up services (was host_ins
       with no `.env` runs the wizard, then launches. 29 tests; lint --full
       green. (Chose `inquire` over a from-scratch ratatui form engine —
       robust, small, works in tmux/SSH. TUI deps swapped in Cargo.toml.)
-- [ ] **M6 — TUI control panel + utilities.** All table rows above. **Commit**
-      per sub-group.
+- [x] **M6 — TUI control panel + utilities.** `menu.rs` (inquire `Select`
+      loop + status header) dispatching to `menu_actions.rs`: show tunnel URL,
+      toggle expose-webapp, enable ntfy, copy a host file into the container,
+      install an agent (runtime + persist + whitelist), launch an agent in a
+      tmux window, list blocked egress, add allowlist hosts (+regen +restart),
+      open root/dev terminals (new tmux windows), test notification, recreate,
+      reset. Shared `util.rs` (tilde/shell-quote). Wired to `introdus menu`.
+      29 tests; lint --full green.
 - [ ] **M7 — Notifications folded in.** `notify-host` + `notify-listen`
       subcommands; keep bash `rc-notify`. **Commit.**
 - [ ] **M8 — Host install / distribution.** `introdus install`; single-binary
