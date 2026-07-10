@@ -197,8 +197,15 @@ introdus install            # put binary on PATH + set up services (was host_ins
       mounts `/run/notify` and starts a `notify` tmux window with the project's
       notify env. In-container `rc-notify` stays bash. 32 tests; lint --full
       green. (ssh reverse-tunnel + systemd-unit installer → M8.)
-- [ ] **M8 — Host install / distribution.** `introdus install`; single-binary
-      release build (thin LTO, stripped). **Commit.**
+- [x] **M8 — Host install / distribution.** `install.rs`: `introdus install`
+      copies the running binary to `~/.local/bin` (XDG exec dir) + PATH
+      guidance — replacing `host_install.sh`'s symlink step. The notify
+      listener is per-session (tmux `notify` window), so no global systemd
+      service is needed for the local case. Release profile confirmed: a single
+      self-contained ~1.5M stripped binary (`cargo build --release`). All 11
+      subcommands wired (no stubs). 32 tests; lint --full green. (ssh
+      reverse-tunnel laptop-listener install remains a documented manual step
+      using `introdus notify-listen`.)
 - [ ] **M9 — Docs + cleanup.** README/docs/sample.env regenerated; retire old
       bash scripts (or thin shims); TODO. **Commit.**
 - [ ] **M10 — Final lint/security pass + end-to-end verification notes.**

@@ -4,6 +4,7 @@
 
 mod context;
 mod image;
+mod install;
 mod launch;
 mod lifecycle;
 mod menu;
@@ -93,14 +94,6 @@ fn main() -> Result<()> {
         Command::Menu => menu::run(),
         Command::NotifyHost => notify::run_host(),
         Command::NotifyListen => notify::run_listen(),
-        Command::Install => not_yet("install"),
+        Command::Install => install::run(),
     }
-}
-
-/// Placeholder until each subcommand lands in its milestone.
-fn not_yet(name: &str) -> Result<()> {
-    anyhow::bail!(
-        "`{} {name}` is not implemented yet — see PLAN.md",
-        introdus_core::BIN_NAME
-    )
 }
