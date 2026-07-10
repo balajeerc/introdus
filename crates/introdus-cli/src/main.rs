@@ -2,8 +2,18 @@
 //! harness. Runs on the container host; drives podman + tmux + a full-screen
 //! control TUI. See PLAN.md for the milestone roadmap.
 
+mod context;
+mod image;
+mod launch;
+mod lifecycle;
+mod preflight;
+mod run;
+
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
+
+use launch::LaunchOpts;
+use lifecycle::Lifecycle;
 
 /// introdus — launch and drive network-hardened dev containers for AI agents.
 #[derive(Debug, Parser)]
@@ -13,20 +23,40 @@ struct Cli {
     command: Option<Command>,
 }
 
+/// Flags shared by the launch-style subcommands.
+#[derive(Debug, Clone, Copy, Args)]
+struct LaunchArgs {
+    /// On next start, fast-forward the project repo (git fetch + pull --ff-only).
+    #[arg(long)]
+    pull: bool,
+    /// Run with NO egress filtering (all outbound permitted).
+    #[arg(long)]
+    disable_network_block: bool,
+}
+
+impl From<LaunchArgs> for LaunchOpts {
+    fn from(a: LaunchArgs) -> Self {
+        Self {
+            pull: a.pull,
+            disable_network_block: a.disable_network_block,
+        }
+    }
+}
+
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Ensure the tmux session, control TUI, and container are up (default).
-    Launch,
+    Launch(LaunchArgs),
     /// (internal) Run/start the podman container, streaming its logs.
-    Up,
+    Up(LaunchArgs),
     /// (internal) Render the control TUI in the main-control pane.
     Menu,
     /// Run the egress smoke test without starting the workload.
     Verify,
     /// Remove and recreate the container (keeps the /home/dev volume).
-    Recreate,
+    Recreate(LaunchArgs),
     /// Remove the container and wipe the /home/dev volume.
-    Reset,
+    Reset(LaunchArgs),
     /// In-container refresh: apt, mise, agents, LazyVim.
     Update,
     /// Rebuild the shared base image.
@@ -41,15 +71,18 @@ enum Command {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    match cli.command.unwrap_or(Command::Launch) {
-        Command::Launch => not_yet("launch"),
-        Command::Up => not_yet("up"),
+    match cli.command.unwrap_or(Command::Launch(LaunchArgs {
+        pull: false,
+        disable_network_block: false,
+    })) {
+        // M4 wraps Launch in the tmux session model; for now it launches directly.
+        Command::Launch(a) | Command::Up(a) => launch::run_launch(Lifecycle::Keep, a.into()),
+        Command::Recreate(a) => launch::run_launch(Lifecycle::Recreate, a.into()),
+        Command::Reset(a) => launch::run_launch(Lifecycle::Reset, a.into()),
+        Command::Verify => launch::run_verify(),
+        Command::Update => launch::run_update(),
+        Command::RebuildBase => launch::run_rebuild_base(),
         Command::Menu => not_yet("menu"),
-        Command::Verify => not_yet("verify"),
-        Command::Recreate => not_yet("recreate"),
-        Command::Reset => not_yet("reset"),
-        Command::Update => not_yet("update"),
-        Command::RebuildBase => not_yet("rebuild-base"),
         Command::NotifyHost => not_yet("notify-host"),
         Command::NotifyListen => not_yet("notify-listen"),
         Command::Install => not_yet("install"),

@@ -152,10 +152,18 @@ introdus install            # put binary on PATH + set up services (was host_ins
       layout so the Dockerfile's `COPY`s resolve) into a per-container assets
       dir that doubles as build context + runtime bind-mount source. 20 tests
       green; lint --full green.
-- [ ] **M3 — Launch orchestration (`up`).** Port `launch_dev_container.sh`:
-      preflight, base-image build, allowlist gen + bind-mount, `podman
-      run`/`start` with the full flag/env set, `--recreate/--reset/--verify/
-      --update/--rebuild-base`. Security-critical parity. **Commit.**
+- [x] **M3 — Launch orchestration (`up`).** Ported `launch_dev_container.sh`:
+      `preflight.rs` (linux/non-root/podman/pasta/rootless), `image.rs`
+      (base build/tag/stale-prune, staleness keyed on binary mtime),
+      `egress.rs` (git-host + allowlist regex escaping, tested against the
+      shell's `sed`), `context.rs` (names/assets/allowlist/tunnel-IP resolve),
+      `run.rs` (full `podman run` flag/env/mount set + `verify` + `update`),
+      `lifecycle.rs` (legacy/recreate/reset with the dirty-git scan + typed
+      confirm), `launch.rs` (end-to-end flow). CLI dispatches
+      launch/up/recreate/reset/verify/update/rebuild-base. 26 tests; lint
+      --full green. Deferred: `/run/notify` mount → M7; tmux-wrapping of
+      `launch` → M4. (Not yet run against a real podman build — user does
+      end-to-end at the end.)
 - [ ] **M4 — tmux session + `launch`.** Prereq checks, whimsical session
       naming, session/window creation, shell-window helpers. **Commit.**
 - [ ] **M5 — TUI wizard.** Replace `create-dev-container.sh`: guided `.env`
