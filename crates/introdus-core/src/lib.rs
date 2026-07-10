@@ -7,10 +7,14 @@
 //! (see PLAN.md).
 
 pub mod agents;
+pub mod assets;
 pub mod config;
 pub mod env_file;
 pub mod names;
 pub mod paths;
+pub mod podman;
+pub mod process;
+pub mod tmux;
 
 pub use config::Config;
 

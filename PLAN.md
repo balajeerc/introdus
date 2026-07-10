@@ -145,9 +145,13 @@ introdus install            # put binary on PATH + set up services (was host_ins
       (`paths.rs`); podman object naming + suffix hash (`names.rs`); agents
       registry ported to Rust (`agents.rs`). 11 unit tests green; lint --full
       green. New `SESSION_NAME` field added for the tmux model.
-- [ ] **M2 — Embedded assets + process wrappers.** `include_str!` the bash
-      core; materialize to state dir; `podman`/`tmux`/`git` command wrappers
-      with tests. **Commit.**
+- [x] **M2 — Embedded assets + process wrappers.** `process.rs` (`Cmd`:
+      logged spawn, stdout capture, exit-code mapping, unix `exec`);
+      `podman.rs` + `tmux.rs` thin wrappers. `assets.rs` embeds the 11-file
+      bash core via `include_str!` and materializes it (preserving the repo
+      layout so the Dockerfile's `COPY`s resolve) into a per-container assets
+      dir that doubles as build context + runtime bind-mount source. 20 tests
+      green; lint --full green.
 - [ ] **M3 — Launch orchestration (`up`).** Port `launch_dev_container.sh`:
       preflight, base-image build, allowlist gen + bind-mount, `podman
       run`/`start` with the full flag/env set, `--recreate/--reset/--verify/
