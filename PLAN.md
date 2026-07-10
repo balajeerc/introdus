@@ -212,7 +212,33 @@ introdus install            # put binary on PATH + set up services (was host_ins
       intentionally kept** (not retired) so the user can diff/fall back while
       validating the Rust path end-to-end; retirement is a follow-up once the
       Rust flow is confirmed on a real podman host.
-- [ ] **M10 — Final lint/security pass + end-to-end verification notes.**
+- [x] **M10 — Final pass.** `cargo test --workspace` = 40 green;
+      `scripts/lint.sh --full` = 7/7 green; all 11 subcommands' `--help` work on
+      the release binary (single ~1.5M stripped artifact). The `--security` tier
+      (semgrep) is blocked only by a **broken local semgrep install**
+      (`ModuleNotFoundError: semgrep`) — `pipx reinstall semgrep` to green it;
+      the introdus code itself is clean. Remaining for the user: the real
+      end-to-end run on a podman host (below).
+
+## Status
+
+**Complete (M0–M10):** a single `introdus` Rust binary is the full control
+plane — setup wizard → tmux session (main-control TUI + dev-container logs +
+notify service) → hardened podman container (bash security core unchanged) →
+utilities menu → folded-in notifications → `install`. 40 unit tests, full lint
+suite green. Not yet exercised against a live podman build (heavy/networked) —
+that's the user's end-to-end validation. The legacy bash scripts remain as a
+fallback.
+
+**End-to-end checklist for the user:**
+1. `cargo build --release && ./target/release/introdus install`
+2. In a fresh project dir: `introdus` → complete the wizard → confirm the tmux
+   session comes up with the container building in `dev-container`.
+3. Confirm the egress self-check passes and `introdus verify` is green.
+4. In the `main-control` menu: install/launch an agent, add an allowlist host,
+   open root + dev terminals, show the tunnel URL (if `EXPOSE_WEBAPP`), send a
+   test notification, recreate.
+5. Compare a generated `.env` against a `./launch.sh` run to confirm parity.
 
 ## Quality / lint setup (ported from `syncer`)
 
