@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# install-agents — install the coding agents selected in the wizard.
+#
+# Runs INSIDE the container as the `dev` user, invoked by setup.sh during the
+# prepare phase (after the egress filter + proxy are already up, so pnpm and any
+# vendor installer reach the network only through the hostname allowlist).
+#
+# Driven by $INSTALL_AGENTS (space-separated agent ids, e.g. "claude codex pi").
+# Idempotent: an already-installed agent is skipped, so it is safe to run on
+# every container start. Never fatal — a single agent that fails to install logs
+# a warning and the others still proceed (and the container still comes up).
+#
+# Supply-chain posture (matches the wizard's promise):
+#   - npm-published agents: `pnpm add -g --ignore-scripts <pkg>` — NO package
+#     lifecycle scripts run. If an agent needs a native postinstall to be fully
+#     functional, that step is deliberately skipped; re-run by hand with the
+#     build allowed if you trust it.
+#   - claude is baked into the base image at build time (with its install.cjs
+#     native step) and marked prebaked, so it is never touched here.
+#   - script-method agents (e.g. antigravity) are NOT on npm; they run a vendor
+#     installer, which is not contained by --ignore-scripts. The wizard flags
+#     this when the agent is picked.
+set -uo pipefail
+
+HOME="${HOME:-/home/dev}"
+
+# Registry (single source of truth, shared with the host wizard). Baked into the
+# image next to this script; see Dockerfile.
+REGISTRY="/usr/local/lib/rc-agents.sh"
+if [[ ! -f "$REGISTRY" ]]; then
+    echo "install-agents: registry not found at $REGISTRY — skipping" >&2
+    exit 0
+fi
+# shellcheck source=/dev/null
+source "$REGISTRY"
+
+# Non-interactive bash does not source .bashrc; put mise/pnpm on PATH.
+export PATH="${HOME}/.local/bin:${HOME}/.local/share/pnpm/bin:$PATH"
+eval "$(${HOME}/.local/bin/mise activate bash)" 2>/dev/null || true
+export PNPM_HOME="${HOME}/.local/share/pnpm"
+
+log()  { printf '    %s\n' "$*"; }
+warn() { printf '    warning: %s\n' "$*" >&2; }
+
+SELECTED="${INSTALL_AGENTS:-claude}"
+
+# True if a globally-installed pnpm package is already present.
+pnpm_has() { pnpm ls -g 2>/dev/null | grep -Fq -- "$1"; }
+
+install_pnpm_agent() {
+    local id="$1" spec="${AGENT_SPEC[$1]}"
+    if pnpm_has "$spec" || command -v "${AGENT_CMD[$1]:-$id}" >/dev/null 2>&1; then
+        log "$id ($spec): already installed — skipping"
+        return 0
+    fi
+    log "$id: installing $spec (pnpm add -g --ignore-scripts)"
+    if pnpm add -g --ignore-scripts "$spec"; then
+        log "$id: installed"
+    else
+        warn "$id: pnpm install of $spec failed (continuing)"
+        return 1
+    fi
+}
+
+install_script_agent() {
+    local id="$1" url="${AGENT_SPEC[$1]}" cmd="${AGENT_CMD[$1]:-$id}"
+    if command -v "$cmd" >/dev/null 2>&1; then
+        log "$id ($cmd): already installed — skipping"
+        return 0
+    fi
+    warn "$id: installing via vendor script $url — this runs remote code and is NOT"
+    warn "$id: contained by --ignore-scripts (you opted into this in the wizard)"
+    # curl honours HTTP(S)_PROXY, so the installer's own downloads still go
+    # through the egress allowlist. If it fetches the binary from a host that
+    # isn't whitelisted, it will fail here — check `egress-log`.
+    if curl -fsSL "$url" | bash; then
+        log "$id: installed"
+    else
+        warn "$id: vendor install failed (continuing) — see egress-log for blocked hosts"
+        return 1
+    fi
+}
+
+# Validate the agent list against the registry so a typo in .env is visible
+# rather than silently ignored.
+declare -A _KNOWN=()
+for _id in "${AGENT_IDS[@]}"; do _KNOWN[$_id]=1; done
+
+any=false
+for id in $SELECTED; do
+    if [[ -z "${_KNOWN[$id]:-}" ]]; then
+        warn "unknown agent id '$id' in INSTALL_AGENTS — ignoring"
+        continue
+    fi
+    if [[ "${AGENT_PREBAKED[$id]:-false}" == "true" ]]; then
+        # Baked into the base image already (claude). Nothing to do at runtime.
+        continue
+    fi
+    any=true
+    case "${AGENT_METHOD[$id]}" in
+        pnpm)   install_pnpm_agent   "$id" ;;
+        script) install_script_agent "$id" ;;
+        *)      warn "agent '$id' has unknown install method '${AGENT_METHOD[$id]}'" ;;
+    esac
+done
+
+$any || log "no additional agents to install (only prebaked/none selected)"
+exit 0

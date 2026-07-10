@@ -28,8 +28,12 @@ BASE_DIR="$(pwd)"
 
 SAMPLE_ENV="$HARNESS_DIR/sample.env"
 HARNESS_LAUNCH="$HARNESS_DIR/launch_dev_container.sh"
+AGENTS_REGISTRY="$HARNESS_DIR/container/agents.sh"
 [[ -f "$SAMPLE_ENV"     ]] || { echo "error: sample.env not found at $SAMPLE_ENV"     >&2; exit 1; }
 [[ -f "$HARNESS_LAUNCH" ]] || { echo "error: launch_dev_container.sh not found at $HARNESS_LAUNCH" >&2; exit 1; }
+[[ -f "$AGENTS_REGISTRY" ]] || { echo "error: agent registry not found at $AGENTS_REGISTRY" >&2; exit 1; }
+# shellcheck source=container/agents.sh
+source "$AGENTS_REGISTRY"   # AGENT_IDS / AGENT_LABEL / AGENT_METHOD / AGENT_SPEC / AGENT_HOSTS
 
 if [[ "$BASE_DIR" == "/" ]]; then
     echo "error: refusing to run from /" >&2
@@ -77,6 +81,68 @@ slugify() {
     printf '%s' "$1" \
         | tr -c '[:alnum:]_-' '-' \
         | sed -E 's/-+/-/g; s/^-//; s/-$//'
+}
+
+# Interactive checklist of coding agents to install (from the shared registry).
+# Claude is pre-selected (it is the harness default, baked into the base image).
+# Sets INSTALL_AGENTS (space-separated ids, registry order) and AGENT_EXTRA_HOSTS
+# (per-agent egress hosts to fold into the WHITELIST block).
+choose_agents() {
+    local -A picked=()
+    local id
+    for id in "${AGENT_IDS[@]}"; do picked[$id]=0; done
+    picked[claude]=1
+
+    echo
+    echo "  Coding agents to install in the container:"
+    echo "    (npm agents install with 'pnpm add -g --ignore-scripts'; agents not on"
+    echo "     npm run a vendor installer, flagged below.)"
+    while true; do
+        echo
+        local i=1 mark note
+        local -a idx_to_id=()
+        for id in "${AGENT_IDS[@]}"; do
+            idx_to_id[$i]="$id"
+            mark=" "; [[ "${picked[$id]}" == 1 ]] && mark="x"
+            note=""; [[ "${AGENT_METHOD[$id]}" == script ]] && note="   (vendor script — runs remote code)"
+            printf "    %d) [%s] %s%s\n" "$i" "$mark" "${AGENT_LABEL[$id]}" "$note"
+            ((i++))
+        done
+        echo
+        local reply n
+        read -r -p "  Toggle by number (space-separated), or Enter to confirm: " reply
+        [[ -z "${reply// }" ]] && break
+        for n in $reply; do
+            if [[ "$n" =~ ^[0-9]+$ && -n "${idx_to_id[$n]:-}" ]]; then
+                id="${idx_to_id[$n]}"; picked[$id]=$(( 1 - picked[$id] ))
+            else
+                echo "  ignoring invalid selection: $n"
+            fi
+        done
+    done
+
+    INSTALL_AGENTS=""
+    for id in "${AGENT_IDS[@]}"; do
+        [[ "${picked[$id]}" == 1 ]] && INSTALL_AGENTS+="${INSTALL_AGENTS:+ }$id"
+    done
+    [[ -n "$INSTALL_AGENTS" ]] || INSTALL_AGENTS="claude"
+    echo
+    echo "  ==> Agents: $INSTALL_AGENTS"
+
+    for id in $INSTALL_AGENTS; do
+        if [[ "${AGENT_METHOD[$id]}" == script ]]; then
+            echo
+            echo "  NOTE: ${AGENT_LABEL[$id]} is not on npm — it installs inside the container by"
+            echo "        piping a vendor script to bash (curl ${AGENT_SPEC[$id]} | bash)."
+            echo "        That runs remote code and is NOT contained by --ignore-scripts."
+        fi
+    done
+
+    AGENT_EXTRA_HOSTS=()
+    local h
+    for id in $INSTALL_AGENTS; do
+        for h in ${AGENT_HOSTS[$id]:-}; do AGENT_EXTRA_HOSTS+=("$h"); done
+    done
 }
 
 # ---- repo / deploy-key helpers ---------------------------------------------
@@ -258,6 +324,10 @@ fi
 # once by host_install.sh, not here — a single listener relays every container
 # on this host. Nothing per-project to do for notifications.
 
+# ---- 4b. coding agents to install ------------------------------------------
+
+choose_agents   # sets INSTALL_AGENTS and AGENT_EXTRA_HOSTS
+
 # ---- shared_data dir -------------------------------------------------------
 
 SHARED_DATA_PATH="$PROJECT_DIR/shared_data"
@@ -304,6 +374,9 @@ ENV_OUT="$PROJECT_DIR/.env"
     echo "MEM_LIMIT=$MEM_LIMIT"
     echo "CPU_LIMIT=$CPU_LIMIT"
     echo
+    echo "# Coding agents installed in the container (see container/agents.sh)."
+    echo "INSTALL_AGENTS=$INSTALL_AGENTS"
+    echo
     echo "SHARED_DATA_PATH=$SHARED_DATA_PATH"
     if [[ -n "$ON_LAUNCH_SCRIPT" ]]; then
         printf 'ON_LAUNCH_SCRIPT=%q\n' "$ON_LAUNCH_SCRIPT"
@@ -319,7 +392,16 @@ ENV_OUT="$PROJECT_DIR/.env"
         printf 'NTFY_SH_TOPIC=%q\n' "$NTFY_SH_TOPIC"
     fi
     echo
-    echo "$WHITELIST_BLOCK"
+    if ((${#AGENT_EXTRA_HOSTS[@]})); then
+        # Splice the selected agents' egress hosts into the WHITELIST_HOSTS block,
+        # just before its closing quote line, so the generated .env allows them.
+        printf '%s\n' "${WHITELIST_BLOCK%$'\n"'}"
+        echo "# --- hosts required by the selected coding agents ---"
+        printf '%s\n' "${AGENT_EXTRA_HOSTS[@]}" | awk '!seen[$0]++'
+        printf '%s\n' '"'
+    else
+        echo "$WHITELIST_BLOCK"
+    fi
 } > "$ENV_OUT"
 chmod 600 "$ENV_OUT"
 

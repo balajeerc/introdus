@@ -227,6 +227,14 @@ RUN chmod +x /usr/local/bin/run-claude
 COPY container/bin/egress-log /usr/local/bin/egress-log
 RUN chmod +x /usr/local/bin/egress-log
 
+# Agent registry + installer. The registry is the single source of truth shared
+# with the host wizard (create-dev-container.sh); install-agents reads it and
+# the $INSTALL_AGENTS env var to install the picked agents at container setup
+# (claude is already baked above and is marked prebaked, so it's never touched).
+COPY container/agents.sh /usr/local/lib/rc-agents.sh
+COPY container/bin/install-agents /usr/local/bin/install-agents
+RUN chmod +x /usr/local/bin/install-agents
+
 # Egress firewall entrypoint + proxy config — COPY'd LAST so iterating on them
 # doesn't invalidate the heavy nvim/mise/claude layers above. Both are also
 # bind-mounted by launch.sh at runtime (so edits apply with no rebuild); the

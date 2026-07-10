@@ -119,6 +119,10 @@ if [[ "$ENABLE_NOTIFY_SH_ALERTS" == "true" && -z "$NTFY_SH_TOPIC" ]]; then
     exit 1
 fi
 
+# Space-separated agent ids to install in the container (see container/agents.sh
+# for the registry). Defaults to just claude, which is baked into the base image.
+INSTALL_AGENTS="${INSTALL_AGENTS:-claude}"
+
 MEM_LIMIT="${MEM_LIMIT:-8g}"
 CPU_LIMIT="${CPU_LIMIT:-8}"
 PIDS_LIMIT="${PIDS_LIMIT:-16384}"
@@ -275,16 +279,28 @@ if $UPDATE; then
 set -e
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get -y upgrade'
-    echo "==> --update: mise / claude code / lazyvim (as dev)"
-    podman exec --user dev "$CONTAINER_NAME" bash -c '
+    echo "==> --update: mise / agents / lazyvim (as dev)"
+    podman exec --user dev --env "INSTALL_AGENTS=$INSTALL_AGENTS" "$CONTAINER_NAME" bash -c '
 set -e
 export HOME=/home/dev
 export PATH="/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/home/dev/.local/share/pnpm/bin:$PATH"
 eval "$(/home/dev/.local/bin/mise activate bash)"
 mise self-update -y || true
 mise upgrade
+# claude is baked into the image: update it and replay its native install step.
 pnpm update -g @anthropic-ai/claude-code
 node "$(pnpm root -g)/@anthropic-ai/claude-code/install.cjs"
+# Other selected agents: install any newly-added ones (idempotent), then update
+# the pnpm-managed ones in place with lifecycle scripts still ignored.
+[ -x /usr/local/bin/install-agents ] && /usr/local/bin/install-agents || true
+if [ -f /usr/local/lib/rc-agents.sh ]; then
+  . /usr/local/lib/rc-agents.sh
+  for _id in ${INSTALL_AGENTS:-claude}; do
+    [ "$_id" = claude ] && continue
+    [ "${AGENT_METHOD[$_id]:-}" = pnpm ] || continue
+    pnpm update -g --ignore-scripts "${AGENT_SPEC[$_id]}" || true
+  done
+fi
 nvim --headless "+Lazy! sync" +qa'
     echo "==> --update: done"
     exit 0
@@ -381,6 +397,7 @@ base_image_is_stale() {
     # bind-mounted at runtime, so editing them applies on the next launch with no
     # rebuild — don't trigger one for them.
     newest=$(find "$DOCKERFILE" "$SCRIPT_DIR/container/bin" "$SCRIPT_DIR/container/claude" \
+        "$SCRIPT_DIR/container/agents.sh" \
         -type f -printf '%T@\n' 2>/dev/null | sort -rn | head -1 | cut -d. -f1)
     [[ -n "$newest" && "$newest" -gt "$epoch" ]]
 }
@@ -561,6 +578,7 @@ declare -a PODMAN_ARGS=(
     --env "INTERNAL_ALLOW_CIDRS=$INTERNAL_ALLOW_CIDRS"
     --env "ENABLE_NOTIFY_SH_ALERTS=$ENABLE_NOTIFY_SH_ALERTS"
     --env "NTFY_SH_TOPIC=$NTFY_SH_TOPIC"
+    --env "INSTALL_AGENTS=$INSTALL_AGENTS"
     --publish "127.0.0.1:${WEBAPP_PORT}:${WEBAPP_PORT}"
     ${EXTRA_PUBLISH_ARGS[@]:+"${EXTRA_PUBLISH_ARGS[@]}"}
 )

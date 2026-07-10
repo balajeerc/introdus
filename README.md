@@ -37,6 +37,7 @@ container* (the hardened container itself). See the diagram above.
 - **[Dev container]** Persists container data (repo, `node_modules`, toolchains) across restarts on a per-project volume.
 - **[Dev machine]** Attach VS Code to the running container ("Attach to Running Container") — directly when the host is local, or via Remote-SSH first when it's remote.
 - **[Dev container]** Claude Code pre-installed (with the NodeJS + pnpm it needs), remote-control on by default so you can drive it from your phone.
+- **[Dev container]** Optionally install additional coding agents — Codex, Antigravity, Opencode, Pi, Kilocode — chosen from a checklist in the setup wizard (`INSTALL_AGENTS` in `.env`). npm-published agents install with `pnpm add -g --ignore-scripts` to minimize supply-chain exposure; the registry lives in [container/agents.sh](container/agents.sh).
 - **[Dev container]** LazyVim built in for a fully capable terminal editor (handy inside `podman exec -it --user dev <container> /bin/bash`).
 - **[Dev container]** `mise` installed to set up any other toolchains you need.
 - **[Container host → dev container]** Optionally mounts a host directory read-only into the container (`SHARED_DATA_PATH` in `.env`).

@@ -70,6 +70,15 @@ do_prepare() {
             echo "  warning: git fetch failed — repo left as-is"
         fi
     fi
+
+    # Install the coding agents picked in the wizard (idempotent; claude is
+    # baked into the image and skipped). Never fatal — the container comes up
+    # even if an agent fails to install.
+    if [[ -x /usr/local/bin/install-agents ]]; then
+        log "installing selected agents: ${INSTALL_AGENTS:-claude}"
+        INSTALL_AGENTS="${INSTALL_AGENTS:-claude}" /usr/local/bin/install-agents \
+            || echo "  warning: install-agents reported a problem (continuing)"
+    fi
 }
 
 print_banner() {
@@ -88,7 +97,7 @@ claude.ai/code or the mobile app to drive it from your phone):
   (cds into the repo, opens the 'claude' tmux session, and runs
    claude --dangerously-skip-permissions; re-running re-attaches.
    Ctrl-a d detaches without killing it.)
-
+${AGENTS_BANNER:-}
 Connect with VSCode (Dev Containers):
 
 ${VSCODE_SETUP_INSTRUCTIONS:-}
@@ -209,6 +218,28 @@ TBEOF
 
 ============================================================
 TBEOF
+)
+        fi
+    fi
+
+    # List the other agents the user picked (claude has its own section above)
+    # and the bare command each one installs, so they know how to launch them.
+    AGENTS_BANNER=""
+    if [[ -f /usr/local/lib/rc-agents.sh ]]; then
+        # shellcheck source=/dev/null
+        source /usr/local/lib/rc-agents.sh
+        _lines=""
+        for _id in ${INSTALL_AGENTS:-claude}; do
+            [[ "$_id" == "claude" ]] && continue
+            [[ -n "${AGENT_LABEL[$_id]:-}" ]] || continue
+            _lines+=$(printf '\n    %-24s run: %s' "${AGENT_LABEL[$_id]}" "${AGENT_CMD[$_id]:-$_id}")
+        done
+        if [[ -n "$_lines" ]]; then
+            AGENTS_BANNER=$(cat <<ABEOF
+
+Other agents installed in this container (run inside a shell —
+  podman exec -it --user dev $CNAME bash):$_lines
+ABEOF
 )
         fi
     fi
