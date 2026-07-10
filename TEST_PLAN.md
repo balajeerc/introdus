@@ -145,8 +145,15 @@ Run the automated suite with `cargo test --workspace` and the quality gates with
 | 13.1 | Legacy pre-suffix container removed | ❌ | 3 | create a legacy-named container; relaunch |
 | 13.2 | Recreate drops container, keeps volume | ❌ | 4 | recreate; confirm `/home/dev` (repo) survives |
 | 13.3 | Reset wipes the volume | ❌ | 4 | reset; confirm the volume is gone |
-| 13.4 | Reset dirty-git scan + mandatory typed `yes` confirm | ❌ | 5 | leave uncommitted work; reset; confirm the scan reports it and aborts on non-`yes` |
-| 13.5 | `--pull` sentinel triggers a ff-only pull on next start | ❌ | 4 | `introdus up --pull`; confirm the repo fast-forwards |
+| 13.4 | Reset scan detects **unstaged working-tree changes** | ❌ | 5 | edit a tracked file (no `git add`); reset; scan lists it under "working tree" |
+| 13.5 | Reset scan detects **staged-but-uncommitted changes** | ❌ | 5 | `git add` a change; reset; scan lists it (`git status --porcelain` shows both) |
+| 13.6 | Reset scan detects **untracked files** | ❌ | 4 | create a new untracked file; reset; scan lists it (`??`) |
+| 13.7 | Reset scan detects **unpushed commits** (not on any remote) | ❌ | 5 | commit locally, don't push; reset; scan reports "unpushed commits: N" |
+| 13.8 | Reset scan detects **stashes** | ❌ | 4 | `git stash`; reset; scan lists the stash |
+| 13.9 | Scan walks **every repo** under `/home/dev/work` (multi-repo) | ❌ | 4 | dirty two repos; reset; both appear in the report |
+| 13.10 | Typed `yes` confirmation is **always required**, even when the scan finds nothing / base image missing | ❌ | 5 | reset a clean volume; confirm it still demands `yes`; non-`yes` aborts with the volume intact |
+| 13.11 | Scan is read-only and non-fatal (best-effort; failure never blocks the confirm) | ❌ | 4 | reset with an odd/corrupt repo; confirm the flow still reaches the `yes` prompt |
+| 13.12 | `--pull` sentinel triggers a ff-only pull on next start | ❌ | 4 | `introdus up --pull`; confirm the repo fast-forwards |
 
 ## 14. tmux session model — `introdus launch` (M4 — `session.rs`)
 
@@ -244,7 +251,9 @@ Run the automated suite with `cargo test --workspace` and the quality gates with
   rootless-podman host, tmux, a desktop/phone, or the network — real egress
   enforcement (9.5, 11.1), container boot & privilege drop (10.7), the
   interactive wizard/menu flows (16.2, 17.*), notification delivery (18.4–18.6),
-  base-image build (8.2), and the end-to-end pass (21.*).
+  base-image build (8.2), the **reset data-loss safety scan** (13.4–13.11 —
+  unstaged/staged/untracked changes, unpushed commits, and stashes, plus the
+  always-required typed confirm), and the end-to-end pass (21.*).
 
 The security-critical *inputs* (allowlist patterns, run flags, trust-boundary
 sanitization) are automated at rating 0; the security-critical *enforcement*
