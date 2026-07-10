@@ -11,3 +11,6 @@ description = "Shared library for the introdus control plane: config, paths, emb
 workspace = true
 
 [dependencies]
+anyhow.workspace = true
+dotenvy = "0.15"
+dirs.workspace = true

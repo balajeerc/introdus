@@ -139,9 +139,12 @@ introdus install            # put binary on PATH + set up services (was host_ins
       compiles; `scripts/lint.sh --full` green (7/7). CLI subcommand skeleton
       stubbed. (Note: local `semgrep` install is broken — `pipx reinstall
       semgrep` to green the `--security` tier.)
-- [ ] **M1 — Core config & paths.** Typed `Config` <-> `.env` round-trip
-      (generated with templated comments like `sample.env`); XDG paths; agents
-      registry ported to Rust; unit tests. **Commit.**
+- [x] **M1 — Core config & paths.** Typed `Config` <-> `.env` round-trip
+      (`config.rs`, lossless, verified by test); `.env` I/O + quoting
+      (`env_file.rs`, via `dotenvy`); XDG state/allowlist/assets paths
+      (`paths.rs`); podman object naming + suffix hash (`names.rs`); agents
+      registry ported to Rust (`agents.rs`). 11 unit tests green; lint --full
+      green. New `SESSION_NAME` field added for the tmux model.
 - [ ] **M2 — Embedded assets + process wrappers.** `include_str!` the bash
       core; materialize to state dir; `podman`/`tmux`/`git` command wrappers
       with tests. **Commit.**
