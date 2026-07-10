@@ -189,8 +189,14 @@ introdus install            # put binary on PATH + set up services (was host_ins
       open root/dev terminals (new tmux windows), test notification, recreate,
       reset. Shared `util.rs` (tilde/shell-quote). Wired to `introdus menu`.
       29 tests; lint --full green.
-- [ ] **M7 — Notifications folded in.** `notify-host` + `notify-listen`
-      subcommands; keep bash `rc-notify`. **Commit.**
+- [x] **M7 — Notifications folded in.** `notify.rs` (core): the trust boundary
+      — event whitelist + label sanitization ported exactly, tested. `notify.rs`
+      (cli): `notify-host` serves the FIFO (Linux) / socket path and renders
+      (ntfy push → TCP forward → desktop notify-send+sound / osascript+afplay),
+      embedding the wav; `notify-listen` is the laptop TCP side. `launch` now
+      mounts `/run/notify` and starts a `notify` tmux window with the project's
+      notify env. In-container `rc-notify` stays bash. 32 tests; lint --full
+      green. (ssh reverse-tunnel + systemd-unit installer → M8.)
 - [ ] **M8 — Host install / distribution.** `introdus install`; single-binary
       release build (thin LTO, stripped). **Commit.**
 - [ ] **M9 — Docs + cleanup.** README/docs/sample.env regenerated; retire old

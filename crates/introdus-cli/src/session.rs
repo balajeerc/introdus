@@ -17,6 +17,8 @@ use crate::preflight;
 const MAIN_WINDOW: &str = "main-control";
 /// The container-logs window (window 2).
 const DEV_WINDOW: &str = "dev-container";
+/// The notification-service window.
+const NOTIFY_WINDOW: &str = "notify";
 
 /// `introdus launch`: ensure the tmux session exists (creating the control +
 /// container windows on first run) and attach to it.
@@ -40,6 +42,15 @@ pub fn launch(_opts: LaunchOpts) -> Result<()> {
     let bin = current_exe()?;
     println!("==> creating tmux session {session}");
     tmux::new_detached_session(&session, MAIN_WINDOW, &window_cmd(&bin, "menu"), &dir)?;
+    // Notification service first, so the FIFO exists before the container mounts
+    // it; then the container window.
+    tmux::new_window(
+        &session,
+        NOTIFY_WINDOW,
+        &notify_cmd(&bin, &config),
+        false,
+        &dir,
+    )?;
     tmux::new_window(&session, DEV_WINDOW, &window_cmd(&bin, "up"), false, &dir)?;
     attach(&session).map(|_| ())
 }
@@ -66,6 +77,23 @@ fn window_cmd(bin: &Path, sub: &str) -> String {
         "exec {} {sub}",
         crate::util::shell_quote(&bin.to_string_lossy())
     )
+}
+
+/// Build the notify-host window command, exporting the project's notification
+/// settings so the service renders ntfy / forwards / desktop popups correctly.
+fn notify_cmd(bin: &Path, config: &Config) -> String {
+    let q = crate::util::shell_quote;
+    let mut prefix = format!(
+        "ENABLE_NOTIFY_SH_ALERTS={} ",
+        config.enable_notify_sh_alerts
+    );
+    if let Some(topic) = &config.ntfy_sh_topic {
+        prefix.push_str(&format!("NTFY_SH_TOPIC={} ", q(topic)));
+    }
+    if let Some(addr) = &config.rc_forward_addr {
+        prefix.push_str(&format!("RC_FORWARD_ADDR={} ", q(addr)));
+    }
+    format!("{prefix}exec {} notify-host", q(&bin.to_string_lossy()))
 }
 
 /// Attach the terminal to `session` (never returns on success).

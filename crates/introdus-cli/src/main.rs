@@ -8,6 +8,7 @@ mod launch;
 mod lifecycle;
 mod menu;
 mod menu_actions;
+mod notify;
 mod preflight;
 mod run;
 mod session;
@@ -90,8 +91,8 @@ fn main() -> Result<()> {
         Command::Update => launch::run_update(),
         Command::RebuildBase => launch::run_rebuild_base(),
         Command::Menu => menu::run(),
-        Command::NotifyHost => not_yet("notify-host"),
-        Command::NotifyListen => not_yet("notify-listen"),
+        Command::NotifyHost => notify::run_host(),
+        Command::NotifyListen => notify::run_listen(),
         Command::Install => not_yet("install"),
     }
 }

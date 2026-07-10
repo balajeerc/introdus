@@ -115,8 +115,12 @@ fn push_mounts(ctx: &LaunchContext, a: &mut Vec<String>) -> Result<()> {
             .with_context(|| format!("resolving SHARED_DATA_PATH {shared}"))?;
         vol(a, &path_str(&canon)?, "/home/dev/shared_data:ro");
     }
-    // NOTE: the /run/notify mount is added in M7 (notifications folded in);
-    // until then Claude's notify hooks fail silently, as the shell warns.
+    // Notification endpoint: ensure the host FIFO exists and bind-mount it at
+    // /run/notify so the container's rc-notify hook can deliver events to the
+    // `introdus notify-host` service running in the session's notify window.
+    let fifo = crate::notify::fifo_path()?;
+    crate::notify::ensure_fifo(&fifo)?;
+    vol(a, &path_str(&fifo)?, "/run/notify");
     Ok(())
 }
 
