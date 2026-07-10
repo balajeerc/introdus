@@ -25,6 +25,38 @@ a popup + sound on your laptop (see
 
 ![remote-control-harness architecture: dev machine to remote container host to hardened dev container](docs/architecture.svg)
 
+## introdus — the single-binary control plane
+
+The control plane is being consolidated into **`introdus`**, one self-contained
+Rust binary that replaces the pile of host scripts (`launch_dev_container.sh`,
+`create-dev-container.sh`, `host_install.sh`, the `host_listener.py` notifier).
+The **container-side security core stays bash** — `introdus` embeds
+`firewall-entrypoint.sh`, `tinyproxy.conf`, and `setup.sh` and bind-mounts them
+at launch, exactly as before — so the egress guarantee is unchanged.
+
+```bash
+cargo build --release            # produces target/release/introdus (one binary)
+./target/release/introdus install  # copies it onto ~/.local/bin (PATH)
+
+mkdir ~/myproject && cd ~/myproject
+introdus                         # first run: setup wizard writes .env, then launches
+```
+
+`introdus` puts each container inside one **tmux session** with a persistent
+**control TUI** (`main-control` window) beside the container logs
+(`dev-container` window) and the notification service (`notify` window). From
+the control menu you can, on the host where it's actually possible: show the
+tunnel URL, install/launch agents, list and add egress-allowlist hosts, open
+root/dev terminals, copy files in, toggle the webapp tunnel / ntfy, and
+recreate/reset — persisting to `.env` where it matters.
+
+Subcommands: `introdus [launch]`, `up`, `menu`, `verify`, `recreate`, `reset`,
+`update`, `rebuild-base`, `notify-host`, `notify-listen`, `install`.
+
+> The legacy bash workflow below (`./launch.sh`, `create-dev-container.sh`,
+> `host_install.sh`) still works and documents the same architecture in prose.
+> See [PLAN.md](PLAN.md) for the rewrite's design and status.
+
 ## Highlights
 
 Each item is tagged with **where** it runs — *dev machine* (your laptop),

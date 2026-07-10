@@ -206,8 +206,12 @@ introdus install            # put binary on PATH + set up services (was host_ins
       subcommands wired (no stubs). 32 tests; lint --full green. (ssh
       reverse-tunnel laptop-listener install remains a documented manual step
       using `introdus notify-listen`.)
-- [ ] **M9 — Docs + cleanup.** README/docs/sample.env regenerated; retire old
-      bash scripts (or thin shims); TODO. **Commit.**
+- [x] **M9 — Docs.** README gained an `introdus` section (build → install →
+      `introdus` in a project dir), the tmux window model, and the subcommand
+      list; `sample.env` documents the new `SESSION_NAME`. **Old bash scripts
+      intentionally kept** (not retired) so the user can diff/fall back while
+      validating the Rust path end-to-end; retirement is a follow-up once the
+      Rust flow is confirmed on a real podman host.
 - [ ] **M10 — Final lint/security pass + end-to-end verification notes.**
 
 ## Quality / lint setup (ported from `syncer`)
