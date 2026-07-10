@@ -18,3 +18,5 @@ workspace = true
 introdus-core = { path = "../introdus-core" }
 anyhow.workspace = true
 clap.workspace = true
+dirs.workspace = true
+inquire.workspace = true

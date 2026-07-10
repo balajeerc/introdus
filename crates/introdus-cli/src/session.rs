@@ -6,7 +6,7 @@
 use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use introdus_core::{session as names, tmux, Config};
 
 use crate::context::env_path;
@@ -25,11 +25,8 @@ pub fn launch(_opts: LaunchOpts) -> Result<()> {
     let dir = std::env::current_dir()?;
     let env = env_path(&dir);
     if !env.exists() {
-        // M5 will run the wizard here to create the .env in-session.
-        bail!(
-            "no .env in {} — run the setup wizard (coming in M5)",
-            dir.display()
-        );
+        // First run for this project: set it up interactively, then launch.
+        crate::wizard::run(&dir)?;
     }
 
     let mut config = Config::load(&env)?;

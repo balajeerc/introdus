@@ -70,8 +70,9 @@ crates/
   introdus-core/          # lib: config/.env, paths, agents registry,
                           #      embedded assets, podman/tmux/git wrappers,
                           #      allowlist gen, notify protocol
-  introdus-tui/           # lib: ratatui views — wizard, control panel, flows
-  introdus-cli/           # bin `introdus`: clap CLI + orchestration + notify
+  introdus-cli/           # bin `introdus`: clap CLI + orchestration + notify +
+                          #      the inquire-based wizard/control-menu TUI
+                          #      (folded in rather than a separate crate)
 container/                # UNCHANGED bash assets, embedded via include_str!
   egress/{firewall-entrypoint.sh,tinyproxy.conf}
   bin/{rc-notify,egress-log,run-agent,tunnel-url,install-agents}
@@ -172,8 +173,14 @@ introdus install            # put binary on PATH + set up services (was host_ins
       (runs `introdus up`) windows and attaches. `Up` is now the in-window
       container runner. 29 tests; lint --full green. (Wizard-on-missing-.env
       hook lands in M5; `menu` TUI in M6.)
-- [ ] **M5 — TUI wizard.** Replace `create-dev-container.sh`: guided `.env`
-      creation, deploy-key setup, agent checklist, whitelist/ports. **Commit.**
+- [x] **M5 — TUI wizard.** `wizard.rs` (built on `inquire`): guided `.env`
+      creation — project name, repo URL, deploy-key path (offers ed25519
+      generation + prints the pubkey to register), webapp port, agent
+      multi-select checklist (extends the whitelist with each agent's egress
+      hosts), tunnel + ntfy toggles. Wired into `session::launch` so a project
+      with no `.env` runs the wizard, then launches. 29 tests; lint --full
+      green. (Chose `inquire` over a from-scratch ratatui form engine —
+      robust, small, works in tmux/SSH. TUI deps swapped in Cargo.toml.)
 - [ ] **M6 — TUI control panel + utilities.** All table rows above. **Commit**
       per sub-group.
 - [ ] **M7 — Notifications folded in.** `notify-host` + `notify-listen`

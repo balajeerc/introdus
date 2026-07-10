@@ -6,4 +6,10 @@
 # (why it's unreachable / has no compatible fix). Start empty; prefer upgrades.
 
 [advisories]
-ignore = []
+ignore = [
+    # fxhash "unmaintained" advisory (not a vulnerability): a non-cryptographic
+    # hash helper reached only transitively through `inquire`'s fuzzy matcher.
+    # No security impact; no maintained drop-in inquire has adopted. Mirrors the
+    # same justification in deny.toml. Revisit when inquire moves off it.
+    "RUSTSEC-2025-0057",
+]

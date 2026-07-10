@@ -7,10 +7,16 @@
 # Block on any unpatched advisory in the RustSec database. `yanked = "deny"`
 # so a crates.io yank tips the gate to non-zero.
 yanked = "deny"
-# Start empty. Every entry must be justified in a comment immediately above it
-# (why it's unreachable / unfixable), mirroring the same list in
-# .cargo/audit.toml. Drive advisories out with upgrades, not ignores.
-ignore = []
+# Every entry must be justified in a comment immediately above it (why it's
+# unreachable / unfixable), mirroring the same list in .cargo/audit.toml. Drive
+# advisories out with upgrades, not ignores.
+ignore = [
+    # fxhash is "unmaintained" (not a vulnerability) — a non-cryptographic hash
+    # helper reached only transitively through `inquire`'s fuzzy matcher. No
+    # security impact and no maintained drop-in that inquire has adopted yet.
+    # Revisit when inquire moves off it.
+    "RUSTSEC-2025-0057",
+]
 
 [licenses]
 # Personal security tool; permissive licenses only. If a dep changes to

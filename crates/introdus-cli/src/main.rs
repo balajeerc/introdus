@@ -9,6 +9,7 @@ mod lifecycle;
 mod preflight;
 mod run;
 mod session;
+mod wizard;
 
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
