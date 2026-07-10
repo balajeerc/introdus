@@ -1,0 +1,10 @@
+# Clippy configuration. Picked up automatically by `cargo clippy`. See
+# https://doc.rust-lang.org/clippy/lint_configuration.html for the full list.
+
+# `cognitive_complexity` lives in clippy's `nursery` group, so it is NOT turned
+# on by `-D warnings`. We opt in via `[workspace.lints.clippy]` in the root
+# Cargo.toml. The default threshold is 25; we drop it to 15 because functions
+# much beyond that are usually doing more than one job. Use
+# `#[allow(clippy::cognitive_complexity)] // why: ...` for the unavoidable
+# state machines (launch orchestration, TUI event loops).
+cognitive-complexity-threshold = 15

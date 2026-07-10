@@ -1,3 +1,10 @@
 .env
 start_trace.txt
 __pycache__/
+
+# Rust
+/target
+**/*.rs.bk
+
+# Node dev tooling (jscpd lives under tools/)
+tools/node_modules/

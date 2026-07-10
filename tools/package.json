@@ -1,0 +1,10 @@
+{
+  "name": "introdus-tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Node-side dev tooling for introdus — currently just jscpd for copy-paste duplication detection. Install with `pnpm install` from this directory.",
+  "devDependencies": {
+    "jscpd": "^4.0.5"
+  },
+  "packageManager": "pnpm@9.0.0"
+}

@@ -1,0 +1,13 @@
+[package]
+name = "introdus-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Shared library for the introdus control plane: config, paths, embedded assets, process wrappers."
+
+[lints]
+workspace = true
+
+[dependencies]

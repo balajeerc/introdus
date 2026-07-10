@@ -1,0 +1,9 @@
+# Project-wide cargo configuration.
+#
+# `RUSTFLAGS=-D warnings` applies to every cargo invocation (build, test,
+# check, run, clippy) so a rustc warning is a hard error during normal
+# development, not just inside scripts/lint.sh. Cargo automatically caps lints
+# in upstream dependencies via `--cap-lints`, so dep-side warnings don't
+# propagate.
+[build]
+rustflags = ["-D", "warnings"]
