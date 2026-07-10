@@ -164,8 +164,14 @@ introdus install            # put binary on PATH + set up services (was host_ins
       --full green. Deferred: `/run/notify` mount → M7; tmux-wrapping of
       `launch` → M4. (Not yet run against a real podman build — user does
       end-to-end at the end.)
-- [ ] **M4 — tmux session + `launch`.** Prereq checks, whimsical session
-      naming, session/window creation, shell-window helpers. **Commit.**
+- [x] **M4 — tmux session + `launch`.** `session.rs` (core): whimsical
+      `introdus-<adj>-<adj>-<noun>` names, deterministic per project, persisted
+      as `SESSION_NAME`. `tmux.rs` gained cwd-aware window helpers. CLI
+      `session.rs`: `launch` mints/persists the name, then creates a detached
+      session with `main-control` (runs `introdus menu`) + `dev-container`
+      (runs `introdus up`) windows and attaches. `Up` is now the in-window
+      container runner. 29 tests; lint --full green. (Wizard-on-missing-.env
+      hook lands in M5; `menu` TUI in M6.)
 - [ ] **M5 — TUI wizard.** Replace `create-dev-container.sh`: guided `.env`
       creation, deploy-key setup, agent checklist, whitelist/ports. **Commit.**
 - [ ] **M6 — TUI control panel + utilities.** All table rows above. **Commit**

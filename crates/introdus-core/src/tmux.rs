@@ -4,6 +4,8 @@
 //! `main-control` window (the TUI), a `dev-container` window (podman logs), and
 //! on-demand `root-bash` / `dev-bash` / per-agent windows.
 
+use std::path::Path;
+
 use crate::process::Cmd;
 use anyhow::Result;
 
@@ -17,17 +19,28 @@ pub fn has_session(name: &str) -> bool {
     tmux().args(["has-session", "-t", name]).ok()
 }
 
-/// Create a detached session whose first window `window` runs `command`.
-pub fn new_detached_session(session: &str, window: &str, command: &str) -> Result<()> {
+/// Create a detached session whose first window `window` runs `command`, with
+/// `cwd` as the window's start directory.
+pub fn new_detached_session(session: &str, window: &str, command: &str, cwd: &Path) -> Result<()> {
     tmux()
-        .args(["new-session", "-d", "-s", session, "-n", window, command])
+        .args(["new-session", "-d", "-s", session, "-n", window, "-c"])
+        .arg(cwd)
+        .arg(command)
         .run()
 }
 
-/// Add a window named `window` running `command` to an existing session.
-/// `select` brings the new window to the foreground.
-pub fn new_window(session: &str, window: &str, command: &str, select: bool) -> Result<()> {
-    let mut c = tmux().args(["new-window", "-t", session, "-n", window]);
+/// Add a window named `window` running `command` (start dir `cwd`) to an
+/// existing session. `select` brings the new window to the foreground.
+pub fn new_window(
+    session: &str,
+    window: &str,
+    command: &str,
+    select: bool,
+    cwd: &Path,
+) -> Result<()> {
+    let mut c = tmux()
+        .args(["new-window", "-t", session, "-n", window, "-c"])
+        .arg(cwd);
     if !select {
         c = c.arg("-d");
     }

@@ -8,6 +8,7 @@ mod launch;
 mod lifecycle;
 mod preflight;
 mod run;
+mod session;
 
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
@@ -75,8 +76,10 @@ fn main() -> Result<()> {
         pull: false,
         disable_network_block: false,
     })) {
-        // M4 wraps Launch in the tmux session model; for now it launches directly.
-        Command::Launch(a) | Command::Up(a) => launch::run_launch(Lifecycle::Keep, a.into()),
+        // Launch drives the tmux session model; Up is the container run that
+        // executes inside the session's dev-container window.
+        Command::Launch(a) => session::launch(a.into()),
+        Command::Up(a) => launch::run_launch(Lifecycle::Keep, a.into()),
         Command::Recreate(a) => launch::run_launch(Lifecycle::Recreate, a.into()),
         Command::Reset(a) => launch::run_launch(Lifecycle::Reset, a.into()),
         Command::Verify => launch::run_verify(),

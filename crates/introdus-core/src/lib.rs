@@ -16,6 +16,7 @@ pub mod paths;
 pub mod podman;
 pub mod ports;
 pub mod process;
+pub mod session;
 pub mod tmux;
 
 pub use config::Config;
