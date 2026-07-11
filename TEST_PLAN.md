@@ -277,7 +277,7 @@ it. Heavy + opt-in (needs a rootless-podman host with `/dev/fuse` +
 | TA112 | Persistence across recreate (`/home/dev` volume survives) | ✅ harness `lifecycle` | 2 | driver-lifecycle.sh: marker survives; manual for node_modules/claude-auth specifics |
 | TA113 | Drive Claude from phone via remote control | ❌ | 5 | pair and issue a prompt from the mobile app |
 | TA114 | `.env` parity: generated vs a `./launch.sh` run behave identically | ❌ | 4 | diff both `.env`s and both containers' `podman inspect` |
-| TA115 | Runtime agent install streams live progress (spinner) and actually installs (codex present in-container) | ✅ harness `install` | 1 | `test-harness/harness.sh install` |
+| TA115 | Runtime agent install streams live progress (spinner) and actually installs — codex (npm) + antigravity (vendor script, whose download host must be allowlisted) | ✅ harness `install` | 1 | `test-harness/harness.sh install` |
 | TA116 | A long action disables the menu: keys mashed during an install don't cascade into other actions (a stray Stop is ignored) | ✅ harness `install` | 1 | driver-install.sh: stray Stop during install → container still running |
 
 ---

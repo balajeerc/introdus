@@ -73,9 +73,11 @@ declare -A AGENT_HOSTS=(
     [codex]="api.openai.com auth.openai.com chatgpt.com"
     # antigravity (Gemini-backed): install/update hosts + Google OAuth + the
     # Cloud Code (Gemini Code Assist) model API. Derived from the installed `agy`
-    # binary. Optional telemetry (safebrowsing/play/statsig) is left out to keep
-    # egress tight — add via egress-log if you actually need it.
-    [antigravity]="antigravity.google antigravity-cli-auto-updater-974169037036.us-central1.run.app accounts.google.com oauth2.googleapis.com www.googleapis.com cloudcode-pa.googleapis.com iamcredentials.googleapis.com"
+    # binary. storage.googleapis.com is where the vendor installer downloads the
+    # CLI tarball from (without it the install 403s). Optional telemetry
+    # (safebrowsing/play/statsig) is left out to keep egress tight — add via
+    # egress-log if you actually need it.
+    [antigravity]="antigravity.google antigravity-cli-auto-updater-974169037036.us-central1.run.app storage.googleapis.com accounts.google.com oauth2.googleapis.com www.googleapis.com cloudcode-pa.googleapis.com iamcredentials.googleapis.com"
     # opencode: its own infra — opencode.ai (auth/zen; suffix-covers
     # api./app./console./dev.opencode.ai) and models.dev (the model registry it
     # loads at startup). opencode is BYO-provider; the one custom provider we

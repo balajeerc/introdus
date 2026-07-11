@@ -61,7 +61,7 @@ pub const AGENTS: &[Agent] = &[
         method: InstallMethod::Script,
         spec: "https://antigravity.google/cli/install.sh",
         cmd: "agy",
-        hosts: "antigravity.google antigravity-cli-auto-updater-974169037036.us-central1.run.app accounts.google.com oauth2.googleapis.com www.googleapis.com cloudcode-pa.googleapis.com iamcredentials.googleapis.com",
+        hosts: "antigravity.google antigravity-cli-auto-updater-974169037036.us-central1.run.app storage.googleapis.com accounts.google.com oauth2.googleapis.com www.googleapis.com cloudcode-pa.googleapis.com iamcredentials.googleapis.com",
         prebaked: false,
     },
     Agent {

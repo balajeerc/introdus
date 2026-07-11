@@ -58,7 +58,28 @@ harness_poll "codex installed" \
     bash -c "podman exec --user dev '$cname' bash -lc 'pnpm ls -g 2>/dev/null | grep -Fq @openai/codex'"
 echo "    ✓ codex present in the container"
 
+# ---- a script-method agent: egress hosts must cover the vendor installer ----
+# antigravity is installed by a vendor script that downloads its CLI tarball
+# from storage.googleapis.com. If that host is missing from the agent's egress
+# allowlist the download 403s and the install silently fails — this guards it.
+# Restart to apply (Yes) so the newly-added hosts are live before the install.
+echo "==> menu: Install antigravity (script-method — needs its download host)"
+mc_select "Install a coding agent"
+mc_wait_prompt "Install which agents" "install picker"
+mc_send Space   # antigravity is the first candidate now (codex already installed)
+mc_send Enter
+mc_wait_prompt "Restart the container to apply" "restart offer"
+mc_send "y" Enter   # YES — apply the new allowlist before installing
+mc_wait_prompt "working: install-agents" "antigravity install progress"
+mc_wait_gone "working: install-agents" "antigravity install end"
+
+echo "==> agy (antigravity) was actually installed"
+harness_poll "agy installed" \
+    bash -c "podman exec --user dev '$cname' bash -lc 'command -v agy >/dev/null'"
+echo "    ✓ antigravity present — its egress hosts covered the vendor download"
+
 echo
 echo "=== INSTALL OK: the install streamed live progress, the menu was disabled"
-echo "    for the duration (a mashed Stop was ignored — no cascade), and codex"
-echo "    was installed — all nested. ==="
+echo "    for the duration (a mashed Stop was ignored — no cascade), codex (npm)"
+echo "    and antigravity (vendor script) both installed — its download host is"
+echo "    allowlisted — all nested. ==="
