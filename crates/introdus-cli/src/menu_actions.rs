@@ -233,16 +233,104 @@ pub fn recreate(ctx: &LaunchContext) -> Result<()> {
 }
 
 /// Reset the container AND wipe the volume, respawning the dev-container window.
+/// Guarded by the same dirty-git scan + typed confirmation as `introdus reset`.
 pub fn reset(ctx: &LaunchContext) -> Result<()> {
-    println!("  reset WIPES /home/dev (repo, uncommitted work, installed packages).");
-    let confirm = Text::new("Type 'yes' to wipe the volume:").prompt()?;
-    if confirm.trim() != "yes" {
-        println!("  aborted.");
-        return Ok(());
-    }
+    crate::lifecycle::confirm_reset(ctx)?;
     podman::remove_container(&ctx.container_name)?;
     podman::remove_volume(&ctx.volume_name)?;
     respawn_dev_window(ctx)
+}
+
+/// Restart the container in place (re-runs its entrypoint; keeps the volume).
+/// `podman restart` starts a stopped container too, so it covers both states.
+pub fn restart(ctx: &LaunchContext) -> Result<()> {
+    if podman::container_state(&ctx.container_name) == podman::ContainerState::Absent {
+        bail!(
+            "container {} isn't created yet — use Recreate to build it",
+            ctx.container_name
+        );
+    }
+    println!("  restarting {}…", ctx.container_name);
+    podman().args(["restart", &ctx.container_name]).run()?;
+    println!("  restarted.");
+    Ok(())
+}
+
+/// Stop the container (keeps it and its volume; Restart brings it back).
+pub fn stop(ctx: &LaunchContext) -> Result<()> {
+    match podman::container_state(&ctx.container_name) {
+        podman::ContainerState::Absent => bail!("container {} isn't created", ctx.container_name),
+        podman::ContainerState::Stopped => {
+            println!("  {} is already stopped.", ctx.container_name);
+            Ok(())
+        }
+        podman::ContainerState::Running => {
+            podman().args(["stop", &ctx.container_name]).run()?;
+            println!("  stopped {}.", ctx.container_name);
+            Ok(())
+        }
+    }
+}
+
+/// Destroy the container AND its volume entirely (full teardown, no respawn),
+/// then offer to delete the local deploy key. Double-confirmed: a yes/no, then
+/// the dirty-git scan + typed 'yes' guard.
+pub fn destroy(ctx: &LaunchContext) -> Result<()> {
+    if !podman::container_exists(&ctx.container_name) && !podman::volume_exists(&ctx.volume_name) {
+        println!("  nothing to destroy — no container or volume for this project.");
+        return Ok(());
+    }
+    if !Confirm::new("Destroy this container and permanently delete its volume?")
+        .with_default(false)
+        .prompt()?
+    {
+        println!("  aborted.");
+        return Ok(());
+    }
+    // Second, stronger confirmation: scans for uncommitted work, requires typed 'yes'.
+    crate::lifecycle::confirm_reset(ctx)?;
+    podman::remove_container(&ctx.container_name)?;
+    podman::remove_volume(&ctx.volume_name)?;
+    println!(
+        "  destroyed container {} and its volume.",
+        ctx.container_name
+    );
+    offer_remove_deploy_key(ctx)?;
+    // Nothing runs in the dev-container window anymore; close it if present.
+    let _ = tmux::kill_window(&session_of(ctx), "dev-container");
+    Ok(())
+}
+
+/// Offer to delete the local deploy key (and its `.pub`) after a destroy. The
+/// repo-side registration is untouched — that's removed on the git host.
+fn offer_remove_deploy_key(ctx: &LaunchContext) -> Result<()> {
+    let key = ctx.config.deploy_key_path.trim();
+    if key.is_empty() {
+        return Ok(());
+    }
+    let path = expand_tilde(key);
+    if !path.exists() {
+        return Ok(());
+    }
+    if !Confirm::new(&format!(
+        "Also delete the local deploy key at {}?",
+        path.display()
+    ))
+    .with_default(false)
+    .with_help_message(
+        "removes the private key + its .pub here; unregister it on the git host separately",
+    )
+    .prompt()?
+    {
+        return Ok(());
+    }
+    std::fs::remove_file(&path).with_context(|| format!("removing {}", path.display()))?;
+    let pubkey = crate::util::pub_sibling(&path);
+    if pubkey.exists() {
+        let _ = std::fs::remove_file(&pubkey);
+    }
+    println!("  deleted deploy key {}.", path.display());
+    Ok(())
 }
 
 // ---- helpers ----------------------------------------------------------------

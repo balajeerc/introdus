@@ -290,15 +290,7 @@ fn is_private_key(path: &Path) -> bool {
     if !path.is_file() || path.extension().is_some_and(|e| e == "pub") {
         return false;
     }
-    pub_sibling(path).is_file()
-}
-
-/// The `<name>.pub` path beside a private key (appends, never replaces — so
-/// `my.key` maps to `my.key.pub`, matching ssh-keygen).
-fn pub_sibling(path: &Path) -> PathBuf {
-    let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(".pub");
-    path.with_file_name(name)
+    crate::util::pub_sibling(path).is_file()
 }
 
 /// `ssh-keygen` a fresh passphrase-less ed25519 key at `path`.
@@ -343,7 +335,7 @@ fn announce_deploy_key(path: &Path, repo_url: &str) -> Result<()> {
 /// The public key for a private key `path`: read the sibling `.pub` if present,
 /// else derive it from the private key with `ssh-keygen -y`.
 fn read_public_key(path: &Path) -> Result<String> {
-    let pubfile = pub_sibling(path);
+    let pubfile = crate::util::pub_sibling(path);
     if pubfile.is_file() {
         return std::fs::read_to_string(&pubfile)
             .with_context(|| format!("reading {}", pubfile.display()));
@@ -410,17 +402,5 @@ mod tests {
         assert!(tokens.contains(&"ship-tbc".to_owned()));
         // Too-short to yield any ≥3-char token or slug.
         assert!(key_match_tokens("x").is_empty());
-    }
-
-    #[test]
-    fn pub_sibling_appends_not_replaces() {
-        assert_eq!(
-            pub_sibling(Path::new("/k/id_ed25519")),
-            Path::new("/k/id_ed25519.pub")
-        );
-        assert_eq!(
-            pub_sibling(Path::new("/k/my.key")),
-            Path::new("/k/my.key.pub")
-        );
     }
 }

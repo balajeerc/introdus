@@ -22,14 +22,38 @@ pub fn container_exists(name: &str) -> bool {
     podman().args(["container", "exists", name]).ok()
 }
 
-/// True if the named container exists and is currently running. A missing
-/// container (inspect fails) reads as "not running".
+/// True if the named container exists and is currently running. The existence
+/// check gates the `inspect` so a missing container never spills `Error: no such
+/// container` onto the menu (inspect inherits stderr).
 pub fn container_running(name: &str) -> bool {
-    podman()
-        .args(["container", "inspect", "-f", "{{.State.Running}}", name])
-        .stdout()
-        .map(|s| s.trim().eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
+    container_exists(name)
+        && podman()
+            .args(["container", "inspect", "-f", "{{.State.Running}}", name])
+            .stdout()
+            .map(|s| s.trim().eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+}
+
+/// Coarse host-visible lifecycle state of a container.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContainerState {
+    /// Created and running.
+    Running,
+    /// Created but not running.
+    Stopped,
+    /// Not created (no such container).
+    Absent,
+}
+
+/// Classify a container as running, stopped, or absent in one probe pair.
+pub fn container_state(name: &str) -> ContainerState {
+    if !container_exists(name) {
+        ContainerState::Absent
+    } else if container_running(name) {
+        ContainerState::Running
+    } else {
+        ContainerState::Stopped
+    }
 }
 
 /// True if the named volume exists.

@@ -6,48 +6,72 @@
 
 use anyhow::Result;
 use inquire::Select;
-use introdus_core::podman;
+use introdus_core::podman::{self, ContainerState};
 
 use crate::context::{env_path, LaunchContext};
 use crate::menu_actions as act;
 use introdus_core::Config;
 
-/// The menu entries, in display order.
+/// A menu entry: either a selectable action or an inert section header (headers
+/// give the flat list some visual grouping; selecting one just redraws).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Row {
+    Header(&'static str),
+    Item(Action),
+}
+
+/// The selectable actions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Action {
+    RootTerminal,
+    DevTerminal,
+    LaunchAgent,
+    InstallAgent,
+    CopyFile,
+    BlockedEgress,
+    AddAllowlist,
     TunnelUrl,
     ExposeWebapp,
     EnableNtfy,
-    CopyFile,
-    InstallAgent,
-    LaunchAgent,
-    BlockedEgress,
-    AddAllowlist,
-    RootTerminal,
-    DevTerminal,
     TestNotify,
+    Restart,
+    Stop,
     Recreate,
     Reset,
+    Destroy,
     Refresh,
     Quit,
+}
+
+impl std::fmt::Display for Row {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // Headers sit flush-left; items are indented under them.
+            Row::Header(title) => write!(f, "── {title} ──"),
+            Row::Item(action) => write!(f, "   {action}"),
+        }
+    }
 }
 
 impl std::fmt::Display for Action {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
+            Action::RootTerminal => "Open a root terminal (tmux window)",
+            Action::DevTerminal => "Open a dev terminal (tmux window)",
+            Action::LaunchAgent => "Launch an installed agent (tmux window)",
+            Action::InstallAgent => "Install a coding agent",
+            Action::CopyFile => "Copy a host file/folder into the container",
+            Action::BlockedEgress => "List recently blocked egress URLs",
+            Action::AddAllowlist => "Add hostnames to the egress allowlist",
             Action::TunnelUrl => "Show tunnel URL",
             Action::ExposeWebapp => "Expose webapp via Cloudflare tunnel",
             Action::EnableNtfy => "Enable ntfy.sh mobile notifications",
-            Action::CopyFile => "Copy a host file/folder into the container",
-            Action::InstallAgent => "Install a coding agent",
-            Action::LaunchAgent => "Launch an installed agent (tmux window)",
-            Action::BlockedEgress => "List recently blocked egress URLs",
-            Action::AddAllowlist => "Add hostnames to the egress allowlist",
-            Action::RootTerminal => "Open a root terminal (tmux window)",
-            Action::DevTerminal => "Open a dev terminal (tmux window)",
             Action::TestNotify => "Send a test host notification",
+            Action::Restart => "Restart the container",
+            Action::Stop => "Stop the container",
             Action::Recreate => "Recreate the container (apply .env changes)",
             Action::Reset => "Reset the container (wipe the volume)",
+            Action::Destroy => "Destroy the container (remove volume + key)",
             Action::Refresh => "Refresh status",
             Action::Quit => "Quit this menu",
         };
@@ -55,22 +79,30 @@ impl std::fmt::Display for Action {
     }
 }
 
-const ACTIONS: &[Action] = &[
-    Action::TunnelUrl,
-    Action::ExposeWebapp,
-    Action::EnableNtfy,
-    Action::CopyFile,
-    Action::InstallAgent,
-    Action::LaunchAgent,
-    Action::BlockedEgress,
-    Action::AddAllowlist,
-    Action::RootTerminal,
-    Action::DevTerminal,
-    Action::TestNotify,
-    Action::Recreate,
-    Action::Reset,
-    Action::Refresh,
-    Action::Quit,
+const MENU: &[Row] = &[
+    Row::Header("Terminals & agents"),
+    Row::Item(Action::RootTerminal),
+    Row::Item(Action::DevTerminal),
+    Row::Item(Action::LaunchAgent),
+    Row::Item(Action::InstallAgent),
+    Row::Header("Files & egress"),
+    Row::Item(Action::CopyFile),
+    Row::Item(Action::BlockedEgress),
+    Row::Item(Action::AddAllowlist),
+    Row::Header("Webapp & notifications"),
+    Row::Item(Action::TunnelUrl),
+    Row::Item(Action::ExposeWebapp),
+    Row::Item(Action::EnableNtfy),
+    Row::Item(Action::TestNotify),
+    Row::Header("Container lifecycle"),
+    Row::Item(Action::Restart),
+    Row::Item(Action::Stop),
+    Row::Item(Action::Recreate),
+    Row::Item(Action::Reset),
+    Row::Item(Action::Destroy),
+    Row::Header("Menu"),
+    Row::Item(Action::Refresh),
+    Row::Item(Action::Quit),
 ];
 
 /// Run the control menu for the current project until the user quits.
@@ -83,10 +115,20 @@ pub fn run() -> Result<()> {
         let ctx = LaunchContext::resolve(config, dir.clone())?;
         print_status(&ctx);
 
-        let action = match Select::new("introdus — control", ACTIONS.to_vec()).prompt() {
-            Ok(a) => a,
+        let prompt = format!("introdus — control ({})", ctx.config.project_name);
+        // Show the whole menu at once (headers + items) — no paging.
+        let row = match Select::new(&prompt, MENU.to_vec())
+            .with_page_size(MENU.len())
+            .prompt()
+        {
+            Ok(r) => r,
             // Esc / Ctrl-C leaves the menu without treating it as an error.
             Err(_) => break,
+        };
+        let action = match row {
+            // A header isn't actionable — just redraw the menu.
+            Row::Header(_) => continue,
+            Row::Item(a) => a,
         };
         if action == Action::Quit {
             break;
@@ -112,15 +154,21 @@ fn dispatch(action: Action, ctx: &LaunchContext) -> Result<()> {
         Action::RootTerminal => act::open_terminal(ctx, None),
         Action::DevTerminal => act::open_terminal(ctx, Some("dev")),
         Action::TestNotify => act::test_notify(ctx),
+        Action::Restart => act::restart(ctx),
+        Action::Stop => act::stop(ctx),
         Action::Recreate => act::recreate(ctx),
         Action::Reset => act::reset(ctx),
+        Action::Destroy => act::destroy(ctx),
         Action::Refresh | Action::Quit => Ok(()),
     }
 }
 
 fn print_status(ctx: &LaunchContext) {
-    let running = podman::container_running(&ctx.container_name);
-    let state = if running { "running" } else { "stopped" };
+    let state = match podman::container_state(&ctx.container_name) {
+        ContainerState::Running => "running",
+        ContainerState::Stopped => "stopped",
+        ContainerState::Absent => "not created",
+    };
     println!("\n────────────────────────────────────────");
     println!(" project:   {}", ctx.config.project_name);
     println!(" container: {} ({state})", ctx.container_name);
