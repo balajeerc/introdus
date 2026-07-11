@@ -197,14 +197,18 @@ fn generate_deploy_key(path: &Path, repo_url: &str) -> Result<()> {
             restrict_dir(parent);
         }
     }
+    // Capture (and discard) ssh-keygen's stdout — the "key pair generated",
+    // fingerprint, and randomart art are noise here; stderr stays visible for
+    // real errors. Mirrors the old wizard's `ssh-keygen … >/dev/null`.
     Cmd::new("ssh-keygen")
         .args(["-t", "ed25519", "-N", "", "-C", "introdus-deploy-key", "-f"])
         .arg(path)
-        .run()
+        .stdout()
         .context("ssh-keygen failed")?;
     let pubkey = std::fs::read_to_string(path.with_extension("pub"))
         .context("reading generated public key")?;
-    println!("\n  Add this PUBLIC deploy key to {repo_url} (with write access):\n");
+    println!("\n  Generated deploy key at {}", path.display());
+    println!("  Add this PUBLIC deploy key to {repo_url} (with write access):\n");
     println!("    {}", pubkey.trim());
     Confirm::new("Press enter once the deploy key is registered with the repo")
         .with_default(true)
