@@ -142,9 +142,12 @@ fn prompt_deploy_key(project_name: &str, repo_url: &str) -> Result<String> {
 /// user can override), refusing to overwrite an existing file.
 fn generate_new_deploy_key(project_name: &str, repo_url: &str) -> Result<String> {
     let slug = names::image_slug(project_name);
+    let filename = format!("{slug}-deploy-key");
+    // Group introdus-created keys under their own subdir so they don't clutter
+    // ~/.ssh alongside personal keys.
     let default = dirs::home_dir()
-        .map(|h| h.join(".ssh").join(format!("{slug}_deploy_key")))
-        .unwrap_or_else(|| PathBuf::from(format!("{slug}_deploy_key")));
+        .map(|h| h.join(".ssh/introdus-deploy-keys").join(&filename))
+        .unwrap_or_else(|| PathBuf::from(&filename));
     loop {
         let raw = Text::new("Where should the new deploy key be created?")
             .with_default(&default.to_string_lossy())
@@ -185,6 +188,14 @@ fn generate_deploy_key(path: &Path, repo_url: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("creating {}", parent.display()))?;
+        // Lock down our own key directory (holds private keys). Guarded by name
+        // so a user-chosen custom path's parent is never re-permissioned.
+        if parent
+            .file_name()
+            .is_some_and(|n| n == "introdus-deploy-keys")
+        {
+            restrict_dir(parent);
+        }
     }
     Cmd::new("ssh-keygen")
         .args(["-t", "ed25519", "-N", "", "-C", "introdus-deploy-key", "-f"])
@@ -200,6 +211,16 @@ fn generate_deploy_key(path: &Path, repo_url: &str) -> Result<()> {
         .prompt()?;
     Ok(())
 }
+
+/// Best-effort `chmod 700` on our key directory (private keys live there).
+#[cfg(unix)]
+fn restrict_dir(dir: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+}
+
+#[cfg(not(unix))]
+fn restrict_dir(_dir: &Path) {}
 
 fn ask_nonempty(prompt: &str) -> Result<String> {
     loop {

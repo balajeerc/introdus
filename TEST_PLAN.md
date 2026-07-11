@@ -178,7 +178,7 @@ Run the automated suite with `cargo test --workspace` and the quality gates with
 |---|-----------|:---------:|:------:|---------------|
 | 16.1 | Selected agents' egress hosts appended to whitelist | ✅ `apply_agents_extends_whitelist` | 0 | — |
 | 16.2 | Prompts: name/repo/port/agents/tunnel/ntfy flow end-to-end | ❌ | 5 | run `introdus` in a fresh dir; walk the wizard |
-| 16.3a | Deploy key — "generate new?" asked first; **yes** → prompts *where to create* (default `~/.ssh/<slug>_deploy_key`), writes the keypair, prints the `.pub`, refuses to overwrite an existing file | ⚠️ (tilde/slug tested) | 4 | answer yes; accept/override the path; confirm keypair + pubkey shown |
+| 16.3a | Deploy key — "generate new?" asked first; **yes** → prompts *where to create* (default `~/.ssh/introdus-deploy-keys/<slug>-deploy-key`, dir chmod 700), writes the keypair, prints the `.pub`, refuses to overwrite an existing file | ⚠️ (tilde/slug tested) | 4 | answer yes; accept/override the path; confirm keypair + pubkey shown + dir is 0700 |
 | 16.3b | Deploy key — **no** → prompts for the path to an *existing* private key and re-asks until it's a real file | ⚠️ (tilde tested) | 4 | answer no; give a bad path then a good one |
 | 16.4 | Wizard writes a valid, loadable `.env` | ⚠️ (round-trip tested) | 3 | finish the wizard; `introdus verify` reads it |
 | 16.5 | Cancel (Esc/Ctrl-C) aborts cleanly | ❌ | 3 | Esc mid-wizard |
