@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
 # Host-side entry point for the full-experience test harness. Builds the
 # introdus release binary, bakes it into the podman-in-podman harness image, and
-# runs a milestone driver inside a rootless-in-rootless container.
+# runs a driver inside a rootless-in-rootless container.
 #
 # Usage:
-#   test-harness/harness.sh [verify]      # milestone 1 (default): egress spike
+#   test-harness/harness.sh [target]
+#     verify   egress spike: nested base build + egress firewall self-check
+#     launch   full dev container up + public-repo clone through the proxy
+#     menu     drive the live control TUI over tmux (full launch experience)
+#     all      verify then menu (default)
 #
-# This is a heavy, opt-in tier — it is NOT part of `cargo test`.
+# This is a heavy, opt-in tier — it is NOT part of `cargo test`. It needs a
+# rootless-podman host with /dev/fuse and /dev/net/tun.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-milestone="${1:-verify}"
+target="${1:-all}"
 image="introdus-harness:latest"
 
 echo "==> building introdus release binary"
@@ -39,21 +44,32 @@ common_flags=(
     -v introdus-harness-storage:/home/podman/.local/share/containers
 )
 
-case "$milestone" in
+run_driver() { podman run "${common_flags[@]}" "$image" "$1"; }
+
+case "$target" in
     verify)
-        echo "==> running milestone 1 (verify) in the harness"
-        podman run "${common_flags[@]}" "$image" driver-verify.sh
+        echo "==> verify: nested base build + egress self-check"
+        run_driver driver-verify.sh
         ;;
     launch)
-        echo "==> running milestone 2 (launch: clone + serve) in the harness"
-        podman run "${common_flags[@]}" "$image" driver-launch.sh
+        echo "==> launch: full dev container up + clone through the proxy"
+        run_driver driver-launch.sh
         ;;
     menu)
-        echo "==> running milestone 3 (menu: drive the live control TUI) in the harness"
-        podman run "${common_flags[@]}" "$image" driver-menu.sh
+        echo "==> menu: drive the live control TUI over tmux"
+        run_driver driver-menu.sh
+        ;;
+    all)
+        echo "==> verify: nested base build + egress self-check"
+        run_driver driver-verify.sh
+        echo "==> menu: full launch + drive the live control TUI over tmux"
+        run_driver driver-menu.sh
         ;;
     *)
-        echo "unknown milestone: $milestone" >&2
+        echo "unknown target: $target (want: verify | launch | menu | all)" >&2
         exit 2
         ;;
 esac
+
+echo
+echo "==> harness target '$target' PASSED"

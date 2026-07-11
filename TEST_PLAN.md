@@ -240,15 +240,23 @@ standalone `introdus init`), so they run anywhere `cargo test` does.
 | 20.2 | `--version` matches crate version | ⚠️ | 1 | `introdus --version` |
 | 20.3 | README/`sample.env` match actual behaviour | ❌ | 2 | follow the README quickstart verbatim |
 
-## 21. End-to-end integration (M10)  ← the decisive manual pass
+## 21. End-to-end integration (M10)  ← the decisive pass
+
+Much of this is now automated by the **full-experience harness** (rootless
+podman-in-podman): `test-harness/harness.sh` drives the real `introdus launch`
+→ tmux session → dev container → egress firewall → public-repo clone → live
+control TUI and asserts on it. Heavy + opt-in (needs a rootless-podman host with
+`/dev/fuse` + `/dev/net/tun`), so not part of `cargo test`. See
+`test-harness/README.md`.
 
 | # | Test case | Automated | Manual | How to verify |
 |---|-----------|:---------:|:------:|---------------|
-| 21.1 | Fresh project: build → install → `introdus` → wizard → container up | ❌ | 5 | full walkthrough on a real rootless-podman host |
-| 21.2 | Egress self-check green; allowlisted reachable, others dropped | ❌ | 5 | the self-check + manual `curl` probes |
-| 21.3 | `.env` parity: generated vs a `./launch.sh` run behave identically | ❌ | 4 | diff both `.env`s and both containers' `podman inspect` |
+| 21.1 | Fresh project: `launch` → tmux session (main-control/notify/dev-container) → container up + clone → live menu | ✅ harness `menu` | 2 | `test-harness/harness.sh menu` |
+| 21.2 | Egress self-check green; allowlisted reachable, others + direct-IP dropped | ✅ harness `verify` | 1 | `test-harness/harness.sh verify` |
+| 21.3 | Menu dispatches into the running container (open a dev terminal → `uid=1000(dev)`) | ✅ harness `menu` | 1 | asserted in driver-menu.sh |
 | 21.4 | Persistence across recreate (repo, node_modules, claude auth survive) | ❌ | 4 | recreate; confirm `/home/dev` intact |
 | 21.5 | Drive Claude from phone via remote control | ❌ | 5 | pair and issue a prompt from the mobile app |
+| 21.6 | `.env` parity: generated vs a `./launch.sh` run behave identically | ❌ | 4 | diff both `.env`s and both containers' `podman inspect` |
 
 ---
 
@@ -263,6 +271,12 @@ standalone `introdus init`), so they run anywhere `cargo test` does.
   the generate-new-key and reuse-matching-key branches (16.2–16.4, 16.6) and the
   menu's render/group/quit + the `no such container` regression (17.1, 17.1a/b)
   are driven through a real pty by `rexpect` — no live host needed.
+- **Full experience (now harness-automated):** the real `introdus launch` →
+  tmux session → nested dev container → egress firewall → clone → live control
+  TUI is driven and asserted by the rootless podman-in-podman harness
+  (`test-harness/harness.sh`, targets `verify`/`launch`/`menu`) — covering
+  21.1–21.3 and the podman-backed egress path. Heavy + opt-in, not in
+  `cargo test`.
 - **Highest manual reliance (rating 5):** anything that needs a live
   rootless-podman host, tmux, a desktop/phone, or the network — real egress
   enforcement (9.5, 11.1), container boot & privilege drop (10.7), the
