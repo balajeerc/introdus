@@ -199,7 +199,14 @@ introdus install            # put binary on PATH + set up services (was host_ins
       Then reworked from a screen-clearing chooser into the two-pane panel: the
       panel stays on the alternate screen and captures each action's output —
       including external commands, via a `process::capture_stdio` hook in core —
-      into the right-hand pane instead of clearing the screen and pausing.)
+      into the right-hand pane instead of clearing the screen and pausing. Long
+      actions (the agent install) run as a streaming `run_task`: `Cmd::stream`
+      pipes output line-by-line on a worker thread while the panel shows a
+      spinner and *discards input*, so the menu is disabled and mashed keys can't
+      cascade into other actions. Harness target `install` covers it end-to-end,
+      and it caught a real bug — the runtime install passed `INSTALL_AGENTS` via
+      a host-side `.env()` that `podman exec` never forwards, so it installed
+      nothing; fixed with an in-container `env VAR=…` prefix.)
 - [x] **M7 — Notifications folded in.** `notify.rs` (core): the trust boundary
       — event whitelist + label sanitization ported exactly, tested. `notify.rs`
       (cli): `notify-host` serves the FIFO (Linux) / socket path and renders

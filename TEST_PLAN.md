@@ -222,7 +222,7 @@ is driven and asserted by the **rootless podman-in-podman harness**
 | TA83 | Toggle expose-webapp (persist + offer recreate) | ❌ | 4 | toggle; grep `.env`; recreate; confirm tunnel starts |
 | TA84 | Enable ntfy (topic prompt + persist) | ❌ | 4 | enable; grep `.env`; recreate; check phone |
 | TA85 | Copy a host file/folder into the container | ✅ harness `menu` | 1 | driver-menu.sh asserts the file in /home/dev/uploads |
-| TA86 | Install an agent at runtime (persist + whitelist + run install-agents) | ❌ | 5 | install codex; confirm `.env`, whitelist, and the binary in-container |
+| TA86 | Install an agent at runtime (persist + whitelist + run install-agents) | ✅ harness `install` →TA115 | 1 | driver-install.sh installs codex; `.env`/whitelist updated + package present |
 | TA87 | Launch an agent in a tmux window (claude via run-claude, remote control on) | ❌ | 5 | launch; new `agent-*` window; pair from phone |
 | TA88 | List blocked egress URLs | ✅ harness `egress` | 1 | driver-egress.sh triggers a block, menu lists it |
 | TA89 | Add allowlist hosts (persist + regen file + offer restart) | ✅ harness `menu` (persist + offer) | 2 | driver-menu.sh asserts .env; manual for post-restart reachability |
@@ -277,6 +277,8 @@ it. Heavy + opt-in (needs a rootless-podman host with `/dev/fuse` +
 | TA112 | Persistence across recreate (`/home/dev` volume survives) | ✅ harness `lifecycle` | 2 | driver-lifecycle.sh: marker survives; manual for node_modules/claude-auth specifics |
 | TA113 | Drive Claude from phone via remote control | ❌ | 5 | pair and issue a prompt from the mobile app |
 | TA114 | `.env` parity: generated vs a `./launch.sh` run behave identically | ❌ | 4 | diff both `.env`s and both containers' `podman inspect` |
+| TA115 | Runtime agent install streams live progress (spinner) and actually installs (codex present in-container) | ✅ harness `install` | 1 | `test-harness/harness.sh install` |
+| TA116 | A long action disables the menu: keys mashed during an install don't cascade into other actions (a stray Stop is ignored) | ✅ harness `install` | 1 | driver-install.sh: stray Stop during install → container still running |
 
 ---
 
@@ -295,12 +297,14 @@ it. Heavy + opt-in (needs a rootless-podman host with `/dev/fuse` +
   session → nested dev container → egress firewall → clone → live control TUI is
   driven and asserted by the rootless podman-in-podman harness
   (`test-harness/harness.sh`, targets `verify` / `menu` / `egress` /
-  `lifecycle`): base build + egress self-check (TA23, TA33, TA49), **workload
-  egress enforcement (TA41)**, container boot + privilege drop (TA48), session +
-  menu utilities (TA67, TA85, TA88–TA91, TA93–TA95), the **reset/destroy
-  data-loss safety scan** (TA54–TA56, TA58, TA59, TA63 — planting uncommitted +
-  unpushed state and asserting the scan reports it), and the end-to-end pass
-  (TA109–TA112). Heavy + opt-in, not in `cargo test`.
+  `lifecycle` / `install`): base build + egress self-check (TA23, TA33, TA49),
+  **workload egress enforcement (TA41)**, container boot + privilege drop
+  (TA48), session + menu utilities (TA67, TA85, TA88–TA91, TA93–TA95), the
+  **reset/destroy data-loss safety scan** (TA54–TA56, TA58, TA59, TA63 —
+  planting uncommitted + unpushed state and asserting the scan reports it), the
+  **runtime agent install** with live progress + menu-disabled-while-running
+  (TA86, TA115, TA116), and the end-to-end pass (TA109–TA112). Heavy + opt-in,
+  not in `cargo test`.
 - **Highest manual reliance (rating 5):** what still needs external services or
   eyes no harness provides — notification delivery to a desktop/phone
   (TA99–TA101), the Cloudflare tunnel + tunnel-URL (TA82), enabling ntfy

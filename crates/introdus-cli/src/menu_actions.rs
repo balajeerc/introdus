@@ -156,11 +156,16 @@ pub fn install_agent(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
         return Ok(());
     }
     let picked: Vec<String> = ui
-        .multiselect_indexed("Install which agents?", &candidates, &[])?
+        .multiselect_indexed(
+            "Install which agents? (Space toggles, Enter confirms)",
+            &candidates,
+            &[],
+        )?
         .into_iter()
         .filter_map(|i| candidates.get(i).cloned())
         .collect();
     if picked.is_empty() {
+        ui.log("  no agents selected — nothing to install.");
         return Ok(());
     }
     let mut config = ctx.config.clone();
@@ -183,11 +188,21 @@ pub fn install_agent(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
         config.clone(),
         &format!("selected: {}", picked.join(", ")),
     )?;
-    ui.log("  running install-agents in the container…");
-    exec(ctx, Some("dev"))
-        .env("INSTALL_AGENTS", config.install_agents.join(" "))
-        .arg("install-agents")
-        .run()?;
+    // Pass INSTALL_AGENTS *into* the container with an `env` prefix — a host-side
+    // `.env()` on the podman process is NOT forwarded through `podman exec`, so
+    // install-agents would otherwise only see the baked-in list and install
+    // nothing. A real install can take a while and is chatty, so run it as a
+    // streaming task: progress shows live and the menu stays disabled until done.
+    ui.run_task(
+        "install-agents",
+        exec(ctx, Some("dev"))
+            .arg("env")
+            .arg(format!(
+                "INSTALL_AGENTS={}",
+                config.install_agents.join(" ")
+            ))
+            .arg("install-agents"),
+    )?;
     ui.log(
         "  note: new egress hosts apply after a restart — use Recreate if an install was blocked.",
     );

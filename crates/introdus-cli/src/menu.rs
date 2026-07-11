@@ -138,6 +138,9 @@ pub fn run() -> Result<()> {
                 if let Err(e) = dispatch(action, &ctx, &mut ui) {
                     ui.log(format!("  ! {e:#}"));
                 }
+                // Discard keys mashed while the (possibly blocking) action ran,
+                // so they don't fire as a cascade of unintended selections.
+                ui.drain_input();
             }
         }
     }

@@ -126,6 +126,14 @@ mc_wait_prompt() {
     echo "FATAL: timed out waiting for [$lbl]:"; mc_vis | sed 's/^/      /'; return 1
 }
 
+# Wait until a substring is NO LONGER in the visible pane — e.g. the "working:"
+# spinner disappearing when a streaming task finishes.
+mc_wait_gone() {
+    local pat="$1" lbl="${2:-$1}" _
+    for _ in $(seq 1 120); do mc_vis | grep -qF "$pat" || return 0; sleep 0.5; done
+    echo "FATAL: [$lbl] still present after timeout:"; mc_vis | sed 's/^/      /'; return 1
+}
+
 # Select a menu item: type the filter + Enter. The panel resets the filter after
 # a selection, so consecutive selects start from the full menu.
 mc_select() { mc_ready; mc_send "$1" Enter; }

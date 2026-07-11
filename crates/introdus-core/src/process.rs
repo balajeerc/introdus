@@ -7,8 +7,10 @@
 
 use std::cell::RefCell;
 use std::ffi::OsStr;
+use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use std::rc::Rc;
+use std::sync::mpsc::Sender;
 
 use anyhow::{bail, Context, Result};
 
@@ -170,6 +172,44 @@ impl Cmd {
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned())
     }
 
+    /// Spawn the command and stream each line of its merged stdout+stderr to
+    /// `sink` as it is produced, returning whether it exited zero. Unlike
+    /// [`run`](Self::run), output is delivered incrementally — for a live
+    /// progress view — and is always piped (never the terminal), so it's safe to
+    /// call while a full-screen TUI owns the screen. Consumes the builder.
+    pub fn stream(mut self, sink: Sender<String>) -> Result<bool> {
+        self.inner
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = self
+            .inner
+            .spawn()
+            .with_context(|| format!("failed to spawn `{}`", self.label))?;
+        let stdout = child.stdout.take().expect("piped stdout");
+        let stderr = child.stderr.take().expect("piped stderr");
+        // Drain stderr on its own thread so a chatty stderr can't deadlock a
+        // full stdout pipe (or vice-versa); both feed the one ordered sink.
+        let sink_err = sink.clone();
+        let err_reader = std::thread::spawn(move || {
+            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                if sink_err.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if sink.send(line).is_err() {
+                break;
+            }
+        }
+        let _ = err_reader.join();
+        let status = child
+            .wait()
+            .with_context(|| format!("waiting on `{}`", self.label))?;
+        Ok(status.success())
+    }
+
     /// Run silently and report whether it exited zero — for existence probes
     /// like `podman image exists …` where a non-zero exit is a normal "no".
     pub fn ok(mut self) -> bool {
@@ -216,6 +256,23 @@ mod tests {
         assert!(Cmd::new("true").ok());
         assert!(!Cmd::new("false").ok());
         assert!(!Cmd::new("introdus-no-such-binary-xyz").ok());
+    }
+
+    #[test]
+    fn ta25_stream_delivers_lines_incrementally_and_reports_status() {
+        use std::sync::mpsc::channel;
+        let (tx, rx) = channel();
+        let ok = Cmd::new("printf")
+            .arg("one\ntwo\nthree\n")
+            .stream(tx)
+            .unwrap();
+        assert!(ok);
+        // Senders are dropped when stream() returns, so the iterator terminates.
+        let lines: Vec<String> = rx.into_iter().collect();
+        assert_eq!(lines, vec!["one", "two", "three"]);
+        // Non-zero exit is reported, not an error.
+        let (tx, _rx) = channel();
+        assert!(!Cmd::new("false").stream(tx).unwrap());
     }
 
     #[test]

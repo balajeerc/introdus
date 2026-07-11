@@ -11,7 +11,8 @@
 #                stop/restart)
 #     egress     workload default-deny enforcement + blocked-egress menu utility
 #     lifecycle  recreate (persistence) + destroy (confirm/scan/key) teardown
-#     all        verify + menu + egress + lifecycle (default)
+#     install    install a coding agent: live progress + menu disabled (no cascade)
+#     all        verify + menu + egress + lifecycle + install (default)
 #
 # This is a heavy, opt-in tier — it is NOT part of `cargo test`. It needs a
 # rootless-podman host with /dev/fuse and /dev/net/tun.
@@ -70,6 +71,10 @@ case "$target" in
         echo "==> lifecycle: recreate persistence + destroy teardown"
         run_driver driver-lifecycle.sh
         ;;
+    install)
+        echo "==> install: install a coding agent — live progress + no cascade"
+        run_driver driver-install.sh
+        ;;
     all)
         echo "==> verify: nested base build + egress self-check"
         run_driver driver-verify.sh
@@ -77,11 +82,13 @@ case "$target" in
         run_driver driver-menu.sh
         echo "==> egress: workload default-deny enforcement + blocked-egress menu"
         run_driver driver-egress.sh
+        echo "==> install: install a coding agent — live progress + no cascade"
+        run_driver driver-install.sh
         echo "==> lifecycle: recreate persistence + destroy teardown"
         run_driver driver-lifecycle.sh
         ;;
     *)
-        echo "unknown target: $target (want: verify | launch | menu | all)" >&2
+        echo "unknown target: $target (want: verify | launch | menu | egress | lifecycle | install | all)" >&2
         exit 2
         ;;
 esac

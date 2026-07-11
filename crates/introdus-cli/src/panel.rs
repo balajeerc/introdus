@@ -67,6 +67,9 @@ enum Popup<'a> {
     },
 }
 
+/// Braille spinner frames for the "action in progress" indicator.
+const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
 /// Owns the alternate screen + the output pane for a control-menu session.
 pub struct Ui {
     term: Terminal<Backend>,
@@ -76,6 +79,10 @@ pub struct Ui {
     /// Selection index into the *visible* (filtered) item list.
     sel: usize,
     query: String,
+    /// When set, a long action is running: the footer shows a spinner and
+    /// keystrokes are ignored (the menu is disabled until it finishes).
+    busy: Option<String>,
+    spin: usize,
     _capture: CaptureGuard,
 }
 
@@ -95,6 +102,8 @@ impl Ui {
             rows: Vec::new(),
             sel: 0,
             query: String::new(),
+            busy: None,
+            spin: 0,
             _capture: capture,
         })
     }
@@ -121,6 +130,50 @@ impl Ui {
             out.push(format!("▶ {title}"));
         }
         let _ = self.draw(None);
+    }
+
+    /// Run a long command as a foreground *task*: it streams its output into the
+    /// pane line-by-line on a worker thread while the panel shows a spinner, and
+    /// — crucially — all keystrokes are discarded until it finishes, so the menu
+    /// is disabled and no other action can be started (or queued) meanwhile.
+    pub fn run_task(&mut self, label: &str, cmd: introdus_core::process::Cmd) -> Result<()> {
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        let handle = std::thread::spawn(move || cmd.stream(tx));
+        self.busy = Some(label.to_owned());
+        let outcome = loop {
+            let mut drained_any = false;
+            while let Ok(line) = rx.try_recv() {
+                self.out.borrow_mut().push(line);
+                drained_any = true;
+            }
+            self.spin = self.spin.wrapping_add(1);
+            let _ = self.draw(None);
+            if handle.is_finished() && !drained_any {
+                while let Ok(line) = rx.try_recv() {
+                    self.out.borrow_mut().push(line);
+                }
+                break handle.join();
+            }
+            // Wait briefly for input and throw it away — the task owns the UI.
+            if ratatui::crossterm::event::poll(Duration::from_millis(120))? {
+                let _ = ratatui::crossterm::event::read()?;
+            }
+        };
+        self.busy = None;
+        match outcome {
+            Ok(Ok(true)) => Ok(()),
+            Ok(Ok(false)) => bail!("`{label}` exited non-zero"),
+            Ok(Err(e)) => Err(e),
+            Err(_) => bail!("`{label}` task thread panicked"),
+        }
+    }
+
+    /// Discard any keystrokes buffered while an action was running, so keys
+    /// mashed during a blocking step don't fire as a cascade of menu selections.
+    pub fn drain_input(&self) {
+        while ratatui::crossterm::event::poll(Duration::from_millis(0)).unwrap_or(false) {
+            let _ = ratatui::crossterm::event::read();
+        }
     }
 
     /// Run one turn at the menu: filter/navigate until the user picks an item or
@@ -279,8 +332,12 @@ impl Ui {
         let rows = &self.rows;
         let query = &self.query;
         let sel = self.sel;
+        let busy = self
+            .busy
+            .as_ref()
+            .map(|label| (label.as_str(), SPINNER[self.spin % SPINNER.len()]));
         self.term.draw(|f| {
-            draw_frame(f, status, rows, query, sel, &lines, popup.as_ref());
+            draw_frame(f, status, rows, query, sel, &lines, popup.as_ref(), busy);
         })?;
         Ok(())
     }
@@ -304,6 +361,7 @@ fn blank_status() -> Status {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_frame(
     f: &mut Frame,
     status: &Status,
@@ -312,6 +370,7 @@ fn draw_frame(
     sel: usize,
     out: &[String],
     popup: Option<&Popup>,
+    busy: Option<(&str, char)>,
 ) {
     // A prompt (if any) is a full-width band at the bottom, above the footer —
     // it never covers the panes, and its full width keeps long prompt text on a
@@ -327,13 +386,21 @@ fn draw_frame(
         Layout::horizontal([Constraint::Percentage(48), Constraint::Percentage(52)]).split(root[0]);
     let left = Layout::vertical([Constraint::Length(7), Constraint::Min(3)]).split(cols[0]);
 
+    // While a task runs, the menu is disabled — dim it and drop the highlight.
     draw_status_panel(f, left[0], status);
-    draw_menu_list(f, left[1], rows, query, sel, popup.is_none());
+    draw_menu_list(
+        f,
+        left[1],
+        rows,
+        query,
+        sel,
+        popup.is_none() && busy.is_none(),
+    );
     draw_output_pane(f, cols[1], out);
     if let Some(p) = popup {
         draw_prompt(f, root[1], p);
     }
-    draw_footer(f, root[2], query);
+    draw_footer(f, root[2], query, busy);
 }
 
 fn prompt_height(popup: &Popup) -> u16 {
@@ -474,9 +541,20 @@ fn wrapped_rows(lines: &[String], width: u16) -> usize {
         .sum()
 }
 
-fn draw_footer(f: &mut Frame, area: Rect, query: &str) {
+fn draw_footer(f: &mut Frame, area: Rect, query: &str, busy: Option<(&str, char)>) {
     let hint = "↑/↓ move · type to filter · Enter select · Esc quit · Ctrl-a ⟨n⟩ tmux windows";
-    let line = if query.is_empty() {
+    let line = if let Some((label, spin)) = busy {
+        Line::from(vec![
+            Span::styled(
+                format!(" {spin} working: {label}… "),
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("  menu paused until it finishes", Style::default().fg(DIM)),
+        ])
+    } else if query.is_empty() {
         Line::from(Span::styled(hint, Style::default().fg(DIM)))
     } else {
         Line::from(vec![
