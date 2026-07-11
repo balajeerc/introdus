@@ -124,23 +124,27 @@ fn prompt_ntfy() -> Result<(bool, Option<String>)> {
 }
 
 /// Deploy-key setup: ask up-front whether to generate a fresh key or point at
-/// an existing one, then branch — matching the original wizard's intent-first
-/// flow so the path prompt is never ambiguous.
+/// an existing one, branch to resolve the private-key path, then — in BOTH
+/// cases — print the public half and wait for the user to register it as a
+/// write-access deploy key before the clone step relies on it.
 fn prompt_deploy_key(project_name: &str, repo_url: &str) -> Result<String> {
     let generate = Confirm::new("Generate a new per-project deploy key now?")
         .with_default(true)
         .with_help_message("No = point introdus at a deploy key you already have")
         .prompt()?;
-    if generate {
-        generate_new_deploy_key(project_name, repo_url)
+    let path = if generate {
+        generate_new_deploy_key(project_name)?
     } else {
-        prompt_existing_deploy_key(project_name)
-    }
+        prompt_existing_deploy_key(project_name)?
+    };
+    announce_deploy_key(Path::new(&path), repo_url)?;
+    Ok(path)
 }
 
 /// Create a fresh ed25519 key at a project-derived default location (which the
-/// user can override), refusing to overwrite an existing file.
-fn generate_new_deploy_key(project_name: &str, repo_url: &str) -> Result<String> {
+/// user can override), refusing to overwrite an existing file. Returns the
+/// private-key path; registration is handled by the caller.
+fn generate_new_deploy_key(project_name: &str) -> Result<String> {
     let slug = names::image_slug(project_name);
     let filename = format!("{slug}-deploy-key");
     // Group introdus-created keys under their own subdir so they don't clutter
@@ -151,7 +155,9 @@ fn generate_new_deploy_key(project_name: &str, repo_url: &str) -> Result<String>
     loop {
         let raw = Text::new("Where should the new deploy key be created?")
             .with_default(&default.to_string_lossy())
-            .with_help_message("A private key is written here and its .pub is printed to register")
+            .with_help_message(
+                "A private key is written here; its .pub is printed next to register",
+            )
             .prompt()?;
         let path = expand_tilde(raw.trim());
         if path.exists() {
@@ -161,44 +167,51 @@ fn generate_new_deploy_key(project_name: &str, repo_url: &str) -> Result<String>
             );
             continue;
         }
-        generate_deploy_key(&path, repo_url)?;
+        create_key_file(&path)?;
         return Ok(path.to_string_lossy().into_owned());
     }
 }
 
-/// Point introdus at an already-existing private deploy key. First scans the
-/// user's ssh dirs for keys whose filename resembles this project and offers
-/// them; if none match (or the user declines), falls back to a path prompt.
+/// Point introdus at an already-existing private deploy key. If any keys in the
+/// user's ssh dirs resemble this project, offer to reuse one (a plain yes/no,
+/// then a picker only when several match); otherwise, or on decline, prompt for
+/// a path.
 fn prompt_existing_deploy_key(project_name: &str) -> Result<String> {
-    let matches = find_candidate_keys(project_name);
-    if !matches.is_empty() {
-        if let Some(path) = pick_candidate_key(&matches)? {
-            return Ok(path);
-        }
+    if let Some(path) = offer_candidate_keys(&find_candidate_keys(project_name))? {
+        return Ok(path);
     }
     prompt_key_path()
 }
 
-/// Present the project-matching keys we found and let the user pick one, or
-/// choose to type a path instead (`Ok(None)`).
-fn pick_candidate_key(matches: &[PathBuf]) -> Result<Option<String>> {
-    const ENTER_PATH: &str = "↳ Enter a different path instead";
-    let mut options: Vec<String> = matches
+/// Two-step reuse flow for project-matching keys: confirm intent first, then —
+/// only if several matched — pick which. `Ok(None)` means "none / not these",
+/// so the caller falls through to a manual path prompt.
+fn offer_candidate_keys(matches: &[PathBuf]) -> Result<Option<String>> {
+    let (first, rest) = match matches.split_first() {
+        Some(pair) => pair,
+        None => return Ok(None),
+    };
+    let question = if rest.is_empty() {
+        format!("Reuse the existing key at {}?", first.display())
+    } else {
+        format!(
+            "Reuse one of the {} existing keys matching this project?",
+            matches.len()
+        )
+    };
+    let reuse = Confirm::new(&question).with_default(true).prompt()?;
+    if !reuse {
+        return Ok(None);
+    }
+    if rest.is_empty() {
+        return Ok(Some(first.to_string_lossy().into_owned()));
+    }
+    let options: Vec<String> = matches
         .iter()
         .map(|p| p.to_string_lossy().into_owned())
         .collect();
-    options.push(ENTER_PATH.to_owned());
-    let choice = Select::new(
-        "Found existing keys that match this project — use one?",
-        options,
-    )
-    .with_help_message("matched by name in ~/.ssh; pick one or enter a different path")
-    .prompt()?;
-    if choice == ENTER_PATH {
-        Ok(None)
-    } else {
-        Ok(Some(choice))
-    }
+    let choice = Select::new("Which key?", options).prompt()?;
+    Ok(Some(choice))
 }
 
 /// Prompt for the path to a private deploy key, re-asking until it points at a
@@ -288,9 +301,8 @@ fn pub_sibling(path: &Path) -> PathBuf {
     path.with_file_name(name)
 }
 
-/// `ssh-keygen` a passphrase-less ed25519 key, print the public half, and wait
-/// for the user to register it with the git host.
-fn generate_deploy_key(path: &Path, repo_url: &str) -> Result<()> {
+/// `ssh-keygen` a fresh passphrase-less ed25519 key at `path`.
+fn create_key_file(path: &Path) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("creating {}", parent.display()))?;
@@ -311,15 +323,36 @@ fn generate_deploy_key(path: &Path, repo_url: &str) -> Result<()> {
         .arg(path)
         .stdout()
         .context("ssh-keygen failed")?;
-    let pubkey = std::fs::read_to_string(path.with_extension("pub"))
-        .context("reading generated public key")?;
-    println!("\n  Generated deploy key at {}", path.display());
-    println!("  Add this PUBLIC deploy key to {repo_url} (with write access):\n");
+    Ok(())
+}
+
+/// Print the public half of the deploy key and wait for the user to register it
+/// with the git host. Run for both freshly-generated and reused keys, so the
+/// clone step never proceeds against an unregistered key.
+fn announce_deploy_key(path: &Path, repo_url: &str) -> Result<()> {
+    let pubkey = read_public_key(path)?;
+    println!("\n  Deploy key: {}", path.display());
+    println!("  Add this PUBLIC key to {repo_url} as a deploy key WITH WRITE ACCESS:\n");
     println!("    {}", pubkey.trim());
     Confirm::new("Press enter once the deploy key is registered with the repo")
         .with_default(true)
         .prompt()?;
     Ok(())
+}
+
+/// The public key for a private key `path`: read the sibling `.pub` if present,
+/// else derive it from the private key with `ssh-keygen -y`.
+fn read_public_key(path: &Path) -> Result<String> {
+    let pubfile = pub_sibling(path);
+    if pubfile.is_file() {
+        return std::fs::read_to_string(&pubfile)
+            .with_context(|| format!("reading {}", pubfile.display()));
+    }
+    Cmd::new("ssh-keygen")
+        .args(["-y", "-f"])
+        .arg(path)
+        .stdout()
+        .context("deriving public key with `ssh-keygen -y`")
 }
 
 /// Best-effort `chmod 700` on our key directory (private keys live there).
