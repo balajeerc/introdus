@@ -8,6 +8,7 @@
 # hostname-allowlist proxy, confirms the proxy reaches an allowlisted host AND
 # that a direct-IP dial is dropped, then exits without the workload.
 set -euo pipefail
+source /usr/local/bin/driver-common.sh
 
 proj="$HOME/proj-verify"
 mkdir -p "$proj"

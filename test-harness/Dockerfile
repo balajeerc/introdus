@@ -19,10 +19,20 @@ COPY target/release/introdus /usr/local/bin/introdus
 RUN chmod 0755 /usr/local/bin/introdus
 
 # Driver scripts, one per milestone; harness.sh picks which to run.
+COPY test-harness/driver-common.sh /usr/local/bin/driver-common.sh
 COPY test-harness/driver-verify.sh /usr/local/bin/driver-verify.sh
-RUN chmod 0755 /usr/local/bin/driver-verify.sh
+COPY test-harness/driver-launch.sh /usr/local/bin/driver-launch.sh
+RUN chmod 0755 /usr/local/bin/driver-common.sh /usr/local/bin/driver-verify.sh /usr/local/bin/driver-launch.sh
 
 # Run as the preconfigured rootless user — introdus refuses to run as root.
 USER podman
 WORKDIR /home/podman
 ENV HOME=/home/podman
+# The nested (inner) containers must get a PRIVATE uts namespace: introdus passes
+# --hostname, which podman rejects under the host UTS ns that the podman-in-podman
+# base otherwise defaults to. Private uts is the normal podman default anyway.
+# default_sysctls is emptied because the built-in net.ipv4.ping_group_range
+# default can't be written to the read-only /proc/sys when nested (crun errors).
+RUN mkdir -p /home/podman/.config/containers \
+    && printf '[containers]\nutsns = "private"\ndefault_sysctls = []\n' \
+       > /home/podman/.config/containers/containers.conf

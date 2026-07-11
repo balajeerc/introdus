@@ -21,19 +21,21 @@ echo "==> building harness image ($image)"
 podman build -t "$image" -f test-harness/Dockerfile .
 
 # Flags for rootless podman-in-podman:
+#   --privileged            the OUTER container only, so the INNER container can
+#                           mount its own /proc, set up userns/netns, run nft.
+#                           The inner podman still runs rootless as the `podman`
+#                           user, so introdus's non-root preflight still holds and
+#                           the egress firewall under test is unchanged. The
+#                           harness is trusted test infra (full egress by design).
 #   --device /dev/fuse      fuse-overlayfs storage driver
 #   --device /dev/net/tun   pasta needs it to make the inner container's tap dev
-#   label/seccomp off       so the nested container can set up its own userns+netns
 #   storage volume          persist the inner podman graph (the built base image)
 #                           across harness runs — otherwise every run rebuilds it
-# We run as the image's unprivileged `podman` user (introdus refuses root), NOT
-# --privileged.
 common_flags=(
     --rm
+    --privileged
     --device /dev/fuse
     --device /dev/net/tun
-    --security-opt label=disable
-    --security-opt seccomp=unconfined
     -v introdus-harness-storage:/home/podman/.local/share/containers
 )
 
@@ -41,6 +43,10 @@ case "$milestone" in
     verify)
         echo "==> running milestone 1 (verify) in the harness"
         podman run "${common_flags[@]}" "$image" driver-verify.sh
+        ;;
+    launch)
+        echo "==> running milestone 2 (launch: clone + serve) in the harness"
+        podman run "${common_flags[@]}" "$image" driver-launch.sh
         ;;
     *)
         echo "unknown milestone: $milestone" >&2
