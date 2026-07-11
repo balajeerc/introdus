@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use inquire::{Confirm, CustomType, MultiSelect, Text};
+use inquire::{Confirm, CustomType, MultiSelect, Select, Text};
 use introdus_core::agents::{self, Agent};
 use introdus_core::process::Cmd;
 use introdus_core::{names, Config};
@@ -134,7 +134,7 @@ fn prompt_deploy_key(project_name: &str, repo_url: &str) -> Result<String> {
     if generate {
         generate_new_deploy_key(project_name, repo_url)
     } else {
-        prompt_existing_deploy_key()
+        prompt_existing_deploy_key(project_name)
     }
 }
 
@@ -166,9 +166,44 @@ fn generate_new_deploy_key(project_name: &str, repo_url: &str) -> Result<String>
     }
 }
 
-/// Prompt for the path to an already-existing private deploy key, re-asking
-/// until it points at a real file.
-fn prompt_existing_deploy_key() -> Result<String> {
+/// Point introdus at an already-existing private deploy key. First scans the
+/// user's ssh dirs for keys whose filename resembles this project and offers
+/// them; if none match (or the user declines), falls back to a path prompt.
+fn prompt_existing_deploy_key(project_name: &str) -> Result<String> {
+    let matches = find_candidate_keys(project_name);
+    if !matches.is_empty() {
+        if let Some(path) = pick_candidate_key(&matches)? {
+            return Ok(path);
+        }
+    }
+    prompt_key_path()
+}
+
+/// Present the project-matching keys we found and let the user pick one, or
+/// choose to type a path instead (`Ok(None)`).
+fn pick_candidate_key(matches: &[PathBuf]) -> Result<Option<String>> {
+    const ENTER_PATH: &str = "↳ Enter a different path instead";
+    let mut options: Vec<String> = matches
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    options.push(ENTER_PATH.to_owned());
+    let choice = Select::new(
+        "Found existing keys that match this project — use one?",
+        options,
+    )
+    .with_help_message("matched by name in ~/.ssh; pick one or enter a different path")
+    .prompt()?;
+    if choice == ENTER_PATH {
+        Ok(None)
+    } else {
+        Ok(Some(choice))
+    }
+}
+
+/// Prompt for the path to a private deploy key, re-asking until it points at a
+/// real file.
+fn prompt_key_path() -> Result<String> {
     loop {
         let raw = ask_nonempty("Path to your existing deploy key (the private key file)")?;
         let path = expand_tilde(&raw);
@@ -180,6 +215,77 @@ fn prompt_existing_deploy_key() -> Result<String> {
             path.display()
         );
     }
+}
+
+/// Scan the user's ssh dirs for private keys whose filename resembles the
+/// project, best-match-first. A file is treated as a private key when it has a
+/// sibling `.pub` — which skips `config`, `known_hosts`, and public keys.
+fn find_candidate_keys(project_name: &str) -> Vec<PathBuf> {
+    let Some(home) = dirs::home_dir() else {
+        return Vec::new();
+    };
+    let tokens = key_match_tokens(project_name);
+    if tokens.is_empty() {
+        return Vec::new();
+    }
+    let mut scored: Vec<(usize, PathBuf)> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for dir in [home.join(".ssh"), home.join(".ssh/introdus-deploy-keys")] {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !is_private_key(&path) {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
+            let score = tokens.iter().filter(|t| name.contains(*t)).count();
+            if score > 0 && seen.insert(path.clone()) {
+                scored.push((score, path));
+            }
+        }
+    }
+    // Highest score first, then alphabetical for a stable, predictable order.
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    scored.into_iter().map(|(_, p)| p).collect()
+}
+
+/// The lowercase tokens (each ≥3 chars) a key filename must contain to be
+/// considered a match — derived from the project's image slug.
+fn key_match_tokens(project_name: &str) -> Vec<String> {
+    let slug = names::image_slug(project_name);
+    let mut tokens: Vec<String> = slug
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|t| t.len() >= 3)
+        .map(str::to_owned)
+        .collect();
+    if slug.len() >= 3 {
+        tokens.push(slug);
+    }
+    tokens.sort();
+    tokens.dedup();
+    tokens
+}
+
+/// True when `path` is a private key file: a regular file with no `.pub`
+/// extension that has a sibling `<name>.pub`.
+fn is_private_key(path: &Path) -> bool {
+    if !path.is_file() || path.extension().is_some_and(|e| e == "pub") {
+        return false;
+    }
+    pub_sibling(path).is_file()
+}
+
+/// The `<name>.pub` path beside a private key (appends, never replaces — so
+/// `my.key` maps to `my.key.pub`, matching ssh-keygen).
+fn pub_sibling(path: &Path) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".pub");
+    path.with_file_name(name)
 }
 
 /// `ssh-keygen` a passphrase-less ed25519 key, print the public half, and wait
@@ -260,5 +366,28 @@ mod tests {
         // codex's hosts (api.openai.com, ...) were appended.
         assert!(c.whitelist_hosts.contains(&"api.openai.com".to_owned()));
         assert!(c.whitelist_hosts.len() > before);
+    }
+
+    #[test]
+    fn key_match_tokens_splits_slug() {
+        let tokens = key_match_tokens("Ship TBC");
+        // "ship tbc" -> slug "ship-tbc": tokens "ship", "tbc", plus the slug.
+        assert!(tokens.contains(&"ship".to_owned()));
+        assert!(tokens.contains(&"tbc".to_owned()));
+        assert!(tokens.contains(&"ship-tbc".to_owned()));
+        // Too-short to yield any ≥3-char token or slug.
+        assert!(key_match_tokens("x").is_empty());
+    }
+
+    #[test]
+    fn pub_sibling_appends_not_replaces() {
+        assert_eq!(
+            pub_sibling(Path::new("/k/id_ed25519")),
+            Path::new("/k/id_ed25519.pub")
+        );
+        assert_eq!(
+            pub_sibling(Path::new("/k/my.key")),
+            Path::new("/k/my.key.pub")
+        );
     }
 }
