@@ -64,7 +64,7 @@ echo "==> menu: Destroy the container"
 mc_select "Destroy the container"
 # 1) plain yes/no
 mc_wait_prompt "Destroy this container and permanently delete its volume" "destroy confirm"
-mc_send "y" Enter
+mc_send "y"   # a single y submits the confirm (Enter here would leak to the next prompt)
 # 2) dirty-git scan runs (throwaway container), then a typed confirmation. The
 #    scan report streams into the output pane just before the typed prompt band
 #    appears — assert it caught the uncommitted + unpushed state we planted.
@@ -76,14 +76,21 @@ echo "$scan" | grep -qF "unpushed commits" \
     || { echo "FATAL: safety scan missed unpushed commits"; echo "$scan" | tail -25 | sed 's/^/      /'; exit 1; }
 echo "    ✓ safety scan reported uncommitted working-tree + unpushed commits"
 mc_send "yes" Enter
-# 3) offer to delete the local deploy key
+# 3) offer to delete the local deploy key (single y submits)
 mc_wait_prompt "Also delete the local deploy key" "deploy-key prompt"
-mc_send "y" Enter
+mc_send "y"
 
 harness_poll "container gone" bash -c "! podman container exists '$cname'"
 harness_poll "volume gone" bash -c "! podman volume exists introdus-vol-harness"
 harness_poll "deploy key deleted" bash -c "[ ! -f '$key' ]"
 echo "    ✓ destroy wiped the container, the volume, and the local deploy key"
+
+# It must STAY destroyed — nothing (e.g. the dev-container window) should
+# re-create it behind our back.
+sleep 4
+podman container exists "$cname" \
+    && { echo "FATAL: container reappeared after destroy — something re-created it"; exit 1; }
+echo "    ✓ container stayed destroyed (no re-create)"
 
 echo
 echo "=== LIFECYCLE OK: Recreate preserved /home/dev; Destroy double-confirmed,"

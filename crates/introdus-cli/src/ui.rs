@@ -191,13 +191,15 @@ pub(crate) fn question(prompt: &str) -> Line<'static> {
 pub(crate) fn confirm_step(code: KeyCode, mods: KeyModifiers, answer: &mut bool) -> Step {
     match code {
         _ if cancel_key(code, mods) => Step::Cancel,
+        // A single y/n submits immediately (the common expectation); Enter alone
+        // accepts the current default.
         KeyCode::Char('y') | KeyCode::Char('Y') => {
             *answer = true;
-            Step::Continue
+            Step::Accept
         }
         KeyCode::Char('n') | KeyCode::Char('N') => {
             *answer = false;
-            Step::Continue
+            Step::Accept
         }
         KeyCode::Enter => Step::Accept,
         _ => Step::Continue,
@@ -514,6 +516,31 @@ mod tests {
         assert_eq!(visible_items(&rows, "refresh"), vec![3]);
         assert_eq!(visible_items(&rows, "the container"), vec![1, 2]);
         assert!(visible_items(&rows, "nope").is_empty());
+    }
+
+    #[test]
+    fn ta81_confirm_single_key_submits_enter_takes_default() {
+        let none = KeyModifiers::empty();
+        // A single y/n submits immediately with that answer.
+        let mut a = false;
+        assert!(matches!(
+            confirm_step(KeyCode::Char('y'), none, &mut a),
+            Step::Accept
+        ));
+        assert!(a);
+        let mut b = true;
+        assert!(matches!(
+            confirm_step(KeyCode::Char('n'), none, &mut b),
+            Step::Accept
+        ));
+        assert!(!b);
+        // Enter accepts whatever the current default is (unchanged).
+        let mut d = true;
+        assert!(matches!(
+            confirm_step(KeyCode::Enter, none, &mut d),
+            Step::Accept
+        ));
+        assert!(d);
     }
 
     #[test]

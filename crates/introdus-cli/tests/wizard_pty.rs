@@ -90,7 +90,7 @@ fn ta75_wizard_reuses_a_matching_key_and_still_shows_registration() {
     send(&mut p, "git@github.com:o/ship-tbc.git\r");
     p.exp_string("Generate a new per-project deploy key now")
         .unwrap();
-    send(&mut p, "n\r"); // No -> reuse-existing branch
+    send(&mut p, "n"); // a single 'n' submits the confirm -> reuse-existing branch
     p.exp_string("Reuse the existing key at").unwrap();
     enter(&mut p); // default Yes -> reuse it
                    // Registration is shown for a REUSED key too (the whole point of the fix).

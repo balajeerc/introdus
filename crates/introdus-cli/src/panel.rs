@@ -136,13 +136,42 @@ impl Ui {
     /// pane line-by-line on a worker thread while the panel shows a spinner, and
     /// — crucially — all keystrokes are discarded until it finishes, so the menu
     /// is disabled and no other action can be started (or queued) meanwhile.
+    /// Errors on a non-zero exit.
     pub fn run_task(&mut self, label: &str, cmd: introdus_core::process::Cmd) -> Result<()> {
+        let (ok, _lines) = self.run_task_inner(label, cmd)?;
+        if !ok {
+            bail!("`{label}` exited non-zero");
+        }
+        Ok(())
+    }
+
+    /// Like [`run_task`](Self::run_task) but best-effort (the exit code is
+    /// ignored) and returns the streamed lines — for a scan whose output we both
+    /// show and need to inspect.
+    pub fn run_task_lines(
+        &mut self,
+        label: &str,
+        cmd: introdus_core::process::Cmd,
+    ) -> Result<Vec<String>> {
+        let (_ok, lines) = self.run_task_inner(label, cmd)?;
+        Ok(lines)
+    }
+
+    /// Shared driver for the task variants: spin + stream + drain input, and
+    /// return `(exited_zero, streamed_lines)`.
+    fn run_task_inner(
+        &mut self,
+        label: &str,
+        cmd: introdus_core::process::Cmd,
+    ) -> Result<(bool, Vec<String>)> {
         let (tx, rx) = std::sync::mpsc::channel::<String>();
         let handle = std::thread::spawn(move || cmd.stream(tx));
         self.busy = Some(label.to_owned());
+        let mut lines = Vec::new();
         let outcome = loop {
             let mut drained_any = false;
             while let Ok(line) = rx.try_recv() {
+                lines.push(line.clone());
                 self.out.borrow_mut().push(line);
                 drained_any = true;
             }
@@ -150,6 +179,7 @@ impl Ui {
             let _ = self.draw(None);
             if handle.is_finished() && !drained_any {
                 while let Ok(line) = rx.try_recv() {
+                    lines.push(line.clone());
                     self.out.borrow_mut().push(line);
                 }
                 break handle.join();
@@ -161,8 +191,7 @@ impl Ui {
         };
         self.busy = None;
         match outcome {
-            Ok(Ok(true)) => Ok(()),
-            Ok(Ok(false)) => bail!("`{label}` exited non-zero"),
+            Ok(Ok(ok)) => Ok((ok, lines)),
             Ok(Err(e)) => Err(e),
             Err(_) => bail!("`{label}` task thread panicked"),
         }

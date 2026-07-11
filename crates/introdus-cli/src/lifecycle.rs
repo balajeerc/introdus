@@ -112,20 +112,26 @@ pub fn schedule_pull(ctx: &LaunchContext) -> Result<()> {
         .run()
 }
 
-/// Best-effort scan of `/home/dev/work` for uncommitted/unpushed git state, run
-/// in a read-only throwaway container. Returns `None` if the base image is
-/// missing (nothing to scan with). Prints nothing — the caller decides how to
-/// surface the report (stdout for the CLI, the output pane for the menu).
-pub(crate) fn scan_dirty_git(ctx: &LaunchContext) -> Option<String> {
+/// The read-only throwaway-container command that scans `/home/dev/work` for
+/// uncommitted/unpushed git state. `None` if the base image is missing (nothing
+/// to scan with). Returned as a [`Cmd`] so the caller can either capture it
+/// (CLI) or stream it with a spinner (the menu).
+pub(crate) fn dirty_scan_cmd(ctx: &LaunchContext) -> Option<introdus_core::process::Cmd> {
     if !image_exists(BASE_IMAGE) {
         return None;
     }
-    podman()
-        .args(["run", "--rm", "--network=none", "--volume"])
-        .arg(format!("{}:/home/dev:ro", ctx.volume_name))
-        .args([BASE_IMAGE, "bash", "-c", DIRTY_SCAN])
-        .stdout()
-        .ok()
+    Some(
+        podman()
+            .args(["run", "--rm", "--network=none", "--volume"])
+            .arg(format!("{}:/home/dev:ro", ctx.volume_name))
+            .args([BASE_IMAGE, "bash", "-c", DIRTY_SCAN]),
+    )
+}
+
+/// Best-effort scan for the CLI (cooked-mode) `reset` path — captures the report
+/// as a string. Prints nothing itself.
+pub(crate) fn scan_dirty_git(ctx: &LaunchContext) -> Option<String> {
+    dirty_scan_cmd(ctx).and_then(|c| c.stdout().ok())
 }
 
 const DIRTY_SCAN: &str = r#"set +e

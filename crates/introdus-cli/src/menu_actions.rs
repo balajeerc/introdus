@@ -322,21 +322,25 @@ fn confirm_wipe(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     if !podman::volume_exists(&ctx.volume_name) {
         return Ok(());
     }
-    ui.log("  scanning /home/dev/work for uncommitted/unpushed git state…");
-    let dirty = crate::lifecycle::scan_dirty_git(ctx);
     ui.log(format!(
         "  !!  wipe will PERMANENTLY DELETE volume {} — the repo, uncommitted",
         ctx.volume_name
     ));
     ui.log("      changes, branches, and installed packages under /home/dev.");
-    match &dirty {
-        Some(report) if !report.trim().is_empty() => {
-            ui.log("  Uncommitted / unpushed git state that would be LOST:");
-            for line in report.lines() {
-                ui.log(format!("    {line}"));
-            }
+    // Stream the dirty-git scan with a spinner (it takes a few seconds) rather
+    // than freezing the panel; the report lands in the output pane as it runs.
+    let found = match crate::lifecycle::dirty_scan_cmd(ctx) {
+        Some(cmd) => {
+            let lines =
+                ui.run_task_lines("scanning /home/dev/work for uncommitted git state", cmd)?;
+            lines.iter().any(|l| !l.trim().is_empty())
         }
-        _ => ui.log("      (no uncommitted git state detected — but double-check anyway.)"),
+        None => false,
+    };
+    if found {
+        ui.log("  ^^ the git state above would be PERMANENTLY LOST.");
+    } else {
+        ui.log("      (no uncommitted git state detected — but double-check anyway.)");
     }
     let typed = ui.text(
         "Type 'yes' to permanently wipe it (anything else aborts):",

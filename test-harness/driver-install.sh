@@ -69,7 +69,7 @@ mc_wait_prompt "Install which agents" "install picker"
 mc_send Space   # antigravity is the first candidate now (codex already installed)
 mc_send Enter
 mc_wait_prompt "Restart the container to apply" "restart offer"
-mc_send "y" Enter   # YES — apply the new allowlist before installing
+mc_send "y"   # YES (single key) — apply the new allowlist before installing
 mc_wait_prompt "working: install-agents" "antigravity install progress"
 mc_wait_gone "working: install-agents" "antigravity install end"
 
