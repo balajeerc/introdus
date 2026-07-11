@@ -11,11 +11,17 @@ It is a **heavy, opt-in tier** — not part of `cargo test`.
 ## Run it
 
 ```sh
-test-harness/harness.sh            # all: verify + full menu drive (default)
+test-harness/harness.sh            # all: verify + menu + egress + lifecycle (default)
 test-harness/harness.sh verify     # egress spike only (fast-ish)
 test-harness/harness.sh launch     # container up + clone through the proxy
 test-harness/harness.sh menu       # drive the live control TUI over tmux
+test-harness/harness.sh egress     # workload default-deny enforcement
+test-harness/harness.sh lifecycle  # recreate persistence + destroy teardown
 ```
+
+Each target is a scripted driver that drives the real UI and **asserts** —
+failing the run (`exit 1`) on any bad assertion. It is an automated suite, not
+a manual walkthrough; `harness.sh all` self-checks end to end.
 
 Requires a rootless-podman host with `/dev/fuse` and `/dev/net/tun`.
 
@@ -29,7 +35,9 @@ force a clean rebuild: `podman volume rm introdus-harness-storage`.
 |--------|--------|
 | `verify` | Nested podman builds the base image; the egress firewall self-check passes inside the dev container (nft default-deny, tinyproxy allowlist, canary blocked, allowlisted host reachable via proxy, direct-IP dial dropped). |
 | `launch` | The full dev container comes up nested and a small public repo clones **through** the (still-enforced) egress proxy → "up and running". |
-| `menu` | `introdus launch` builds the real tmux session (main-control / notify / dev-container); the control menu renders live status + grouped sections; a Refresh shows the container running; "Open a dev terminal" spawns a `dev-bash` window that exec's into the container as `uid=1000(dev)`. |
+| `menu` | `introdus launch` builds the real tmux session (main-control / notify / dev-container); the control menu renders live status + grouped sections; Refresh shows the container running; open a dev terminal (`uid=1000(dev)`) and a root terminal (`uid=0(root)`) in the container; copy a host file into `/home/dev/uploads`; add a host to the egress allowlist (persisted to `.env`); Stop → stopped and Restart → running. |
+| `egress` | From the workload (dev user) in the running container: a direct dial to a non-allowlisted host is dropped, an allowlisted host is reachable via the proxy, a non-allowlisted host is refused by the proxy, and the block is logged + surfaced by the menu's blocked-egress utility. |
+| `lifecycle` | Recreate keeps the `/home/dev` volume (a marker file survives); Destroy double-confirms (yes/no + dirty-git scan + typed `yes`), deletes the local deploy key, and tears down the container + volume. |
 
 ## How it works
 

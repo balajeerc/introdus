@@ -5,10 +5,13 @@
 #
 # Usage:
 #   test-harness/harness.sh [target]
-#     verify   egress spike: nested base build + egress firewall self-check
-#     launch   full dev container up + public-repo clone through the proxy
-#     menu     drive the live control TUI over tmux (full launch experience)
-#     all      verify then menu (default)
+#     verify     egress spike: nested base build + egress firewall self-check
+#     launch     full dev container up + public-repo clone through the proxy
+#     menu       drive the live control TUI over tmux (terminals/copy/allowlist/
+#                stop/restart)
+#     egress     workload default-deny enforcement + blocked-egress menu utility
+#     lifecycle  recreate (persistence) + destroy (confirm/scan/key) teardown
+#     all        verify + menu + egress + lifecycle (default)
 #
 # This is a heavy, opt-in tier — it is NOT part of `cargo test`. It needs a
 # rootless-podman host with /dev/fuse and /dev/net/tun.
@@ -59,11 +62,23 @@ case "$target" in
         echo "==> menu: drive the live control TUI over tmux"
         run_driver driver-menu.sh
         ;;
+    egress)
+        echo "==> egress: workload default-deny enforcement + blocked-egress menu"
+        run_driver driver-egress.sh
+        ;;
+    lifecycle)
+        echo "==> lifecycle: recreate persistence + destroy teardown"
+        run_driver driver-lifecycle.sh
+        ;;
     all)
         echo "==> verify: nested base build + egress self-check"
         run_driver driver-verify.sh
         echo "==> menu: full launch + drive the live control TUI over tmux"
         run_driver driver-menu.sh
+        echo "==> egress: workload default-deny enforcement + blocked-egress menu"
+        run_driver driver-egress.sh
+        echo "==> lifecycle: recreate persistence + destroy teardown"
+        run_driver driver-lifecycle.sh
         ;;
     *)
         echo "unknown target: $target (want: verify | launch | menu | all)" >&2

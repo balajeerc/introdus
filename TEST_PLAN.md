@@ -200,17 +200,17 @@ standalone `introdus init`), so they run anywhere `cargo test` does.
 | 17.2 | Show tunnel URL | ❌ | 5 | with `EXPOSE_WEBAPP`, menu → tunnel URL prints the trycloudflare URL |
 | 17.3 | Toggle expose-webapp (persist + offer recreate) | ❌ | 4 | toggle; grep `.env`; recreate; confirm tunnel starts |
 | 17.4 | Enable ntfy (topic prompt + persist) | ❌ | 4 | enable; grep `.env`; recreate; check phone |
-| 17.5 | Copy a host file/folder into the container | ❌ | 4 | copy; `podman exec ... ls /home/dev/uploads` |
+| 17.5 | Copy a host file/folder into the container | ✅ harness `menu` | 1 | driver-menu.sh asserts the file in /home/dev/uploads |
 | 17.6 | Install an agent at runtime (persist + whitelist + run install-agents) | ❌ | 5 | install codex; confirm `.env`, whitelist, and the binary in-container |
 | 17.7 | Launch an agent in a tmux window (claude via run-claude, remote control on) | ❌ | 5 | launch; new `agent-*` window; pair from phone |
-| 17.8 | List blocked egress URLs | ❌ | 4 | trigger a block; menu → blocked egress lists it |
-| 17.9 | Add allowlist hosts (persist + regen file + offer restart) | ❌ | 5 | add a host; confirm allowlist file + that the host is reachable after restart |
-| 17.10 | Open root terminal (new `root-bash` window, uid 0) | ❌ | 5 | menu → root terminal; `id` shows root |
-| 17.11 | Open dev terminal (new `dev-bash` window, uid 1000) | ❌ | 4 | menu → dev terminal; `id` shows dev |
+| 17.8 | List blocked egress URLs | ✅ harness `egress` | 1 | driver-egress.sh triggers a block, menu lists it |
+| 17.9 | Add allowlist hosts (persist + regen file + offer restart) | ✅ harness `menu` (persist + offer) | 2 | driver-menu.sh asserts .env; manual for post-restart reachability |
+| 17.10 | Open root terminal (new `root-bash` window, uid 0) | ✅ harness `menu` | 1 | driver-menu.sh asserts uid=0(root) |
+| 17.11 | Open dev terminal (new `dev-bash` window, uid 1000) | ✅ harness `menu` | 1 | driver-menu.sh asserts uid=1000(dev) |
 | 17.12 | Send test notification | ❌ | 5 | menu → test notify; observe popup/phone |
-| 17.13 | Recreate / reset from the menu (respawns dev-container window; reset guarded by dirty-git scan + typed 'yes') | ❌ | 4 | run each; confirm the window restarts and the container rebuilds |
-| 17.14 | Restart (podman restart in place) / Stop (podman stop) — error cleanly when absent | ❌ | 3 | menu → Restart, Stop; observe container state |
-| 17.15 | Destroy — double confirm (yes/no + dirty scan + typed 'yes'), wipes container + volume, offers to delete the local deploy key + `.pub` | ❌ | 4 | menu → Destroy; verify volume gone + key-deletion prompt |
+| 17.13 | Recreate from the menu (respawns dev-container window, keeps volume) | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh: marker survives recreate |
+| 17.14 | Restart (podman restart in place) / Stop (podman stop) — error cleanly when absent | ✅ harness `menu` | 1 | driver-menu.sh asserts stopped→running transitions |
+| 17.15 | Destroy — double confirm (yes/no + dirty scan + typed 'yes'), wipes container + volume, deletes the local deploy key + `.pub` | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh asserts full teardown + key deleted |
 
 ## 18. Notifications (M7 — `notify.rs` core + cli)
 
@@ -254,7 +254,7 @@ control TUI and asserts on it. Heavy + opt-in (needs a rootless-podman host with
 | 21.1 | Fresh project: `launch` → tmux session (main-control/notify/dev-container) → container up + clone → live menu | ✅ harness `menu` | 2 | `test-harness/harness.sh menu` |
 | 21.2 | Egress self-check green; allowlisted reachable, others + direct-IP dropped | ✅ harness `verify` | 1 | `test-harness/harness.sh verify` |
 | 21.3 | Menu dispatches into the running container (open a dev terminal → `uid=1000(dev)`) | ✅ harness `menu` | 1 | asserted in driver-menu.sh |
-| 21.4 | Persistence across recreate (repo, node_modules, claude auth survive) | ❌ | 4 | recreate; confirm `/home/dev` intact |
+| 21.4 | Persistence across recreate (`/home/dev` volume survives) | ✅ harness `lifecycle` | 2 | driver-lifecycle.sh: marker survives; manual for node_modules/claude-auth specifics |
 | 21.5 | Drive Claude from phone via remote control | ❌ | 5 | pair and issue a prompt from the mobile app |
 | 21.6 | `.env` parity: generated vs a `./launch.sh` run behave identically | ❌ | 4 | diff both `.env`s and both containers' `podman inspect` |
 
