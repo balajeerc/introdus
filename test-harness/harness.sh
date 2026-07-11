@@ -48,6 +48,10 @@ case "$milestone" in
         echo "==> running milestone 2 (launch: clone + serve) in the harness"
         podman run "${common_flags[@]}" "$image" driver-launch.sh
         ;;
+    menu)
+        echo "==> running milestone 3 (menu: drive the live control TUI) in the harness"
+        podman run "${common_flags[@]}" "$image" driver-menu.sh
+        ;;
     *)
         echo "unknown milestone: $milestone" >&2
         exit 2

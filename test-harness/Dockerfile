@@ -22,7 +22,9 @@ RUN chmod 0755 /usr/local/bin/introdus
 COPY test-harness/driver-common.sh /usr/local/bin/driver-common.sh
 COPY test-harness/driver-verify.sh /usr/local/bin/driver-verify.sh
 COPY test-harness/driver-launch.sh /usr/local/bin/driver-launch.sh
-RUN chmod 0755 /usr/local/bin/driver-common.sh /usr/local/bin/driver-verify.sh /usr/local/bin/driver-launch.sh
+COPY test-harness/driver-menu.sh /usr/local/bin/driver-menu.sh
+RUN chmod 0755 /usr/local/bin/driver-common.sh /usr/local/bin/driver-verify.sh \
+    /usr/local/bin/driver-launch.sh /usr/local/bin/driver-menu.sh
 
 # Run as the preconfigured rootless user — introdus refuses to run as root.
 USER podman
