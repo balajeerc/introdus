@@ -99,49 +99,36 @@ harness_launch() {
 }
 
 # ---- helpers for driving the control menu (main-control window) -------------
-# The menu is a full-screen ratatui chooser (alternate screen); its actions run
-# on the normal screen with their sub-prompts drawn as inline modals. Two
-# captures: mc_vis is the VISIBLE pane — the chooser frame while the menu is up,
-# or the normal screen (inline modal + action output) during an action;
-# mc_scroll includes scrollback, where an action's plain output accumulates.
+# The menu is a persistent two-pane ratatui panel (alternate screen): the left
+# column is the status + filterable menu, the right column is the output pane
+# where every action's output streams in, and prompts are a full-width band at
+# the bottom. Everything is on the one visible screen, so mc_vis (capture the
+# visible pane) sees the menu, the live status, the action output, AND the
+# active prompt. There is no separate scrollback and no "press Enter" pause.
 mc_pane() { echo "${HARNESS_SESSION}:main-control"; }
 mc_vis() { tmux capture-pane -t "$(mc_pane)" -p; }
-mc_scroll() { tmux capture-pane -t "$(mc_pane)" -p -S -; }
 mc_send() { tmux send-keys -t "$(mc_pane)" "$@"; }
 mc_reset() { tmux clear-history -t "$(mc_pane)" 2>/dev/null || true; }
 
-# The first menu section ("Terminals & agents") is drawn ONLY while the
-# full-screen chooser is up (not during an inline sub-prompt modal or the action
-# pause, which render on the normal screen), so it's a reliable "menu is ready
-# for input" marker.
+# The menu section headings are always drawn while the panel is up, so this is a
+# reliable "the control panel has started" marker.
 mc_ready() {
     local _
     for _ in $(seq 1 80); do mc_vis | grep -qF "Terminals & agents" && return 0; sleep 0.5; done
-    echo "FATAL: menu never returned to the chooser:"; mc_vis | sed 's/^/      /'; return 1
+    echo "FATAL: control panel never appeared:"; mc_vis | sed 's/^/      /'; return 1
 }
 
-# Wait for a substring in the VISIBLE pane — for inline sub-prompts (text/confirm)
-# and the full-screen status panel.
+# Wait for a substring anywhere in the visible pane — a prompt, a status line, or
+# an action's output in the right-hand pane.
 mc_wait_prompt() {
     local pat="$1" lbl="${2:-$1}" _
     for _ in $(seq 1 60); do mc_vis | grep -qF "$pat" && return 0; sleep 0.5; done
-    echo "FATAL: timed out waiting for prompt [$lbl]:"; mc_vis | sed 's/^/      /'; return 1
+    echo "FATAL: timed out waiting for [$lbl]:"; mc_vis | sed 's/^/      /'; return 1
 }
 
-# Wait for a substring in the scrollback — for the status block / action logs.
-mc_wait_scroll() {
-    local pat="$1" lbl="${2:-$1}" _
-    for _ in $(seq 1 60); do mc_scroll | grep -qF "$pat" && return 0; sleep 0.5; done
-    echo "FATAL: timed out waiting for [$lbl]:"; mc_scroll | tail -40 | sed 's/^/      /'; return 1
-}
-
-# Select a menu item: wait until the menu is ready, clear scrollback so the
-# action's fresh output is isolated, then type the filter + Enter.
-mc_select() { mc_ready; mc_reset; mc_send "$1" Enter; }
-
-# Step past the "press Enter to continue" pause and wait until the chooser is
-# back up (so the next action starts from a known state).
-mc_continue() { mc_send Enter; mc_ready; }
+# Select a menu item: type the filter + Enter. The panel resets the filter after
+# a selection, so consecutive selects start from the full menu.
+mc_select() { mc_ready; mc_send "$1" Enter; }
 
 # True if window $1 exists in the session (waits up to ~30s).
 harness_window_appears() {

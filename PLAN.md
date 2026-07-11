@@ -183,19 +183,23 @@ introdus install            # put binary on PATH + set up services (was host_ins
       UI moved off inquire — see M6. Inline modals fall back to a fixed viewport
       on terminals that don't answer the DSR cursor-position query, e.g. a bare
       test pty.)
-- [x] **M6 — TUI control panel + utilities.** `menu.rs` (full-screen `ratatui`
-      chooser + live status panel, in `ui.rs`) dispatching to `menu_actions.rs`:
-      show tunnel URL, toggle expose-webapp, enable ntfy, copy a host file into
-      the container, install an agent (runtime + persist + whitelist), launch an
-      agent in a tmux window, list blocked egress, add allowlist hosts (+regen
-      +restart), open root/dev terminals (new tmux windows), test notification,
-      restart, stop, recreate, reset, destroy. Shared `util.rs`
-      (tilde/shell-quote). Wired to `introdus menu`. 29 tests; lint --full green.
-      (Migrated off the inquire `Select` loop to `ratatui`: the persistent
-      control plane is a full-screen app with inline modal sub-prompts
-      [`ui::confirm`/`text`/`select`/`multiselect`]. `inquire` was subsequently
-      dropped entirely — the wizard uses the same `ui.rs` modals — so ratatui is
-      the sole TUI dependency and crossterm collapses to a single version.)
+- [x] **M6 — TUI control panel + utilities.** A persistent two-pane `ratatui`
+      panel (`panel.rs`): left column = live status + grouped, filterable menu;
+      right column = an output pane where each action streams its output;
+      prompts are a full-width band at the bottom. `menu.rs` owns the loop and
+      dispatches to `menu_actions.rs`: show tunnel URL, toggle expose-webapp,
+      enable ntfy, copy a host file into the container, install an agent (runtime
+      + persist + whitelist), launch an agent in a tmux window, list blocked
+      egress, add allowlist hosts (+regen +restart), open root/dev terminals (new
+      tmux windows), test notification, restart, stop, recreate, reset, destroy.
+      Wired to `introdus menu`. lint --full green.
+      (History: migrated off the inquire `Select` loop to `ratatui`, then dropped
+      `inquire` entirely — the wizard shares the `ui.rs` prompt state machines —
+      so ratatui is the sole TUI dependency and crossterm is a single version.
+      Then reworked from a screen-clearing chooser into the two-pane panel: the
+      panel stays on the alternate screen and captures each action's output —
+      including external commands, via a `process::capture_stdio` hook in core —
+      into the right-hand pane instead of clearing the screen and pausing.)
 - [x] **M7 — Notifications folded in.** `notify.rs` (core): the trust boundary
       — event whitelist + label sanitization ported exactly, tested. `notify.rs`
       (cli): `notify-host` serves the FIFO (Linux) / socket path and renders

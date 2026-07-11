@@ -10,6 +10,7 @@ mod lifecycle;
 mod menu;
 mod menu_actions;
 mod notify;
+mod panel;
 mod preflight;
 mod run;
 mod session;

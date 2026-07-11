@@ -1,10 +1,10 @@
 //! End-to-end pty test for the control menu (`introdus menu`). Runs against a
 //! project whose container was never created — the exact case that used to leak
 //! `Error: no such container` onto the screen. This is the regression guard for
-//! that fix plus a smoke test that the full-screen ratatui menu starts and quits
+//! that fix plus a smoke test that the two-pane ratatui panel starts and quits
 //! cleanly.
 //!
-//! The menu is now a full-screen ratatui app, so its rendered content is a
+//! The panel is a full-screen ratatui app, so its rendered content is a
 //! cursor-addressed frame we don't scrape byte-for-byte here (the tmux harness
 //! in `test-harness/driver-menu.sh` covers the on-screen layout). What we *can*
 //! assert from the raw pty stream is that no `podman inspect` error leaks as

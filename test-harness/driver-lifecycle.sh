@@ -40,7 +40,6 @@ harness_poll "container recreated (new id, running)" bash -c "
 harness_poll "marker survived recreate" bash -c \
     "podman exec --user dev '$cname' cat /home/dev/marker.txt 2>/dev/null | grep -q persist-me"
 echo "    ✓ /home/dev survived recreate (marker present on the recreated container)"
-mc_continue
 
 # ---- Destroy: double confirm + dirty scan + deploy-key deletion ------------
 key="$HOME/.ssh/harness-key"
@@ -67,10 +66,10 @@ mc_select "Destroy the container"
 mc_wait_prompt "Destroy this container and permanently delete its volume" "destroy confirm"
 mc_send "y" Enter
 # 2) dirty-git scan runs (throwaway container), then a typed confirmation. The
-#    scan report is printed just before the typed prompt — assert it caught the
-#    uncommitted + unpushed state we planted.
+#    scan report streams into the output pane just before the typed prompt band
+#    appears — assert it caught the uncommitted + unpushed state we planted.
 mc_wait_prompt "Type 'yes'" "destroy typed confirm"
-scan="$(mc_scroll)"
+scan="$(mc_vis)"
 echo "$scan" | grep -qF "working tree" \
     || { echo "FATAL: safety scan missed working-tree changes"; echo "$scan" | tail -25 | sed 's/^/      /'; exit 1; }
 echo "$scan" | grep -qF "unpushed commits" \

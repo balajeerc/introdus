@@ -33,9 +33,8 @@ mc_vis | grep -qF "Container lifecycle" || { echo "FATAL: grouped sections missi
 echo "    ✓ grouped menu rendered"
 
 echo "==> menu: Refresh status"
-# Status now lives in the full-screen menu's header panel (not scrollback), and
-# Refresh just redraws in place — there's no pause to step past. Assert against
-# the visible pane once the menu is back up.
+# Status lives in the panel's left header (always on screen); Refresh just
+# re-snapshots and redraws. Assert against the visible pane.
 mc_select "Refresh"
 mc_ready
 mc_wait_prompt "running" "running status"
@@ -51,7 +50,6 @@ tmux send-keys -t "$session:dev-bash" "id" Enter
 harness_poll "dev-bash is dev" bash -c \
     "tmux capture-pane -t '$session:dev-bash' -p | grep -q 'uid=1000(dev)'"
 echo "    ✓ dev-bash spawned; shell is uid=1000(dev) in the container"
-mc_continue
 
 # ---- open a root terminal (uid 0) ------------------------------------------
 echo "==> menu: Open a root terminal"
@@ -61,7 +59,6 @@ tmux send-keys -t "$session:root-bash" "id" Enter
 harness_poll "root-bash is root" bash -c \
     "tmux capture-pane -t '$session:root-bash' -p | grep -q 'uid=0(root)'"
 echo "    ✓ root-bash spawned; shell is uid=0(root) in the container"
-mc_continue
 
 # ---- copy a host file into the container -----------------------------------
 echo "==> menu: Copy a host file into the container"
@@ -74,7 +71,6 @@ mc_send "$payload" Enter
 harness_poll "file present in uploads" bash -c \
     "podman exec --user dev '$cname' cat '/home/dev/uploads/$base' 2>/dev/null | grep -q introdus-harness-payload"
 echo "    ✓ file copied into /home/dev/uploads"
-mc_continue
 
 # ---- add a host to the egress allowlist (persist) --------------------------
 echo "==> menu: Add a hostname to the egress allowlist"
@@ -86,7 +82,6 @@ mc_wait_prompt "Restart the container to apply" "restart offer"
 mc_send Enter
 harness_poll "example.org persisted" grep -q "example.org" "$proj/.env"
 echo "    ✓ example.org persisted to WHITELIST_HOSTS in .env"
-mc_continue
 
 # ---- lifecycle: Stop then Restart, asserting status transitions ------------
 running() { podman container inspect -f '{{.State.Running}}' "$cname" 2>/dev/null | grep -qx "$1"; }
@@ -94,14 +89,12 @@ running() { podman container inspect -f '{{.State.Running}}' "$cname" 2>/dev/nul
 echo "==> menu: Stop the container"
 mc_select "Stop the container"
 harness_poll "container stopped" running false
-mc_continue   # dismiss the pause; the menu redraws with a fresh status snapshot
 mc_wait_prompt "stopped" "stopped status"
 echo "    ✓ Stop worked; the status panel shows stopped"
 
 echo "==> menu: Restart the container"
 mc_select "Restart the container"
 harness_poll "container running again" running true
-mc_continue
 mc_wait_prompt "running" "running status"
 echo "    ✓ Restart worked; the status panel shows running again"
 

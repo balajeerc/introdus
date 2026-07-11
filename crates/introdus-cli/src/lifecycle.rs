@@ -27,6 +27,7 @@ pub fn confirm_reset(ctx: &LaunchContext) -> Result<()> {
     if !podman::volume_exists(&ctx.volume_name) {
         return Ok(());
     }
+    println!("==> reset: scanning /home/dev/work for uncommitted/unpushed git state");
     let dirty = scan_dirty_git(ctx);
     println!();
     println!(
@@ -113,12 +114,12 @@ pub fn schedule_pull(ctx: &LaunchContext) -> Result<()> {
 
 /// Best-effort scan of `/home/dev/work` for uncommitted/unpushed git state, run
 /// in a read-only throwaway container. Returns `None` if the base image is
-/// missing (nothing to scan with).
-fn scan_dirty_git(ctx: &LaunchContext) -> Option<String> {
+/// missing (nothing to scan with). Prints nothing — the caller decides how to
+/// surface the report (stdout for the CLI, the output pane for the menu).
+pub(crate) fn scan_dirty_git(ctx: &LaunchContext) -> Option<String> {
     if !image_exists(BASE_IMAGE) {
         return None;
     }
-    println!("==> reset: scanning /home/dev/work for uncommitted/unpushed git state");
     podman()
         .args(["run", "--rm", "--network=none", "--volume"])
         .arg(format!("{}:/home/dev:ro", ctx.volume_name))

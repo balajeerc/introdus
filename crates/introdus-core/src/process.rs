@@ -5,10 +5,56 @@
 //! error mapping, and stdout capture, so the `podman`/`tmux`/`git` modules stay
 //! declarative.
 
+use std::cell::RefCell;
 use std::ffi::OsStr;
 use std::process::{Command, Stdio};
+use std::rc::Rc;
 
 use anyhow::{bail, Context, Result};
+
+/// A shared, line-oriented output buffer (see [`capture_stdio`]).
+pub type OutputBuffer = Rc<RefCell<Vec<String>>>;
+
+thread_local! {
+    /// When set, [`Cmd::run`]/[`Cmd::stdout`] pipe the child's output into this
+    /// buffer instead of inheriting the terminal — so a full-screen TUI that
+    /// owns the screen isn't corrupted by a subprocess writing to it.
+    static CAPTURE: RefCell<Option<OutputBuffer>> = const { RefCell::new(None) };
+}
+
+/// Redirect the output of subsequent [`Cmd`] runs on this thread into `buf`
+/// rather than the inherited terminal. The returned guard restores normal
+/// inheritance when dropped, so capture is scoped to the guard's lifetime.
+#[must_use = "capture ends when the guard is dropped"]
+pub fn capture_stdio(buf: OutputBuffer) -> CaptureGuard {
+    CAPTURE.with(|c| *c.borrow_mut() = Some(buf));
+    CaptureGuard(())
+}
+
+/// Restores terminal-inheriting stdio on drop. See [`capture_stdio`].
+pub struct CaptureGuard(());
+
+impl Drop for CaptureGuard {
+    fn drop(&mut self) {
+        CAPTURE.with(|c| *c.borrow_mut() = None);
+    }
+}
+
+fn capture_target() -> Option<OutputBuffer> {
+    CAPTURE.with(|c| c.borrow().clone())
+}
+
+/// Append `bytes` to `buf`, split into lines (a trailing partial line is kept).
+fn push_lines(buf: &OutputBuffer, bytes: &[u8]) {
+    if bytes.is_empty() {
+        return;
+    }
+    let text = String::from_utf8_lossy(bytes);
+    let mut sink = buf.borrow_mut();
+    for line in text.trim_end_matches('\n').split('\n') {
+        sink.push(line.to_owned());
+    }
+}
 
 /// A builder around one external command invocation.
 pub struct Cmd {
@@ -63,8 +109,23 @@ impl Cmd {
         &self.label
     }
 
-    /// Run to completion inheriting stdio; error on a non-zero exit.
+    /// Run to completion; error on a non-zero exit. Inherits stdio normally, or
+    /// — while a [`capture_stdio`] guard is active — pipes the child's
+    /// stdout+stderr into the capture buffer so it never touches the screen.
     pub fn run(mut self) -> Result<()> {
+        if let Some(buf) = capture_target() {
+            let out = self
+                .inner
+                .stdin(Stdio::null())
+                .output()
+                .with_context(|| format!("failed to spawn `{}`", self.label))?;
+            push_lines(&buf, &out.stdout);
+            push_lines(&buf, &out.stderr);
+            if !out.status.success() {
+                bail!("`{}` exited with {}", self.label, out.status);
+            }
+            return Ok(());
+        }
         let status = self
             .inner
             .status()
@@ -86,12 +147,23 @@ impl Cmd {
     }
 
     /// Run capturing stdout; error on a non-zero exit. Returns trimmed stdout.
+    /// stderr is inherited normally, or piped into the capture buffer while a
+    /// [`capture_stdio`] guard is active (so it can't corrupt a TUI screen).
     pub fn stdout(mut self) -> Result<String> {
+        let capture = capture_target();
+        let stderr = if capture.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::inherit()
+        };
         let out = self
             .inner
-            .stderr(Stdio::inherit())
+            .stderr(stderr)
             .output()
             .with_context(|| format!("failed to spawn `{}`", self.label))?;
+        if let Some(buf) = &capture {
+            push_lines(buf, &out.stderr);
+        }
         if !out.status.success() {
             bail!("`{}` exited with {}", self.label, out.status);
         }
@@ -144,5 +216,18 @@ mod tests {
         assert!(Cmd::new("true").ok());
         assert!(!Cmd::new("false").ok());
         assert!(!Cmd::new("introdus-no-such-binary-xyz").ok());
+    }
+
+    #[test]
+    fn ta25_capture_redirects_run_output_into_the_buffer() {
+        let buf: OutputBuffer = Rc::new(RefCell::new(Vec::new()));
+        {
+            let _guard = capture_stdio(buf.clone());
+            Cmd::new("printf").arg("one\ntwo\n").run().unwrap();
+        }
+        assert_eq!(*buf.borrow(), vec!["one".to_owned(), "two".to_owned()]);
+        // Guard dropped: run() is back to inheriting, buffer untouched.
+        Cmd::new("true").run().unwrap();
+        assert_eq!(buf.borrow().len(), 2);
     }
 }

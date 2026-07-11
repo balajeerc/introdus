@@ -44,8 +44,7 @@ echo "    ✓ egress-log lists the denied host"
 
 echo "==> menu: List recently blocked egress URLs"
 mc_select "blocked egress"
-mc_wait_scroll "example.com" "blocked-egress listing"
-mc_continue
+mc_wait_prompt "example.com" "blocked-egress listing"
 echo "    ✓ the menu blocked-egress utility shows example.com"
 
 echo

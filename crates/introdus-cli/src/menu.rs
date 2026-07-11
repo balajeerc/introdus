@@ -1,15 +1,17 @@
-//! The control TUI (`introdus menu`) — the persistent full-screen ratatui menu
-//! that runs in the `main-control` tmux window. The chooser lives in
-//! [`crate::ui`]; this module owns the menu layout and dispatches selections to
-//! the utilities in [`crate::menu_actions`]. Host-side, so it can read/write
-//! `.env`, drive podman, open root/dev terminals, and spawn agent windows — the
-//! things an in-container TUI could never do.
+//! The control TUI (`introdus menu`) — the persistent two-pane ratatui panel
+//! that runs in the `main-control` tmux window. The panel itself (left status +
+//! menu, right output pane) lives in [`crate::panel`]; this module owns the menu
+//! layout and dispatches selections to the utilities in [`crate::menu_actions`].
+//! Host-side, so it can read/write `.env`, drive podman, open root/dev
+//! terminals, and spawn agent windows — the things an in-container TUI could
+//! never do.
 
 use anyhow::Result;
 use introdus_core::podman::{self, ContainerState};
 
 use crate::context::{env_path, LaunchContext};
 use crate::menu_actions as act;
+use crate::panel::{Selection, Ui};
 use crate::ui;
 use introdus_core::Config;
 
@@ -96,10 +98,13 @@ const MENU: &[Row] = &[
     Row::Item(Action::Quit),
 ];
 
-/// Run the control menu for the current project until the user quits.
+/// Run the control menu for the current project until the user quits. The
+/// [`Ui`] owns the alternate screen for the whole session; each turn re-snapshots
+/// the status/menu, then an action's output streams into the right-hand pane.
 pub fn run() -> Result<()> {
     let dir = std::env::current_dir()?;
     let env = env_path(&dir);
+    let mut ui = Ui::new()?;
     loop {
         // Reload each iteration so actions that edited .env are reflected, and
         // re-snapshot the container state for the status panel.
@@ -113,54 +118,53 @@ pub fn run() -> Result<()> {
                 Row::Item(a) => ui::Row::Item(a.to_string()),
             })
             .collect();
+        ui.set_menu(status, rows);
 
-        // The chooser owns the alternate screen; it returns the index into MENU
-        // of the picked item, or None when the user quit (Esc / Ctrl-C).
-        let action = match ui::menu_select(&status, &rows)? {
-            Some(idx) => match MENU[idx] {
+        let action = match ui.run_menu()? {
+            Selection::Item(idx) => match MENU[idx] {
                 Row::Item(a) => a,
                 Row::Header(_) => continue,
             },
-            None => break,
+            Selection::Quit => break,
         };
         match action {
             Action::Quit => break,
             // Refresh just falls through to the next loop, which re-snapshots.
             Action::Refresh => continue,
             _ => {
-                if let Err(e) = dispatch(action, &ctx) {
-                    eprintln!("  ! {e:#}");
+                ui.begin(&action.to_string());
+                if let Err(e) = dispatch(action, &ctx, &mut ui) {
+                    ui.log(format!("  ! {e:#}"));
                 }
-                ui::pause();
             }
         }
     }
     Ok(())
 }
 
-fn dispatch(action: Action, ctx: &LaunchContext) -> Result<()> {
+fn dispatch(action: Action, ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     match action {
-        Action::TunnelUrl => act::tunnel_url(ctx),
-        Action::ExposeWebapp => act::toggle_expose_webapp(ctx),
-        Action::EnableNtfy => act::enable_ntfy(ctx),
-        Action::CopyFile => act::copy_file(ctx),
-        Action::InstallAgent => act::install_agent(ctx),
-        Action::LaunchAgent => act::launch_agent(ctx),
-        Action::BlockedEgress => act::blocked_egress(ctx),
-        Action::AddAllowlist => act::add_allowlist(ctx),
-        Action::RootTerminal => act::open_terminal(ctx, None),
-        Action::DevTerminal => act::open_terminal(ctx, Some("dev")),
-        Action::TestNotify => act::test_notify(ctx),
-        Action::Restart => act::restart(ctx),
-        Action::Stop => act::stop(ctx),
-        Action::Recreate => act::recreate(ctx),
-        Action::Reset => act::reset(ctx),
-        Action::Destroy => act::destroy(ctx),
+        Action::TunnelUrl => act::tunnel_url(ctx, ui),
+        Action::ExposeWebapp => act::toggle_expose_webapp(ctx, ui),
+        Action::EnableNtfy => act::enable_ntfy(ctx, ui),
+        Action::CopyFile => act::copy_file(ctx, ui),
+        Action::InstallAgent => act::install_agent(ctx, ui),
+        Action::LaunchAgent => act::launch_agent(ctx, ui),
+        Action::BlockedEgress => act::blocked_egress(ctx, ui),
+        Action::AddAllowlist => act::add_allowlist(ctx, ui),
+        Action::RootTerminal => act::open_terminal(ctx, ui, None),
+        Action::DevTerminal => act::open_terminal(ctx, ui, Some("dev")),
+        Action::TestNotify => act::test_notify(ctx, ui),
+        Action::Restart => act::restart(ctx, ui),
+        Action::Stop => act::stop(ctx, ui),
+        Action::Recreate => act::recreate(ctx, ui),
+        Action::Reset => act::reset(ctx, ui),
+        Action::Destroy => act::destroy(ctx, ui),
         Action::Refresh | Action::Quit => Ok(()),
     }
 }
 
-/// Snapshot the live status shown in the chooser's header panel.
+/// Snapshot the live status shown in the panel's header.
 fn status_of(ctx: &LaunchContext) -> ui::Status {
     let state = match podman::container_state(&ctx.container_name) {
         ContainerState::Running => "running",
