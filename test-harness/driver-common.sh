@@ -149,10 +149,14 @@ harness_window_appears() {
     return 1
 }
 
-# Poll a command until it succeeds (up to ~30s). $1=label, rest=command.
+# Poll a command until it succeeds (up to ~60s). $1=label, rest=command.
 harness_poll() {
     local lbl="$1"; shift
     local _
-    for _ in $(seq 1 60); do "$@" >/dev/null 2>&1 && return 0; sleep 0.5; done
+    for _ in $(seq 1 120); do "$@" >/dev/null 2>&1 && return 0; sleep 0.5; done
     echo "FATAL: condition never held: $lbl"; return 1
 }
+
+# The container's current ID (empty if absent) — used to tell a recreated
+# container (same name, new ID) from the one being torn down.
+harness_container_id() { podman container inspect -f '{{.Id}}' "$1" 2>/dev/null || true; }

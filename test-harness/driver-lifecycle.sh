@@ -23,17 +23,22 @@ echo "==> dropping a marker into the persistent /home/dev volume"
 podman exec --user dev "$cname" bash -c 'echo persist-me > /home/dev/marker.txt'
 
 echo "==> menu: Recreate the container (keeps the volume)"
+oldid="$(harness_container_id "$cname")"
 mc_select "Recreate the container"
 mc_wait_prompt "Recreate the container now" "recreate confirm"
 mc_send Enter   # default Yes
 # Recreate removes the container and respawns the dev-container window (introdus
-# up), which recreates the container against the SAME volume.
-harness_poll "container back up" bash -c \
-    "podman ps --format '{{.Names}}' | grep -q '^introdus-harness-'"
-newc="$(harness_container)"
+# up), which recreates the container (SAME name, NEW id) against the SAME volume.
+# Wait for the NEW id specifically — grabbing the still-present old one would
+# then race its teardown.
+harness_poll "container recreated (new id, running)" bash -c "
+    id=\$(podman container inspect -f '{{.Id}}' '$cname' 2>/dev/null) || exit 1
+    [ -n \"\$id\" ] && [ \"\$id\" != '$oldid' ] \
+      && podman container inspect -f '{{.State.Running}}' '$cname' | grep -qx true
+"
 harness_poll "marker survived recreate" bash -c \
-    "podman exec --user dev '$newc' cat /home/dev/marker.txt 2>/dev/null | grep -q persist-me"
-echo "    ✓ /home/dev survived recreate (marker present on the new container)"
+    "podman exec --user dev '$cname' cat /home/dev/marker.txt 2>/dev/null | grep -q persist-me"
+echo "    ✓ /home/dev survived recreate (marker present on the recreated container)"
 mc_continue
 
 # ---- Destroy: double confirm + dirty scan + deploy-key deletion ------------
@@ -52,7 +57,7 @@ mc_send "yes" Enter
 mc_wait_prompt "Also delete the local deploy key" "deploy-key prompt"
 mc_send "y" Enter
 
-harness_poll "container gone" bash -c "! podman container exists '$newc'"
+harness_poll "container gone" bash -c "! podman container exists '$cname'"
 harness_poll "volume gone" bash -c "! podman volume exists introdus-vol-harness"
 harness_poll "deploy key deleted" bash -c "[ ! -f '$key' ]"
 echo "    ✓ destroy wiped the container, the volume, and the local deploy key"
