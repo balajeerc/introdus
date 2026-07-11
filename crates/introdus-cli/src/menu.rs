@@ -125,6 +125,8 @@ pub fn run() -> Result<()> {
                 Row::Item(a) => a,
                 Row::Header(_) => continue,
             },
+            // A poll tick: re-snapshot the status (the loop top does it) + redraw.
+            Selection::Tick => continue,
             Selection::Quit => break,
         };
         match action {

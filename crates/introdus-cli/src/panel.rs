@@ -12,6 +12,7 @@
 use std::cell::RefCell;
 use std::io::{self, Stdout};
 use std::rc::Rc;
+use std::time::Duration;
 
 use anyhow::{bail, Result};
 use ratatui::backend::CrosstermBackend;
@@ -34,12 +35,18 @@ use crate::ui::{
 
 type Backend = CrosstermBackend<Stdout>;
 
+/// How long the menu waits for a keypress before returning [`Selection::Tick`]
+/// so the caller can re-snapshot the (possibly just-started) container status.
+const STATUS_POLL: Duration = Duration::from_secs(2);
+
 /// The result of one turn at the menu.
 pub enum Selection {
     /// The user chose the item at this index into `rows`.
     Item(usize),
     /// The user quit the menu (Esc / Ctrl-C).
     Quit,
+    /// No input within [`STATUS_POLL`] — re-snapshot the status and redraw.
+    Tick,
 }
 
 /// A centered popup prompt drawn over the two-pane frame.
@@ -125,6 +132,11 @@ impl Ui {
                 self.sel = visible.len().saturating_sub(1);
             }
             self.draw(None)?;
+            // Poll rather than block, so the status panel keeps up with a
+            // container that starts (or stops) while we're sitting at the menu.
+            if !ratatui::crossterm::event::poll(STATUS_POLL)? {
+                return Ok(Selection::Tick);
+            }
             let Some((code, mods)) = next_key()? else {
                 continue;
             };
