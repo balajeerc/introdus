@@ -54,6 +54,9 @@ impl From<LaunchArgs> for LaunchOpts {
 enum Command {
     /// Ensure the tmux session, control TUI, and container are up (default).
     Launch(LaunchArgs),
+    /// Run the setup wizard standalone: (re)write this project's .env without
+    /// launching a container. No podman required.
+    Init,
     /// (internal) Run/start the podman container, streaming its logs.
     Up(LaunchArgs),
     /// (internal) Render the control TUI in the main-control pane.
@@ -85,6 +88,7 @@ fn main() -> Result<()> {
         // Launch drives the tmux session model; Up is the container run that
         // executes inside the session's dev-container window.
         Command::Launch(a) => session::launch(a.into()),
+        Command::Init => run_init(),
         Command::Up(a) => launch::run_launch(Lifecycle::Keep, a.into()),
         Command::Recreate(a) => launch::run_launch(Lifecycle::Recreate, a.into()),
         Command::Reset(a) => launch::run_launch(Lifecycle::Reset, a.into()),
@@ -96,4 +100,21 @@ fn main() -> Result<()> {
         Command::NotifyListen => notify::run_listen(),
         Command::Install => install::run(),
     }
+}
+
+/// Run the setup wizard for the current directory, standalone. If a `.env`
+/// already exists, confirm before overwriting it.
+fn run_init() -> Result<()> {
+    let dir = std::env::current_dir()?;
+    let env = dir.join(".env");
+    if env.exists()
+        && !inquire::Confirm::new(&format!("{} exists — reconfigure it?", env.display()))
+            .with_default(false)
+            .prompt()?
+    {
+        println!("  left .env unchanged.");
+        return Ok(());
+    }
+    wizard::run(&dir)?;
+    Ok(())
 }

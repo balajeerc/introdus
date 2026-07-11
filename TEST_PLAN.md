@@ -24,6 +24,12 @@ only); ❌ = none.
 Run the automated suite with `cargo test --workspace` and the quality gates with
 `scripts/lint.sh --full` (or `--security`, which also runs semgrep).
 
+The interactive `inquire` TUI is covered by **pty integration tests** under
+`crates/introdus-cli/tests/` (`wizard_pty.rs`, `menu_pty.rs`), which spawn the
+real binary through a pseudo-terminal via `rexpect` and drive the prompts as a
+user would. They need no podman/tmux (the wizard is reached through the
+standalone `introdus init`), so they run anywhere `cargo test` does.
+
 ---
 
 ## 1. Build & quality gates (M0)
@@ -177,17 +183,20 @@ Run the automated suite with `cargo test --workspace` and the quality gates with
 | # | Test case | Automated | Manual | How to verify |
 |---|-----------|:---------:|:------:|---------------|
 | 16.1 | Selected agents' egress hosts appended to whitelist | ✅ `apply_agents_extends_whitelist` | 0 | — |
-| 16.2 | Prompts: name/repo/port/agents/tunnel/ntfy flow end-to-end | ❌ | 5 | run `introdus` in a fresh dir; walk the wizard |
-| 16.3a | Deploy key — "generate new?" asked first; **yes** → prompts *where to create* (default `~/.ssh/introdus-deploy-keys/<slug>-deploy-key`, dir chmod 700), writes the keypair, prints the `.pub`, refuses to overwrite an existing file | ⚠️ (tilde/slug tested) | 4 | answer yes; accept/override the path; confirm keypair + pubkey shown + dir is 0700 |
-| 16.3b | Deploy key — **no** → prompts for the path to an *existing* private key and re-asks until it's a real file | ⚠️ (tilde tested) | 4 | answer no; give a bad path then a good one |
-| 16.4 | Wizard writes a valid, loadable `.env` | ⚠️ (round-trip tested) | 3 | finish the wizard; `introdus verify` reads it |
+| 16.2 | Prompts: name/repo/port/agents/tunnel/ntfy flow end-to-end | ✅ `wizard_pty::*` (pty-driven via `introdus init`) | 1 | `cargo test --test wizard_pty`; or walk it live |
+| 16.3a | Deploy key — "generate new?" asked first; **yes** → prompts *where to create* (default `~/.ssh/introdus-deploy-keys/<slug>-deploy-key`, dir chmod 700), writes the keypair, prints the `.pub`, refuses to overwrite an existing file | ✅ `wizard_generates_a_new_key` (+ tilde/slug units) | 2 | pty test covers the happy path; manual for chmod 700 + overwrite-refusal |
+| 16.3b | Deploy key — **no** → offers a project-matching key to reuse (yes/no; picker when several), else prompts for an existing path; registration step shown either way | ✅ `wizard_reuses_a_matching_key_and_still_shows_registration` | 2 | pty test covers reuse; manual for the bad-path re-ask |
+| 16.4 | Wizard writes a valid, loadable `.env` | ✅ `wizard_pty::*` assert `.env` contents (+ round-trip unit) | 1 | pty tests read back the written `.env` |
 | 16.5 | Cancel (Esc/Ctrl-C) aborts cleanly | ❌ | 3 | Esc mid-wizard |
+| 16.6 | `introdus init` runs the wizard standalone (no podman); confirms before overwriting an existing `.env` | ✅ (pty tests invoke `init`) | 2 | `cargo test --test wizard_pty`; manual for the overwrite confirm |
 
 ## 17. Control TUI + utilities (M6 — `menu.rs`, `menu_actions.rs`)
 
 | # | Test case | Automated | Manual | How to verify |
 |---|-----------|:---------:|:------:|---------------|
-| 17.1 | Menu loop renders status header, dispatches, survives action errors | ❌ | 4 | open `main-control`; navigate |
+| 17.1 | Menu loop renders status header, dispatches, survives action errors | ⚠️ `menu_pty` (renders, groups, filters, quits) | 3 | `cargo test --test menu_pty`; live for dispatch/error paths |
+| 17.1a | Absent container reads as "not created" — no leaked `Error: no such container` | ✅ `menu_reports_not_created_without_leaking_podman_error` | 0 | pty regression test |
+| 17.1b | Grouped sections render (inert headers) and the whole menu shows at once | ✅ (asserted in `menu_pty`) | 1 | pty test asserts a section header; eyeball the full layout |
 | 17.2 | Show tunnel URL | ❌ | 5 | with `EXPOSE_WEBAPP`, menu → tunnel URL prints the trycloudflare URL |
 | 17.3 | Toggle expose-webapp (persist + offer recreate) | ❌ | 4 | toggle; grep `.env`; recreate; confirm tunnel starts |
 | 17.4 | Enable ntfy (topic prompt + persist) | ❌ | 4 | enable; grep `.env`; recreate; check phone |
@@ -199,7 +208,9 @@ Run the automated suite with `cargo test --workspace` and the quality gates with
 | 17.10 | Open root terminal (new `root-bash` window, uid 0) | ❌ | 5 | menu → root terminal; `id` shows root |
 | 17.11 | Open dev terminal (new `dev-bash` window, uid 1000) | ❌ | 4 | menu → dev terminal; `id` shows dev |
 | 17.12 | Send test notification | ❌ | 5 | menu → test notify; observe popup/phone |
-| 17.13 | Recreate / reset from the menu (respawns dev-container window) | ❌ | 4 | run each; confirm the window restarts and the container rebuilds |
+| 17.13 | Recreate / reset from the menu (respawns dev-container window; reset guarded by dirty-git scan + typed 'yes') | ❌ | 4 | run each; confirm the window restarts and the container rebuilds |
+| 17.14 | Restart (podman restart in place) / Stop (podman stop) — error cleanly when absent | ❌ | 3 | menu → Restart, Stop; observe container state |
+| 17.15 | Destroy — double confirm (yes/no + dirty scan + typed 'yes'), wipes container + volume, offers to delete the local deploy key + `.pub` | ❌ | 4 | menu → Destroy; verify volume gone + key-deletion prompt |
 
 ## 18. Notifications (M7 — `notify.rs` core + cli)
 
@@ -248,12 +259,16 @@ Run the automated suite with `cargo test --workspace` and the quality gates with
   ordering, extra-port validation, session-name generation, notification
   trust-boundary (event whitelist + label sanitization), `podman run` flag
   assembly, `Cmd`/podman/tmux arg building, asset embedding/materialization.
+- **Interactive TUI (now pty-automated):** the wizard prompts end-to-end incl.
+  the generate-new-key and reuse-matching-key branches (16.2–16.4, 16.6) and the
+  menu's render/group/quit + the `no such container` regression (17.1, 17.1a/b)
+  are driven through a real pty by `rexpect` — no live host needed.
 - **Highest manual reliance (rating 5):** anything that needs a live
   rootless-podman host, tmux, a desktop/phone, or the network — real egress
   enforcement (9.5, 11.1), container boot & privilege drop (10.7), the
-  interactive wizard/menu flows (16.2, 17.*), notification delivery (18.4–18.6),
-  base-image build (8.2), the **reset data-loss safety scan** (13.4–13.11 —
-  unstaged/staged/untracked changes, unpushed commits, and stashes, plus the
+  podman-backed menu actions (17.2–17.15), notification delivery (18.4–18.6),
+  base-image build (8.2), the **reset/destroy data-loss safety scan** (13.4–13.11
+  — unstaged/staged/untracked changes, unpushed commits, and stashes, plus the
   always-required typed confirm), and the end-to-end pass (21.*).
 
 The security-critical *inputs* (allowlist patterns, run flags, trust-boundary
