@@ -1,14 +1,17 @@
-//! The control-plane TUI, built on ratatui: a full-screen menu chooser
+//! The whole interactive TUI, built on ratatui: a full-screen menu chooser
 //! ([`menu_select`]) plus a small set of inline modal prompts ([`confirm`],
-//! [`text`], [`select`], [`multiselect`]) that replace the old `inquire`
-//! prompts inside the menu's actions. The one-shot launch/init wizard still
-//! uses `inquire` — this module is only the persistent control experience.
+//! [`text`], [`select`], [`multiselect`]). Both the persistent control menu and
+//! the one-shot setup wizard drive this module — it's the sole TUI layer (there
+//! is no `inquire` anymore).
 //!
 //! The chooser owns the alternate screen; the modals render *inline* (a couple
 //! of reserved lines at the cursor) so they interleave cleanly with the plain
-//! `println!` output the menu actions emit around them.
+//! `println!` output the callers emit around them. Inline anchoring needs the
+//! terminal to answer a DSR cursor-position query; where it won't (a bare test
+//! pty), the modals fall back to a fixed top-of-screen region.
 
 use std::io::{self, Stdout};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{bail, Result};
 use ratatui::backend::CrosstermBackend;
@@ -65,16 +68,53 @@ struct Inline {
     terminal: Terminal<Backend>,
 }
 
+/// Sticky once we learn the terminal won't report its cursor position, so only
+/// the first modal pays the DSR timeout; the rest go straight to the fallback.
+static INLINE_UNSUPPORTED: AtomicBool = AtomicBool::new(false);
+
 impl Inline {
     fn enter(height: u16) -> Result<Self> {
         enable_raw_mode()?;
-        let terminal = Terminal::with_options(
+        Ok(Self {
+            terminal: build_inline_terminal(height)?,
+        })
+    }
+}
+
+/// Build the modal's terminal. An inline viewport is anchored at the *current
+/// cursor row*, which ratatui learns by asking the terminal (a DSR `ESC[6n`
+/// query). Real terminals — xterm, tmux, an ssh pty — answer it; a bare test
+/// pty doesn't, so the query times out. In that case we fall back to a fixed
+/// region at the top of the screen (which needs only the ioctl size, never
+/// DSR) and remember it, so later modals skip the doomed probe.
+fn build_inline_terminal(height: u16) -> Result<Terminal<Backend>> {
+    if !INLINE_UNSUPPORTED.load(Ordering::Relaxed) {
+        match Terminal::with_options(
             CrosstermBackend::new(io::stdout()),
             TerminalOptions {
                 viewport: Viewport::Inline(height),
             },
-        )?;
-        Ok(Self { terminal })
+        ) {
+            Ok(t) => return Ok(t),
+            Err(_) => INLINE_UNSUPPORTED.store(true, Ordering::Relaxed),
+        }
+    }
+    let (cols, rows) = crossterm_size();
+    let area = Rect::new(0, 0, cols, height.min(rows));
+    Ok(Terminal::with_options(
+        CrosstermBackend::new(io::stdout()),
+        TerminalOptions {
+            viewport: Viewport::Fixed(area),
+        },
+    )?)
+}
+
+/// The terminal size via ioctl (never DSR), with an 80x24 fallback — including
+/// when the pty reports a degenerate 0×0 (as bare test ptys do).
+fn crossterm_size() -> (u16, u16) {
+    match ratatui::crossterm::terminal::size() {
+        Ok((c, r)) if c > 0 && r > 0 => (c, r),
+        _ => (80, 24),
     }
 }
 
@@ -323,7 +363,7 @@ fn draw_footer(f: &mut Frame, area: Rect, query: &str) {
 }
 
 // ============================================================================
-// Inline modal prompts (replace inquire inside the menu actions)
+// Inline modal prompts (used by the menu actions and the setup wizard)
 // ============================================================================
 
 /// A styled question glyph + text, used as the leading line of every modal and
@@ -440,13 +480,13 @@ fn draw_text_line(f: &mut Frame, prompt: &str, buf: &str, hidden: bool) {
     f.set_cursor_position((x.min(f.area().width.saturating_sub(1)), f.area().y));
 }
 
-/// Single-choice picker. Up/Down (or type-to-filter) move, Enter selects.
-/// Returns the chosen string, or errors if `items` is empty / the user cancels.
+/// Single-choice picker. Up/Down move, Enter selects. Returns the chosen
+/// string, or errors if `items` is empty / the user cancels.
 pub fn select(prompt: &str, items: Vec<String>) -> Result<String> {
     if items.is_empty() {
         bail!("nothing to choose from");
     }
-    let picks = run_picker(prompt, &items, false)?;
+    let picks = run_picker(prompt, &items, false, &[])?;
     picks
         .into_iter()
         .next()
@@ -460,19 +500,44 @@ pub fn multiselect(prompt: &str, items: Vec<String>) -> Result<Vec<String>> {
     if items.is_empty() {
         return Ok(Vec::new());
     }
-    let picks = run_picker(prompt, &items, true)?;
+    let picks = run_picker(prompt, &items, true, &[])?;
     Ok(picks
         .into_iter()
         .filter_map(|i| items.get(i).cloned())
         .collect())
 }
 
-/// Shared list-picker loop for [`select`] and [`multiselect`]. Returns the
-/// selected indices into `items` (one for single-select, N for multi).
-fn run_picker(prompt: &str, items: &[String], multi: bool) -> Result<Vec<usize>> {
+/// Multi-choice picker returning the selected *indices* into `items`, with
+/// `default_checked` pre-toggled on entry. Used where the caller needs to map
+/// the picks back to a parallel array (e.g. the agent registry).
+pub fn multiselect_indexed(
+    prompt: &str,
+    items: &[String],
+    default_checked: &[usize],
+) -> Result<Vec<usize>> {
+    if items.is_empty() {
+        return Ok(Vec::new());
+    }
+    run_picker(prompt, items, true, default_checked)
+}
+
+/// Shared list-picker loop for [`select`] and the multi-select entry points.
+/// Returns the selected indices into `items` (one for single-select, N for
+/// multi). `initial_checked` seeds the toggles for multi-select.
+fn run_picker(
+    prompt: &str,
+    items: &[String],
+    multi: bool,
+    initial_checked: &[usize],
+) -> Result<Vec<usize>> {
     let height = (items.len() as u16 + 2).min(14);
     let mut cursor = 0usize;
     let mut checked = vec![false; items.len()];
+    for &i in initial_checked {
+        if let Some(slot) = checked.get_mut(i) {
+            *slot = true;
+        }
+    }
     let mut cancelled = false;
     let mut confirmed: Vec<usize> = Vec::new();
     {

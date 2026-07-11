@@ -19,10 +19,9 @@ introdus-core = { path = "../introdus-core" }
 anyhow.workspace = true
 clap.workspace = true
 dirs.workspace = true
-inquire.workspace = true
 ratatui.workspace = true
 
 [dev-dependencies]
-# Drives the interactive TUI (inquire prompts) through a real pty in the
-# integration tests under tests/. Test-only; never in the shipped binary.
+# Drives the interactive ratatui TUI through a real pty in the integration
+# tests under tests/. Test-only; never in the shipped binary.
 rexpect = "0.6"

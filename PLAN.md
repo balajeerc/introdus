@@ -71,7 +71,7 @@ crates/
                           #      embedded assets, podman/tmux/git wrappers,
                           #      allowlist gen, notify protocol
   introdus-cli/           # bin `introdus`: clap CLI + orchestration + notify +
-                          #      inquire launch wizard + a ratatui control menu
+                          #      ratatui wizard + ratatui control menu (ui.rs)
                           #      (folded in rather than a separate crate)
 container/                # UNCHANGED bash assets, embedded via include_str!
   egress/{firewall-entrypoint.sh,tinyproxy.conf}
@@ -173,14 +173,16 @@ introdus install            # put binary on PATH + set up services (was host_ins
       (runs `introdus up`) windows and attaches. `Up` is now the in-window
       container runner. 29 tests; lint --full green. (Wizard-on-missing-.env
       hook lands in M5; `menu` TUI in M6.)
-- [x] **M5 — TUI wizard.** `wizard.rs` (built on `inquire`): guided `.env`
-      creation — project name, repo URL, deploy-key path (offers ed25519
-      generation + prints the pubkey to register), webapp port, agent
+- [x] **M5 — TUI wizard.** `wizard.rs` (ratatui inline modals via `ui.rs`):
+      guided `.env` creation — project name, repo URL, deploy-key path (offers
+      ed25519 generation + prints the pubkey to register), webapp port, agent
       multi-select checklist (extends the whitelist with each agent's egress
       hosts), tunnel + ntfy toggles. Wired into `session::launch` so a project
       with no `.env` runs the wizard, then launches. 29 tests; lint --full
-      green. (Chose `inquire` over a from-scratch ratatui form engine —
-      robust, small, works in tmux/SSH. TUI deps swapped in Cargo.toml.)
+      green. (Originally built on `inquire`; migrated to ratatui when the whole
+      UI moved off inquire — see M6. Inline modals fall back to a fixed viewport
+      on terminals that don't answer the DSR cursor-position query, e.g. a bare
+      test pty.)
 - [x] **M6 — TUI control panel + utilities.** `menu.rs` (full-screen `ratatui`
       chooser + live status panel, in `ui.rs`) dispatching to `menu_actions.rs`:
       show tunnel URL, toggle expose-webapp, enable ntfy, copy a host file into
@@ -190,10 +192,10 @@ introdus install            # put binary on PATH + set up services (was host_ins
       restart, stop, recreate, reset, destroy. Shared `util.rs`
       (tilde/shell-quote). Wired to `introdus menu`. 29 tests; lint --full green.
       (Migrated off the inquire `Select` loop to `ratatui`: the persistent
-      control plane is now a full-screen app with inline modal sub-prompts
-      [`ui::confirm`/`text`/`select`/`multiselect`]; `inquire` stays for the
-      one-shot launch wizard only. Both ride the crossterm backend and run at
-      disjoint times.)
+      control plane is a full-screen app with inline modal sub-prompts
+      [`ui::confirm`/`text`/`select`/`multiselect`]. `inquire` was subsequently
+      dropped entirely — the wizard uses the same `ui.rs` modals — so ratatui is
+      the sole TUI dependency and crossterm collapses to a single version.)
 - [x] **M7 — Notifications folded in.** `notify.rs` (core): the trust boundary
       — event whitelist + label sanitization ported exactly, tested. `notify.rs`
       (cli): `notify-host` serves the FIFO (Linux) / socket path and renders

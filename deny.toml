@@ -11,11 +11,6 @@ yanked = "deny"
 # unreachable / unfixable), mirroring the same list in .cargo/audit.toml. Drive
 # advisories out with upgrades, not ignores.
 ignore = [
-    # fxhash is "unmaintained" (not a vulnerability) — a non-cryptographic hash
-    # helper reached only transitively through `inquire`'s fuzzy matcher. No
-    # security impact and no maintained drop-in that inquire has adopted yet.
-    # Revisit when inquire moves off it.
-    "RUSTSEC-2025-0057",
     # paste is "unmaintained" (not a vulnerability) — a build-time-only proc-macro
     # with no runtime code, pulled transitively by `ratatui` for its widget
     # macros. Feature-complete and inert at runtime; no maintained drop-in ratatui

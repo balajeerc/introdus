@@ -36,15 +36,16 @@ Run the fast suite with `cargo test --workspace` and the quality gates with
 pre-commit hook (`scripts/install-pre-commit.sh`) runs **both** — `cargo test`
 then the lint suite — on every commit.
 
-The interactive TUIs are covered by **pty integration tests** under
+The interactive TUI is covered by **pty integration tests** under
 `crates/introdus-cli/tests/` (`wizard_pty.rs`, `menu_pty.rs`), which spawn the
-real binary through a pseudo-terminal via `rexpect`. The one-shot launch/init
-wizard is an `inquire` prompt flow (scraped line-by-line); the persistent
-control menu is a full-screen `ratatui` app, so `menu_pty.rs` only smoke-tests
-its start/quit and the no-leak guarantee — its on-screen layout is exercised by
-the tmux harness (`test-harness/driver-menu.sh`). These need no podman/tmux (the
-wizard is reached through the standalone `introdus init`), so they run anywhere
-`cargo test` does.
+real binary through a pseudo-terminal via `rexpect`. The whole UI is `ratatui`
+now (no `inquire`): the wizard is a sequence of inline modal prompts driven with
+explicit keystrokes (a bare test pty can't answer the DSR cursor-position query,
+so the modals fall back to a fixed viewport there); the persistent control menu
+is a full-screen app, so `menu_pty.rs` only smoke-tests its start/quit and the
+no-leak guarantee — its on-screen layout is exercised by the tmux harness
+(`test-harness/driver-menu.sh`). These need no podman/tmux (the wizard is reached
+through the standalone `introdus init`), so they run anywhere `cargo test` does.
 
 The **full experience** — real `introdus launch` → tmux session → nested rootless
 podman dev container → egress firewall → public-repo clone → live control TUI —

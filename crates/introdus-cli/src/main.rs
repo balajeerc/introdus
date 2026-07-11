@@ -109,9 +109,10 @@ fn run_init() -> Result<()> {
     let dir = std::env::current_dir()?;
     let env = dir.join(".env");
     if env.exists()
-        && !inquire::Confirm::new(&format!("{} exists — reconfigure it?", env.display()))
-            .with_default(false)
-            .prompt()?
+        && !ui::confirm(
+            &format!("{} exists — reconfigure it?", env.display()),
+            false,
+        )?
     {
         println!("  left .env unchanged.");
         return Ok(());

@@ -5,11 +5,11 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use inquire::{Confirm, CustomType, MultiSelect, Select, Text};
 use introdus_core::agents::{self, Agent};
 use introdus_core::process::Cmd;
 use introdus_core::{names, Config};
 
+use crate::ui;
 use crate::util::expand_tilde;
 
 /// Run the wizard for a project rooted at `project_dir`, writing `.env` and
@@ -28,14 +28,13 @@ pub fn run(project_dir: &Path) -> Result<Config> {
     let project_name = ask_default("Project name", &default_name)?;
     let repo_url = ask_nonempty("Git repo URL (git@github.com:org/repo.git)")?;
     let deploy_key_path = prompt_deploy_key(&project_name, &repo_url)?;
-    let webapp_port = CustomType::<u16>::new("Webapp port (bound in the container):")
-        .with_default(3000)
-        .prompt()?;
+    let webapp_port = ask_port("Webapp port (bound in the container):", 3000)?;
 
     let install_agents = prompt_agents()?;
-    let expose_webapp = Confirm::new("Expose the webapp to the internet via a Cloudflare tunnel?")
-        .with_default(false)
-        .prompt()?;
+    let expose_webapp = ui::confirm(
+        "Expose the webapp to the internet via a Cloudflare tunnel?",
+        false,
+    )?;
     let (enable_notify_sh_alerts, ntfy_sh_topic) = prompt_ntfy()?;
 
     let mut config = Config::new(project_name, repo_url, deploy_key_path, webapp_port);
@@ -67,32 +66,21 @@ fn apply_agents(config: &mut Config, selected: Vec<String>) {
     }
 }
 
-/// A selectable agent row (shows its label, carries its id).
-struct AgentChoice {
-    id: &'static str,
-    label: &'static str,
-    method_note: &'static str,
-}
-
-impl std::fmt::Display for AgentChoice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}{}", self.label, self.method_note)
-    }
-}
-
 fn prompt_agents() -> Result<Vec<String>> {
-    let options: Vec<AgentChoice> = agents::AGENTS.iter().map(choice).collect();
+    let options: Vec<String> = agents::AGENTS.iter().map(choice_label).collect();
     let claude_idx = agents::AGENTS
         .iter()
         .position(|a| a.id == "claude")
         .unwrap_or(0);
-    let picked = MultiSelect::new(
+    let picked = ui::multiselect_indexed(
         "Coding agents to install (space toggles, enter confirms):",
-        options,
-    )
-    .with_default(&[claude_idx])
-    .prompt()?;
-    let mut ids: Vec<String> = picked.into_iter().map(|c| c.id.to_owned()).collect();
+        &options,
+        &[claude_idx],
+    )?;
+    let mut ids: Vec<String> = picked
+        .into_iter()
+        .filter_map(|i| agents::AGENTS.get(i).map(|a| a.id.to_owned()))
+        .collect();
     // Claude is baked into the image; keep it selected regardless.
     if !ids.iter().any(|id| id == "claude") {
         ids.insert(0, "claude".to_owned());
@@ -100,22 +88,18 @@ fn prompt_agents() -> Result<Vec<String>> {
     Ok(ids)
 }
 
-fn choice(a: &'static Agent) -> AgentChoice {
+/// The checklist label for an agent — its name, flagging vendor installers that
+/// run remote code so the user weighs that before ticking the box.
+fn choice_label(a: &'static Agent) -> String {
     let method_note = match a.method {
         agents::InstallMethod::Script => "  [vendor installer — runs remote code]",
         agents::InstallMethod::Pnpm => "",
     };
-    AgentChoice {
-        id: a.id,
-        label: a.label,
-        method_note,
-    }
+    format!("{}{}", a.label, method_note)
 }
 
 fn prompt_ntfy() -> Result<(bool, Option<String>)> {
-    let enable = Confirm::new("Enable mobile push notifications via ntfy.sh?")
-        .with_default(false)
-        .prompt()?;
+    let enable = ui::confirm("Enable mobile push notifications via ntfy.sh?", false)?;
     if !enable {
         return Ok((false, None));
     }
@@ -128,10 +112,8 @@ fn prompt_ntfy() -> Result<(bool, Option<String>)> {
 /// cases — print the public half and wait for the user to register it as a
 /// write-access deploy key before the clone step relies on it.
 fn prompt_deploy_key(project_name: &str, repo_url: &str) -> Result<String> {
-    let generate = Confirm::new("Generate a new per-project deploy key now?")
-        .with_default(true)
-        .with_help_message("No = point introdus at a deploy key you already have")
-        .prompt()?;
+    println!("  (No = point introdus at a deploy key you already have)");
+    let generate = ui::confirm("Generate a new per-project deploy key now?", true)?;
     let path = if generate {
         generate_new_deploy_key(project_name)?
     } else {
@@ -152,13 +134,13 @@ fn generate_new_deploy_key(project_name: &str) -> Result<String> {
     let default = dirs::home_dir()
         .map(|h| h.join(".ssh/introdus-deploy-keys").join(&filename))
         .unwrap_or_else(|| PathBuf::from(&filename));
+    println!("  (a private key is written here; its .pub is printed next to register)");
     loop {
-        let raw = Text::new("Where should the new deploy key be created?")
-            .with_default(&default.to_string_lossy())
-            .with_help_message(
-                "A private key is written here; its .pub is printed next to register",
-            )
-            .prompt()?;
+        let raw = ui::text(
+            "Where should the new deploy key be created?",
+            Some(&default.to_string_lossy()),
+            false,
+        )?;
         let path = expand_tilde(raw.trim());
         if path.exists() {
             println!(
@@ -199,7 +181,7 @@ fn offer_candidate_keys(matches: &[PathBuf]) -> Result<Option<String>> {
             matches.len()
         )
     };
-    let reuse = Confirm::new(&question).with_default(true).prompt()?;
+    let reuse = ui::confirm(&question, true)?;
     if !reuse {
         return Ok(None);
     }
@@ -210,7 +192,7 @@ fn offer_candidate_keys(matches: &[PathBuf]) -> Result<Option<String>> {
         .iter()
         .map(|p| p.to_string_lossy().into_owned())
         .collect();
-    let choice = Select::new("Which key?", options).prompt()?;
+    let choice = ui::select("Which key?", options)?;
     Ok(Some(choice))
 }
 
@@ -326,9 +308,10 @@ fn announce_deploy_key(path: &Path, repo_url: &str) -> Result<()> {
     println!("\n  Deploy key: {}", path.display());
     println!("  Add this PUBLIC key to {repo_url} as a deploy key WITH WRITE ACCESS:\n");
     println!("    {}", pubkey.trim());
-    Confirm::new("Press enter once the deploy key is registered with the repo")
-        .with_default(true)
-        .prompt()?;
+    ui::confirm(
+        "Press enter once the deploy key is registered with the repo",
+        true,
+    )?;
     Ok(())
 }
 
@@ -359,7 +342,7 @@ fn restrict_dir(_dir: &Path) {}
 
 fn ask_nonempty(prompt: &str) -> Result<String> {
     loop {
-        let value = Text::new(prompt).prompt()?;
+        let value = ui::text(prompt, None, false)?;
         let trimmed = value.trim();
         if !trimmed.is_empty() {
             return Ok(trimmed.to_owned());
@@ -369,8 +352,21 @@ fn ask_nonempty(prompt: &str) -> Result<String> {
 }
 
 fn ask_default(prompt: &str, default: &str) -> Result<String> {
-    let value = Text::new(prompt).with_default(default).prompt()?;
+    let value = ui::text(prompt, Some(default), false)?;
     Ok(value.trim().to_owned())
+}
+
+/// Prompt for a `u16` port, pre-filled with `default`, re-asking on anything
+/// that doesn't parse.
+fn ask_port(prompt: &str, default: u16) -> Result<u16> {
+    let default = default.to_string();
+    loop {
+        let value = ui::text(prompt, Some(&default), false)?;
+        match value.trim().parse::<u16>() {
+            Ok(port) => return Ok(port),
+            Err(_) => println!("  (enter a whole number between 0 and 65535)"),
+        }
+    }
 }
 
 #[cfg(test)]
