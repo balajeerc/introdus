@@ -45,13 +45,36 @@ mc_continue
 key="$HOME/.ssh/harness-key"
 [[ -f "$key" ]] || { echo "FATAL: deploy key fixture missing"; exit 1; }
 
+# Dirty the cloned repo so the destroy safety scan (the data-loss guard) has
+# real uncommitted + unpushed state to report.
+echo "==> dirtying the repo to exercise the destroy safety scan"
+podman exec --user dev "$cname" bash -c '
+    set -e
+    cd /home/dev/work/harness
+    git config user.email harness@test.local
+    git config user.name harness
+    echo committed-locally > harness-local.txt
+    git add harness-local.txt
+    git commit -qm "unpushed local commit"           # -> unpushed commit
+    echo modified >> "$(git ls-files | head -1)"      # -> unstaged working-tree change
+    echo scratch > harness-untracked.txt              # -> untracked file
+'
+
 echo "==> menu: Destroy the container"
 mc_select "Destroy the container"
 # 1) plain yes/no
 mc_wait_prompt "Destroy this container and permanently delete its volume" "destroy confirm"
 mc_send "y" Enter
-# 2) dirty-git scan runs (throwaway container), then a typed confirmation
+# 2) dirty-git scan runs (throwaway container), then a typed confirmation. The
+#    scan report is printed just before the typed prompt — assert it caught the
+#    uncommitted + unpushed state we planted.
 mc_wait_prompt "Type 'yes'" "destroy typed confirm"
+scan="$(mc_scroll)"
+echo "$scan" | grep -qF "working tree" \
+    || { echo "FATAL: safety scan missed working-tree changes"; echo "$scan" | tail -25 | sed 's/^/      /'; exit 1; }
+echo "$scan" | grep -qF "unpushed commits" \
+    || { echo "FATAL: safety scan missed unpushed commits"; echo "$scan" | tail -25 | sed 's/^/      /'; exit 1; }
+echo "    ✓ safety scan reported uncommitted working-tree + unpushed commits"
 mc_send "yes" Enter
 # 3) offer to delete the local deploy key
 mc_wait_prompt "Also delete the local deploy key" "deploy-key prompt"

@@ -21,14 +21,24 @@ inverse of how much automation can prove it.
 **Automated** column legend: ✅ = unit test named; ⚠️ = partial (helper logic
 only); ❌ = none.
 
-Run the automated suite with `cargo test --workspace` and the quality gates with
-`scripts/lint.sh --full` (or `--security`, which also runs semgrep).
+Run the fast suite with `cargo test --workspace` and the quality gates with
+`scripts/lint.sh --full` (or `--security`, which also runs semgrep). The
+pre-commit hook (`scripts/install-pre-commit.sh`) runs **both** — `cargo test`
+then the lint suite — on every commit.
 
 The interactive `inquire` TUI is covered by **pty integration tests** under
 `crates/introdus-cli/tests/` (`wizard_pty.rs`, `menu_pty.rs`), which spawn the
 real binary through a pseudo-terminal via `rexpect` and drive the prompts as a
 user would. They need no podman/tmux (the wizard is reached through the
 standalone `introdus init`), so they run anywhere `cargo test` does.
+
+The **full experience** — real `introdus launch` → tmux session → nested rootless
+podman dev container → egress firewall → public-repo clone → live control TUI —
+is driven and asserted by the **rootless podman-in-podman harness**
+(`test-harness/harness.sh`, targets `verify` / `menu` / `egress` / `lifecycle` /
+`all`). It's heavy + opt-in (needs a rootless-podman host with `/dev/fuse` +
+`/dev/net/tun`), so NOT part of `cargo test`. Rows marked "harness `<target>`"
+are automated there. See `test-harness/README.md`.
 
 ---
 
@@ -39,7 +49,7 @@ standalone `introdus init`), so they run anywhere `cargo test` does.
 | 1.1 | Workspace compiles (debug + release) | ⚠️ CI-of-sorts via `cargo test` | 1 | `cargo build --workspace && cargo build --release` |
 | 1.2 | `scripts/lint.sh --full` passes (fmt, clippy, deny, audit, machete, tokei, jscpd) | ✅ the gate itself | 0 | `./scripts/lint.sh --full` |
 | 1.3 | `scripts/lint.sh --security` passes (adds semgrep) | ✅ the gate | 1 | needs a working `semgrep` (`pipx reinstall semgrep` if broken) |
-| 1.4 | Pre-commit hook installs and blocks a dirty commit | ❌ | 2 | `./scripts/install-pre-commit.sh`; try committing a fmt violation |
+| 1.4 | Pre-commit hook installs; runs `cargo test` + lint; blocks a failing commit | ❌ | 2 | `./scripts/install-pre-commit.sh`; try committing a fmt violation or a failing test |
 | 1.5 | Release binary is a single self-contained artifact | ❌ | 1 | `ldd target/release/introdus`; run it on a clean box |
 
 ## 2. Config & `.env` round-trip (M1 — `config.rs`, `env_file.rs`)
@@ -78,7 +88,7 @@ standalone `introdus init`), so they run anywhere `cargo test` does.
 |---|-----------|:---------:|:------:|---------------|
 | 5.1 | All 11 assets embedded, non-empty; entrypoint contains `nft` | ✅ `assets_embed_nonempty` | 0 | — |
 | 5.2 | Materialize writes the tree with correct exec/non-exec modes | ✅ `materialize_writes_tree_with_modes` | 0 | — |
-| 5.3 | Materialized build context actually `podman build`s | ❌ | 5 | `introdus rebuild-base` on a podman host |
+| 5.3 | Materialized build context actually `podman build`s | ✅ harness `verify` | 1 | the harness builds the base image nested from materialized assets |
 | 5.4 | Embedded bash byte-identical to `container/` sources | ⚠️ (include_str! guarantees) | 1 | `git diff` shows no drift; rebuild after edits |
 
 ## 6. Process / podman / tmux wrappers (M2)
@@ -88,7 +98,7 @@ standalone `introdus init`), so they run anywhere `cargo test` does.
 | 6.1 | `Cmd` arg/label building, exit-code mapping, stdout capture, ok-probe | ✅ `process::tests::*` | 0 | — |
 | 6.2 | `podman exec` / `exec -it` flag building (`--user`) | ✅ `exec_builds_user_flag`, `interactive_exec_is_it` | 0 | — |
 | 6.3 | `tmux attach` label | ✅ `attach_label` | 0 | — |
-| 6.4 | The wrappers drive real podman/tmux correctly | ❌ | 4 | exercised implicitly by every live launch/menu action |
+| 6.4 | The wrappers drive real podman/tmux correctly | ⚠️ harness (exercised throughout) | 2 | every harness launch/menu/exec action drives them for real |
 
 ## 7. Preflight checks (M3 — `preflight.rs`)
 
@@ -103,7 +113,7 @@ standalone `introdus init`), so they run anywhere `cargo test` does.
 | # | Test case | Automated | Manual | How to verify |
 |---|-----------|:---------:|:------:|---------------|
 | 8.1 | Stale project-tag matcher (`introdus-<slug>-XXXX:latest`) | ✅ `stale_tag_matching` | 0 | — |
-| 8.2 | Builds the base image when missing | ❌ | 5 | first `introdus up` on a clean host |
+| 8.2 | Builds the base image when missing | ✅ harness `verify` | 2 | the harness builds it nested on a clean volume; manual for cache nuances |
 | 8.3 | Cached rebuild when the binary is newer than the image | ❌ | 4 | rebuild introdus, relaunch, watch for the "cached rebuild" line |
 | 8.4 | `rebuild-base` forces `--no-cache` | ❌ | 4 | `introdus rebuild-base`; confirm layers rebuild |
 | 8.5 | Per-project tag applied; stale suffixed tags pruned | ❌ | 3 | change `IMAGE_SUFFIX`, relaunch, `podman image ls` |
@@ -116,7 +126,7 @@ standalone `introdus init`), so they run anywhere `cargo test` does.
 | 9.2 | Allowlist regex escaping matches the shell's `sed` | ✅ `pattern_matches_shell_escaping` | 0 | — |
 | 9.3 | Ordered whitelist = git host + WHITELIST + tunnel host | ✅ `container_whitelist_order_and_tunnel` | 1 | diff generated allowlist file vs a `./launch.sh` run |
 | 9.4 | Rendered allowlist file = one pattern per line | ✅ `render_is_one_pattern_per_line` | 0 | — |
-| 9.5 | **Proxy actually enforces the allowlist in the container** | ❌ | 5 | in-container: `curl allowed-host` ✓, `curl blocked-host` ✗, `egress-log` shows the block |
+| 9.5 | **Proxy actually enforces the allowlist in the container** | ✅ harness `egress` | 1 | driver-egress.sh: allowed via proxy ✓, non-allowlisted ✗, direct dial dropped, `egress-log` shows it |
 
 ## 10. Container create — `podman run` flag set (M3 — `run.rs`)  ← security-critical
 
@@ -128,13 +138,13 @@ standalone `introdus init`), so they run anywhere `cargo test` does.
 | 10.4 | Extra-port parse/validate (bad, out-of-range, collision) | ✅ `ports::tests::*` | 0 | — |
 | 10.5 | All five bind-mounts + `/run/notify` + shared-data present | ⚠️ (built in 10.1) | 2 | `podman inspect` mounts on a live container |
 | 10.6 | Deploy-key / shared-data existence validation | ⚠️ `validate_inputs` (no test) | 2 | point `.env` at a missing key; expect a clear error |
-| 10.7 | Container actually boots, entrypoint drops to `dev` | ❌ | 5 | `podman exec ... id` shows uid 1000; egress self-check passes |
+| 10.7 | Container actually boots, entrypoint drops to `dev` | ✅ harness `menu` | 1 | driver-menu.sh: dev terminal shows uid=1000(dev); egress self-check passes |
 
 ## 11. Egress self-check — `introdus verify` (M3)
 
 | # | Test case | Automated | Manual | How to verify |
 |---|-----------|:---------:|:------:|---------------|
-| 11.1 | Canary blocked, proxy reaches allowlisted host, direct-IP blocked | ❌ | 5 | `introdus verify` → "verify passed" on a podman host |
+| 11.1 | Canary blocked, proxy reaches allowlisted host, direct-IP blocked | ✅ harness `verify` | 1 | `test-harness/harness.sh verify` → "verify passed" nested |
 | 11.2 | Verify aborts the launch on any failure | ❌ | 4 | remove the git host from WHITELIST; expect failure |
 
 ## 12. In-container update — `introdus update` (M3)
@@ -149,16 +159,16 @@ standalone `introdus init`), so they run anywhere `cargo test` does.
 | # | Test case | Automated | Manual | How to verify |
 |---|-----------|:---------:|:------:|---------------|
 | 13.1 | Legacy pre-suffix container removed | ❌ | 3 | create a legacy-named container; relaunch |
-| 13.2 | Recreate drops container, keeps volume | ❌ | 4 | recreate; confirm `/home/dev` (repo) survives |
-| 13.3 | Reset wipes the volume | ❌ | 4 | reset; confirm the volume is gone |
-| 13.4 | Reset scan detects **unstaged working-tree changes** | ❌ | 5 | edit a tracked file (no `git add`); reset; scan lists it under "working tree" |
-| 13.5 | Reset scan detects **staged-but-uncommitted changes** | ❌ | 5 | `git add` a change; reset; scan lists it (`git status --porcelain` shows both) |
-| 13.6 | Reset scan detects **untracked files** | ❌ | 4 | create a new untracked file; reset; scan lists it (`??`) |
-| 13.7 | Reset scan detects **unpushed commits** (not on any remote) | ❌ | 5 | commit locally, don't push; reset; scan reports "unpushed commits: N" |
+| 13.2 | Recreate drops container, keeps volume | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh: marker survives recreate |
+| 13.3 | Reset/destroy wipes the volume | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh: destroy removes the volume |
+| 13.4 | Reset scan detects **unstaged working-tree changes** | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh plants a modified tracked file; scan reports "working tree" |
+| 13.5 | Reset scan detects **staged-but-uncommitted changes** | ❌ | 4 | `git add` a change; reset; scan lists it (`git status --porcelain` shows both) |
+| 13.6 | Reset scan detects **untracked files** | ✅ harness `lifecycle` (via "working tree") | 2 | driver-lifecycle.sh plants an untracked file; `??` appears under working tree |
+| 13.7 | Reset scan detects **unpushed commits** (not on any remote) | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh commits locally; scan reports "unpushed commits: N" |
 | 13.8 | Reset scan detects **stashes** | ❌ | 4 | `git stash`; reset; scan lists the stash |
 | 13.9 | Scan walks **every repo** under `/home/dev/work` (multi-repo) | ❌ | 4 | dirty two repos; reset; both appear in the report |
-| 13.10 | Typed `yes` confirmation is **always required**, even when the scan finds nothing / base image missing | ❌ | 5 | reset a clean volume; confirm it still demands `yes`; non-`yes` aborts with the volume intact |
-| 13.11 | Scan is read-only and non-fatal (best-effort; failure never blocks the confirm) | ❌ | 4 | reset with an odd/corrupt repo; confirm the flow still reaches the `yes` prompt |
+| 13.10 | Typed `yes` confirmation required (destroy/reset) | ⚠️ harness `lifecycle` (typed `yes` exercised) | 3 | harness sends the typed `yes`; manual for the "clean volume still demands yes" + non-`yes`-aborts branch |
+| 13.11 | Scan is read-only and non-fatal (best-effort; failure never blocks the confirm) | ✅ harness `lifecycle` | 2 | driver-lifecycle.sh: scan runs on a `:ro` mount and the flow reaches the `yes` prompt |
 | 13.12 | `--pull` sentinel triggers a ff-only pull on next start | ❌ | 4 | `introdus up --pull`; confirm the repo fast-forwards |
 
 ## 14. tmux session model — `introdus launch` (M4 — `session.rs`)
@@ -167,7 +177,7 @@ standalone `introdus init`), so they run anywhere `cargo test` does.
 |---|-----------|:---------:|:------:|---------------|
 | 14.1 | `window_cmd` builds `exec '<bin>' <sub>` | ✅ `window_cmd_execs_binary` | 0 | — |
 | 14.2 | Session name minted + persisted to `.env` on first launch | ⚠️ (generator tested) | 3 | first `introdus`; grep `SESSION_NAME` in `.env` |
-| 14.3 | Session created with main-control + notify + dev-container windows | ❌ | 4 | `introdus`; `tmux list-windows` shows all three |
+| 14.3 | Session created with main-control + notify + dev-container windows | ✅ harness `menu` | 1 | driver-menu.sh asserts all three windows exist |
 | 14.4 | Re-launch re-attaches instead of spawning a duplicate | ❌ | 3 | run `introdus` twice |
 | 14.5 | Wizard runs when `.env` is absent, then launches | ❌ | 4 | `introdus` in an empty dir |
 
@@ -274,18 +284,23 @@ control TUI and asserts on it. Heavy + opt-in (needs a rootless-podman host with
 - **Full experience (now harness-automated):** the real `introdus launch` →
   tmux session → nested dev container → egress firewall → clone → live control
   TUI is driven and asserted by the rootless podman-in-podman harness
-  (`test-harness/harness.sh`, targets `verify`/`launch`/`menu`) — covering
-  21.1–21.3 and the podman-backed egress path. Heavy + opt-in, not in
-  `cargo test`.
-- **Highest manual reliance (rating 5):** anything that needs a live
-  rootless-podman host, tmux, a desktop/phone, or the network — real egress
-  enforcement (9.5, 11.1), container boot & privilege drop (10.7), the
-  podman-backed menu actions (17.2–17.15), notification delivery (18.4–18.6),
-  base-image build (8.2), the **reset/destroy data-loss safety scan** (13.4–13.11
-  — unstaged/staged/untracked changes, unpushed commits, and stashes, plus the
-  always-required typed confirm), and the end-to-end pass (21.*).
+  (`test-harness/harness.sh`, targets `verify` / `menu` / `egress` /
+  `lifecycle`). This moved a large block off manual-only: base build + egress
+  self-check (5.3, 8.2, 11.1), **workload egress enforcement (9.5)**, container
+  boot + privilege drop (10.7), the session + menu utilities (14.3, 17.5,
+  17.8–17.11, 17.13–17.15), and the **reset/destroy data-loss safety scan**
+  (13.2–13.4, 13.6, 13.7, 13.11 — planting uncommitted + unpushed state and
+  asserting the scan reports it) plus the end-to-end pass (21.1–21.4). Heavy +
+  opt-in, not in `cargo test`.
+- **Highest manual reliance (rating 5):** what still needs external services or
+  eyes no harness provides — notification delivery to a desktop/phone
+  (18.4–18.6), the Cloudflare tunnel + tunnel-URL (17.2), enabling ntfy
+  (17.3–17.4), runtime agent install/launch + agent auth egress (3.4, 17.6–17.7),
+  in-container `update` (12.2), and driving Claude from a phone (21.5). Residual
+  scan branches (staged-only 13.5, stashes 13.8, multi-repo 13.9) remain manual.
 
 The security-critical *inputs* (allowlist patterns, run flags, trust-boundary
 sanitization) are automated at rating 0; the security-critical *enforcement*
-(the proxy/nft actually dropping traffic) is inherently rating 5 and must be
-observed on a real host — cross-check against a `./launch.sh` container.
+(the proxy/nft actually dropping traffic) is now automated by the harness (9.5,
+11.1) nested — still worth an occasional cross-check against a real
+`./launch.sh` container.
