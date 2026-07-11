@@ -58,8 +58,6 @@ is driven and asserted by the **rootless podman-in-podman harness**
 | TA01 | Workspace compiles (debug + release) | ⚠️ | 1 | `cargo build --workspace && cargo build --release` |
 | TA02 | `scripts/lint.sh --full` passes (fmt, clippy, deny, audit, machete, tokei, jscpd) | ✅ | 0 | `./scripts/lint.sh --full` (the gate itself) |
 | TA03 | `scripts/lint.sh --security` passes (adds semgrep) | ✅ | 1 | needs a working `semgrep` (`pipx reinstall semgrep` if broken) |
-| TA04 | Pre-commit hook installs; runs `cargo test` + lint; blocks a failing commit | ❌ | 2 | `./scripts/install-pre-commit.sh`; try committing a fmt violation or a failing test |
-| TA05 | Release binary is a single self-contained artifact | ❌ | 1 | `ldd target/release/introdus`; run it on a clean box |
 
 ## 2. Config & `.env` round-trip (M1 — `config.rs`, `env_file.rs`)
 
@@ -77,7 +75,6 @@ is driven and asserted by the **rootless podman-in-podman harness**
 
 | ID | Test case | Automated | Manual | How to verify |
 |----|-----------|:---------:|:------:|---------------|
-| TA13 | Ids unique; claude prebaked; codex not | ✅ | 0 | — |
 | TA14 | Script-method agents use URL specs | ✅ | 0 | — |
 | TA15 | Registry stays in sync with `container/agents.sh` | ❌ (hand-kept) | 3 | diff the two by eye when either changes |
 | TA16 | Each agent's egress hosts are actually sufficient to auth | ❌ | 5 | install the agent, sign in, watch `egress-log` for blocks |
