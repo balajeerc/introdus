@@ -99,25 +99,29 @@ harness_launch() {
 }
 
 # ---- helpers for driving the control menu (main-control window) -------------
-# Two captures: mc_vis is the VISIBLE pane (the whole menu list fits, used to
-# synchronize on menu state); mc_scroll includes scrollback (status block +
-# action logs scroll above the redrawn list).
+# The menu is a full-screen ratatui chooser (alternate screen); its actions run
+# on the normal screen with their sub-prompts drawn as inline modals. Two
+# captures: mc_vis is the VISIBLE pane — the chooser frame while the menu is up,
+# or the normal screen (inline modal + action output) during an action;
+# mc_scroll includes scrollback, where an action's plain output accumulates.
 mc_pane() { echo "${HARNESS_SESSION}:main-control"; }
 mc_vis() { tmux capture-pane -t "$(mc_pane)" -p; }
 mc_scroll() { tmux capture-pane -t "$(mc_pane)" -p -S -; }
 mc_send() { tmux send-keys -t "$(mc_pane)" "$@"; }
 mc_reset() { tmux clear-history -t "$(mc_pane)" 2>/dev/null || true; }
 
-# The first menu row ("Terminals & agents") is visible ONLY when the menu is at
-# its top-level Select prompt (not during a sub-prompt or the action pause), so
-# it's a reliable "menu is ready for input" marker.
+# The first menu section ("Terminals & agents") is drawn ONLY while the
+# full-screen chooser is up (not during an inline sub-prompt modal or the action
+# pause, which render on the normal screen), so it's a reliable "menu is ready
+# for input" marker.
 mc_ready() {
     local _
     for _ in $(seq 1 80); do mc_vis | grep -qF "Terminals & agents" && return 0; sleep 0.5; done
-    echo "FATAL: menu never returned to the Select prompt:"; mc_vis | sed 's/^/      /'; return 1
+    echo "FATAL: menu never returned to the chooser:"; mc_vis | sed 's/^/      /'; return 1
 }
 
-# Wait for a substring in the VISIBLE pane — for sub-prompts (Text/Confirm).
+# Wait for a substring in the VISIBLE pane — for inline sub-prompts (text/confirm)
+# and the full-screen status panel.
 mc_wait_prompt() {
     local pat="$1" lbl="${2:-$1}" _
     for _ in $(seq 1 60); do mc_vis | grep -qF "$pat" && return 0; sleep 0.5; done
@@ -135,8 +139,8 @@ mc_wait_scroll() {
 # action's fresh output is isolated, then type the filter + Enter.
 mc_select() { mc_ready; mc_reset; mc_send "$1" Enter; }
 
-# Step past the "press Enter to continue" pause and wait until the menu is back
-# at the Select prompt (so the next action starts from a known state).
+# Step past the "press Enter to continue" pause and wait until the chooser is
+# back up (so the next action starts from a known state).
 mc_continue() { mc_send Enter; mc_ready; }
 
 # True if window $1 exists in the session (waits up to ~30s).

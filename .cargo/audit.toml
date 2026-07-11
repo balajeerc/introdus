@@ -12,4 +12,9 @@ ignore = [
     # No security impact; no maintained drop-in inquire has adopted. Mirrors the
     # same justification in deny.toml. Revisit when inquire moves off it.
     "RUSTSEC-2025-0057",
+    # paste "unmaintained" advisory (not a vulnerability): a build-time-only
+    # proc-macro with no runtime code, pulled transitively by `ratatui`. Inert at
+    # runtime; no maintained drop-in ratatui has adopted. Mirrors the same
+    # justification in deny.toml. Revisit when ratatui drops it.
+    "RUSTSEC-2024-0436",
 ]

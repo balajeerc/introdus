@@ -1,15 +1,16 @@
-//! The control TUI (`introdus menu`) — the persistent menu that runs in the
-//! `main-control` tmux window. An `inquire::Select` loop dispatches to the
-//! utilities in [`crate::menu_actions`]. Host-side, so it can read/write `.env`,
-//! drive podman, open root/dev terminals, and spawn agent windows — the things
-//! an in-container TUI could never do.
+//! The control TUI (`introdus menu`) — the persistent full-screen ratatui menu
+//! that runs in the `main-control` tmux window. The chooser lives in
+//! [`crate::ui`]; this module owns the menu layout and dispatches selections to
+//! the utilities in [`crate::menu_actions`]. Host-side, so it can read/write
+//! `.env`, drive podman, open root/dev terminals, and spawn agent windows — the
+//! things an in-container TUI could never do.
 
 use anyhow::Result;
-use inquire::Select;
 use introdus_core::podman::{self, ContainerState};
 
 use crate::context::{env_path, LaunchContext};
 use crate::menu_actions as act;
+use crate::ui;
 use introdus_core::Config;
 
 /// A menu entry: either a selectable action or an inert section header (headers
@@ -41,16 +42,6 @@ enum Action {
     Destroy,
     Refresh,
     Quit,
-}
-
-impl std::fmt::Display for Row {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            // Headers sit flush-left; items are indented under them.
-            Row::Header(title) => write!(f, "── {title} ──"),
-            Row::Item(action) => write!(f, "   {action}"),
-        }
-    }
 }
 
 impl std::fmt::Display for Action {
@@ -110,33 +101,39 @@ pub fn run() -> Result<()> {
     let dir = std::env::current_dir()?;
     let env = env_path(&dir);
     loop {
-        // Reload each iteration so actions that edited .env are reflected.
+        // Reload each iteration so actions that edited .env are reflected, and
+        // re-snapshot the container state for the status panel.
         let config = Config::load(&env)?;
         let ctx = LaunchContext::resolve(config, dir.clone())?;
-        print_status(&ctx);
+        let status = status_of(&ctx);
+        let rows: Vec<ui::Row> = MENU
+            .iter()
+            .map(|r| match r {
+                Row::Header(h) => ui::Row::Header((*h).to_owned()),
+                Row::Item(a) => ui::Row::Item(a.to_string()),
+            })
+            .collect();
 
-        let prompt = format!("introdus — control ({})", ctx.config.project_name);
-        // Show the whole menu at once (headers + items) — no paging.
-        let row = match Select::new(&prompt, MENU.to_vec())
-            .with_page_size(MENU.len())
-            .prompt()
-        {
-            Ok(r) => r,
-            // Esc / Ctrl-C leaves the menu without treating it as an error.
-            Err(_) => break,
+        // The chooser owns the alternate screen; it returns the index into MENU
+        // of the picked item, or None when the user quit (Esc / Ctrl-C).
+        let action = match ui::menu_select(&status, &rows)? {
+            Some(idx) => match MENU[idx] {
+                Row::Item(a) => a,
+                Row::Header(_) => continue,
+            },
+            None => break,
         };
-        let action = match row {
-            // A header isn't actionable — just redraw the menu.
-            Row::Header(_) => continue,
-            Row::Item(a) => a,
-        };
-        if action == Action::Quit {
-            break;
+        match action {
+            Action::Quit => break,
+            // Refresh just falls through to the next loop, which re-snapshots.
+            Action::Refresh => continue,
+            _ => {
+                if let Err(e) = dispatch(action, &ctx) {
+                    eprintln!("  ! {e:#}");
+                }
+                ui::pause();
+            }
         }
-        if let Err(e) = dispatch(action, &ctx) {
-            eprintln!("  ! {e:#}");
-        }
-        act::pause();
     }
     Ok(())
 }
@@ -163,16 +160,18 @@ fn dispatch(action: Action, ctx: &LaunchContext) -> Result<()> {
     }
 }
 
-fn print_status(ctx: &LaunchContext) {
+/// Snapshot the live status shown in the chooser's header panel.
+fn status_of(ctx: &LaunchContext) -> ui::Status {
     let state = match podman::container_state(&ctx.container_name) {
         ContainerState::Running => "running",
         ContainerState::Stopped => "stopped",
         ContainerState::Absent => "not created",
     };
-    println!("\n────────────────────────────────────────");
-    println!(" project:   {}", ctx.config.project_name);
-    println!(" container: {} ({state})", ctx.container_name);
-    println!(" webapp:    port {}", ctx.config.webapp_port);
-    println!(" agents:    {}", ctx.config.install_agents.join(", "));
-    println!("────────────────────────────────────────");
+    ui::Status {
+        project: ctx.config.project_name.clone(),
+        container: ctx.container_name.clone(),
+        state,
+        webapp_port: ctx.config.webapp_port,
+        agents: ctx.config.install_agents.join(", "),
+    }
 }

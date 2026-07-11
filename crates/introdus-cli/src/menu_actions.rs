@@ -3,23 +3,13 @@
 //! run on the host, so they can edit `.env`, drive podman, spawn tmux windows,
 //! and open a root shell — the operations an in-container TUI can't do.
 
-use std::io::Write;
-
 use anyhow::{bail, Context, Result};
-use inquire::{Confirm, MultiSelect, Select, Text};
 use introdus_core::podman::{self, exec_interactive, podman};
 use introdus_core::{agents, session as session_names, tmux, Config};
 
 use crate::context::{env_path, LaunchContext};
+use crate::ui;
 use crate::util::{expand_tilde, shell_quote};
-
-/// Wait for the user before redrawing the menu.
-pub fn pause() {
-    print!("\n  (press Enter to continue) ");
-    let _ = std::io::stdout().flush();
-    let mut buf = String::new();
-    let _ = std::io::stdin().read_line(&mut buf);
-}
 
 // ---- read-only / runtime utilities -----------------------------------------
 
@@ -71,7 +61,7 @@ pub fn launch_agent(ctx: &LaunchContext) -> Result<()> {
     if installed.is_empty() {
         bail!("no agents configured to launch");
     }
-    let id = Select::new("Launch which agent?", installed).prompt()?;
+    let id = ui::select("Launch which agent?", installed)?;
     let run_cmd = if id == "claude" {
         "run-claude".to_owned()
     } else {
@@ -91,7 +81,7 @@ pub fn launch_agent(ctx: &LaunchContext) -> Result<()> {
 /// Append hostnames to `WHITELIST_HOSTS`, regenerate the allowlist file, and
 /// offer to restart the container to apply it.
 pub fn add_allowlist(ctx: &LaunchContext) -> Result<()> {
-    let raw = Text::new("Hostnames to allow (space/comma separated):").prompt()?;
+    let raw = ui::text("Hostnames to allow (space/comma separated):", None, false)?;
     let mut config = ctx.config.clone();
     let mut added = Vec::new();
     for host in raw
@@ -124,10 +114,10 @@ pub fn toggle_expose_webapp(ctx: &LaunchContext) -> Result<()> {
         println!("  webapp is already exposed (EXPOSE_WEBAPP=true).");
         return Ok(());
     }
-    if !Confirm::new("Expose the webapp to the internet via a Cloudflare tunnel?")
-        .with_default(false)
-        .prompt()?
-    {
+    if !ui::confirm(
+        "Expose the webapp to the internet via a Cloudflare tunnel?",
+        false,
+    )? {
         return Ok(());
     }
     let mut config = ctx.config.clone();
@@ -138,7 +128,7 @@ pub fn toggle_expose_webapp(ctx: &LaunchContext) -> Result<()> {
 
 /// Turn on ntfy.sh push (prompting for the topic) and offer to recreate.
 pub fn enable_ntfy(ctx: &LaunchContext) -> Result<()> {
-    let topic = Text::new("ntfy.sh topic (treat like a password):").prompt()?;
+    let topic = ui::text("ntfy.sh topic (treat like a password):", None, true)?;
     if topic.trim().is_empty() {
         bail!("a topic is required");
     }
@@ -161,7 +151,7 @@ pub fn install_agent(ctx: &LaunchContext) -> Result<()> {
         println!("  all supported agents are already selected.");
         return Ok(());
     }
-    let picked = MultiSelect::new("Install which agents?", candidates).prompt()?;
+    let picked = ui::multiselect("Install which agents?", candidates)?;
     if picked.is_empty() {
         return Ok(());
     }
@@ -200,7 +190,7 @@ pub fn install_agent(ctx: &LaunchContext) -> Result<()> {
 /// Copy a host file/folder into the container's `/home/dev/uploads`.
 pub fn copy_file(ctx: &LaunchContext) -> Result<()> {
     require_running(ctx)?;
-    let raw = Text::new("Host path to copy (file or folder):").prompt()?;
+    let raw = ui::text("Host path to copy (file or folder):", None, false)?;
     let src = expand_tilde(raw.trim());
     if !src.exists() {
         bail!("no such path: {}", src.display());
@@ -222,10 +212,10 @@ pub fn copy_file(ctx: &LaunchContext) -> Result<()> {
 /// Recreate the container (drop it, keep the volume) to apply frozen `.env`
 /// changes, respawning the dev-container window.
 pub fn recreate(ctx: &LaunchContext) -> Result<()> {
-    if !Confirm::new("Recreate the container now? (keeps your /home/dev volume)")
-        .with_default(true)
-        .prompt()?
-    {
+    if !ui::confirm(
+        "Recreate the container now? (keeps your /home/dev volume)",
+        true,
+    )? {
         return Ok(());
     }
     podman::remove_container(&ctx.container_name)?;
@@ -280,10 +270,10 @@ pub fn destroy(ctx: &LaunchContext) -> Result<()> {
         println!("  nothing to destroy — no container or volume for this project.");
         return Ok(());
     }
-    if !Confirm::new("Destroy this container and permanently delete its volume?")
-        .with_default(false)
-        .prompt()?
-    {
+    if !ui::confirm(
+        "Destroy this container and permanently delete its volume?",
+        false,
+    )? {
         println!("  aborted.");
         return Ok(());
     }
@@ -312,16 +302,13 @@ fn offer_remove_deploy_key(ctx: &LaunchContext) -> Result<()> {
     if !path.exists() {
         return Ok(());
     }
-    if !Confirm::new(&format!(
-        "Also delete the local deploy key at {}?",
-        path.display()
-    ))
-    .with_default(false)
-    .with_help_message(
-        "removes the private key + its .pub here; unregister it on the git host separately",
-    )
-    .prompt()?
-    {
+    println!(
+        "  note: removes the private key + its .pub here; unregister it on the git host separately."
+    );
+    if !ui::confirm(
+        &format!("Also delete the local deploy key at {}?", path.display()),
+        false,
+    )? {
         return Ok(());
     }
     std::fs::remove_file(&path).with_context(|| format!("removing {}", path.display()))?;
@@ -387,9 +374,7 @@ fn save_and_regen_allowlist(ctx: &LaunchContext, config: Config, summary: &str) 
     regen.write_allowlist()?;
     println!("  {summary}");
     if podman::container_running(&ctx.container_name)
-        && Confirm::new("Restart the container to apply the new allowlist?")
-            .with_default(false)
-            .prompt()?
+        && ui::confirm("Restart the container to apply the new allowlist?", false)?
     {
         podman().args(["restart", &ctx.container_name]).run()?;
     }
@@ -400,10 +385,7 @@ fn offer_recreate(ctx: &LaunchContext, changed: &str) -> Result<()> {
     println!(
         "  {changed} saved — it applies only after a container recreate (env is frozen at create)."
     );
-    if Confirm::new("Recreate the container now?")
-        .with_default(false)
-        .prompt()?
-    {
+    if ui::confirm("Recreate the container now?", false)? {
         podman::remove_container(&ctx.container_name)?;
         return respawn_dev_window(ctx);
     }

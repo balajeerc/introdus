@@ -33,13 +33,15 @@ mc_vis | grep -qF "Container lifecycle" || { echo "FATAL: grouped sections missi
 echo "    ✓ grouped menu rendered"
 
 echo "==> menu: Refresh status"
-# The refreshed status is printed on the NEXT loop iteration, i.e. after the
-# pause is stepped past — so assert it after mc_continue.
+# Status now lives in the full-screen menu's header panel (not scrollback), and
+# Refresh just redraws in place — there's no pause to step past. Assert against
+# the visible pane once the menu is back up.
 mc_select "Refresh"
-mc_continue
-mc_wait_scroll "running" "running status"
-mc_scroll | grep -qF "$cname" || { echo "FATAL: container name not on status line"; exit 1; }
-echo "    ✓ live status shows the container running"
+mc_ready
+mc_wait_prompt "running" "running status"
+mc_vis | grep -qF "$cname" \
+    || { echo "FATAL: container name not on the status panel"; mc_vis | sed 's/^/      /'; exit 1; }
+echo "    ✓ live status panel shows the container running"
 
 # ---- open a dev terminal (dispatch into the container as dev) --------------
 echo "==> menu: Open a dev terminal"
@@ -92,17 +94,16 @@ running() { podman container inspect -f '{{.State.Running}}' "$cname" 2>/dev/nul
 echo "==> menu: Stop the container"
 mc_select "Stop the container"
 harness_poll "container stopped" running false
-mc_continue
-mc_select "Refresh"
-mc_continue
-mc_wait_scroll "stopped" "stopped status"
-echo "    ✓ Stop worked; status shows stopped"
+mc_continue   # dismiss the pause; the menu redraws with a fresh status snapshot
+mc_wait_prompt "stopped" "stopped status"
+echo "    ✓ Stop worked; the status panel shows stopped"
 
 echo "==> menu: Restart the container"
 mc_select "Restart the container"
 harness_poll "container running again" running true
 mc_continue
-echo "    ✓ Restart worked; container running again"
+mc_wait_prompt "running" "running status"
+echo "    ✓ Restart worked; the status panel shows running again"
 
 echo
 echo "=== MILESTONE 3+ OK: full launch + a battery of live control-menu actions:"

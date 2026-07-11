@@ -1,7 +1,14 @@
 //! End-to-end pty test for the control menu (`introdus menu`). Runs against a
-//! project whose container was never created, which is the exact case that used
-//! to leak `Error: no such container` onto the screen — this is the regression
-//! guard for that fix, plus a check that the grouped menu renders and quits.
+//! project whose container was never created — the exact case that used to leak
+//! `Error: no such container` onto the screen. This is the regression guard for
+//! that fix plus a smoke test that the full-screen ratatui menu starts and quits
+//! cleanly.
+//!
+//! The menu is now a full-screen ratatui app, so its rendered content is a
+//! cursor-addressed frame we don't scrape byte-for-byte here (the tmux harness
+//! in `test-harness/driver-menu.sh` covers the on-screen layout). What we *can*
+//! assert from the raw pty stream is that no `podman inspect` error leaks as
+//! plain stderr, and that Esc quits the app with a clean EOF.
 
 mod common;
 
@@ -15,21 +22,17 @@ fn ta80_menu_reports_not_created_without_leaking_podman_error() {
 
     let mut p = spawn_command(fx.cmd("menu"), TIMEOUT_MS).unwrap();
 
-    // Everything printed before the inquire prompt is the status block.
-    let status = p.exp_string("control (ship-tbc)").unwrap();
-    assert!(
-        status.contains("not created"),
-        "absent container should read as 'not created':\n{status}"
-    );
-    assert!(
-        !status.contains("no such container"),
-        "podman inspect error leaked onto the menu:\n{status}"
-    );
+    // Give the alternate-screen app a moment to render, then quit with Esc.
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    p.send("\x1b").unwrap();
+    p.flush().unwrap();
 
-    // The grouped layout renders section headers, not just a flat list.
-    p.exp_string("Container lifecycle").unwrap();
-
-    // Type-to-filter down to Quit and select it; the menu exits cleanly.
-    p.send_line("Quit").unwrap();
-    p.exp_eof().unwrap();
+    // exp_eof returns everything still buffered. A leaked `podman inspect` on the
+    // absent container would surface here as a plain-text stderr line; the fix
+    // (gating on container_exists) means it must not.
+    let rest = p.exp_eof().unwrap();
+    assert!(
+        !rest.contains("no such container"),
+        "podman inspect error leaked from the menu:\n{rest}"
+    );
 }

@@ -13,6 +13,7 @@ mod notify;
 mod preflight;
 mod run;
 mod session;
+mod ui;
 mod util;
 mod wizard;
 

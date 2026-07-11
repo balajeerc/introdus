@@ -71,7 +71,7 @@ crates/
                           #      embedded assets, podman/tmux/git wrappers,
                           #      allowlist gen, notify protocol
   introdus-cli/           # bin `introdus`: clap CLI + orchestration + notify +
-                          #      the inquire-based wizard/control-menu TUI
+                          #      inquire launch wizard + a ratatui control menu
                           #      (folded in rather than a separate crate)
 container/                # UNCHANGED bash assets, embedded via include_str!
   egress/{firewall-entrypoint.sh,tinyproxy.conf}
@@ -181,14 +181,19 @@ introdus install            # put binary on PATH + set up services (was host_ins
       with no `.env` runs the wizard, then launches. 29 tests; lint --full
       green. (Chose `inquire` over a from-scratch ratatui form engine —
       robust, small, works in tmux/SSH. TUI deps swapped in Cargo.toml.)
-- [x] **M6 — TUI control panel + utilities.** `menu.rs` (inquire `Select`
-      loop + status header) dispatching to `menu_actions.rs`: show tunnel URL,
-      toggle expose-webapp, enable ntfy, copy a host file into the container,
-      install an agent (runtime + persist + whitelist), launch an agent in a
-      tmux window, list blocked egress, add allowlist hosts (+regen +restart),
-      open root/dev terminals (new tmux windows), test notification, recreate,
-      reset. Shared `util.rs` (tilde/shell-quote). Wired to `introdus menu`.
-      29 tests; lint --full green.
+- [x] **M6 — TUI control panel + utilities.** `menu.rs` (full-screen `ratatui`
+      chooser + live status panel, in `ui.rs`) dispatching to `menu_actions.rs`:
+      show tunnel URL, toggle expose-webapp, enable ntfy, copy a host file into
+      the container, install an agent (runtime + persist + whitelist), launch an
+      agent in a tmux window, list blocked egress, add allowlist hosts (+regen
+      +restart), open root/dev terminals (new tmux windows), test notification,
+      restart, stop, recreate, reset, destroy. Shared `util.rs`
+      (tilde/shell-quote). Wired to `introdus menu`. 29 tests; lint --full green.
+      (Migrated off the inquire `Select` loop to `ratatui`: the persistent
+      control plane is now a full-screen app with inline modal sub-prompts
+      [`ui::confirm`/`text`/`select`/`multiselect`]; `inquire` stays for the
+      one-shot launch wizard only. Both ride the crossterm backend and run at
+      disjoint times.)
 - [x] **M7 — Notifications folded in.** `notify.rs` (core): the trust boundary
       — event whitelist + label sanitization ported exactly, tested. `notify.rs`
       (cli): `notify-host` serves the FIFO (Linux) / socket path and renders
