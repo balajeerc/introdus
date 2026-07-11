@@ -2,13 +2,13 @@
 //! Walks the user through the required `.env` fields, the agent checklist, and
 //! deploy-key setup, then writes the project's `.env`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use inquire::{Confirm, CustomType, MultiSelect, Text};
 use introdus_core::agents::{self, Agent};
 use introdus_core::process::Cmd;
-use introdus_core::Config;
+use introdus_core::{names, Config};
 
 use crate::util::expand_tilde;
 
@@ -27,7 +27,7 @@ pub fn run(project_dir: &Path) -> Result<Config> {
         .unwrap_or_else(|| "my-project".to_owned());
     let project_name = ask_default("Project name", &default_name)?;
     let repo_url = ask_nonempty("Git repo URL (git@github.com:org/repo.git)")?;
-    let deploy_key_path = prompt_deploy_key(&repo_url)?;
+    let deploy_key_path = prompt_deploy_key(&project_name, &repo_url)?;
     let webapp_port = CustomType::<u16>::new("Webapp port (bound in the container):")
         .with_default(3000)
         .prompt()?;
@@ -123,24 +123,59 @@ fn prompt_ntfy() -> Result<(bool, Option<String>)> {
     Ok((true, Some(topic)))
 }
 
-/// Prompt for the deploy key path, offering to generate one if it's missing.
-fn prompt_deploy_key(repo_url: &str) -> Result<String> {
+/// Deploy-key setup: ask up-front whether to generate a fresh key or point at
+/// an existing one, then branch — matching the original wizard's intent-first
+/// flow so the path prompt is never ambiguous.
+fn prompt_deploy_key(project_name: &str, repo_url: &str) -> Result<String> {
+    let generate = Confirm::new("Generate a new per-project deploy key now?")
+        .with_default(true)
+        .with_help_message("No = point introdus at a deploy key you already have")
+        .prompt()?;
+    if generate {
+        generate_new_deploy_key(project_name, repo_url)
+    } else {
+        prompt_existing_deploy_key()
+    }
+}
+
+/// Create a fresh ed25519 key at a project-derived default location (which the
+/// user can override), refusing to overwrite an existing file.
+fn generate_new_deploy_key(project_name: &str, repo_url: &str) -> Result<String> {
+    let slug = names::image_slug(project_name);
+    let default = dirs::home_dir()
+        .map(|h| h.join(".ssh").join(format!("{slug}_deploy_key")))
+        .unwrap_or_else(|| PathBuf::from(format!("{slug}_deploy_key")));
     loop {
-        let raw = ask_nonempty("Path to the repo deploy key (private key)")?;
+        let raw = Text::new("Where should the new deploy key be created?")
+            .with_default(&default.to_string_lossy())
+            .with_help_message("A private key is written here and its .pub is printed to register")
+            .prompt()?;
+        let path = expand_tilde(raw.trim());
+        if path.exists() {
+            println!(
+                "  a file already exists at {} — pick another path to avoid overwriting it.",
+                path.display()
+            );
+            continue;
+        }
+        generate_deploy_key(&path, repo_url)?;
+        return Ok(path.to_string_lossy().into_owned());
+    }
+}
+
+/// Prompt for the path to an already-existing private deploy key, re-asking
+/// until it points at a real file.
+fn prompt_existing_deploy_key() -> Result<String> {
+    loop {
+        let raw = ask_nonempty("Path to your existing deploy key (the private key file)")?;
         let path = expand_tilde(&raw);
         if path.is_file() {
             return Ok(path.to_string_lossy().into_owned());
         }
-        let generate = Confirm::new(&format!(
-            "{} does not exist. Generate an ed25519 key there?",
+        println!(
+            "  no file at {} — enter the path to your existing private key.",
             path.display()
-        ))
-        .with_default(true)
-        .prompt()?;
-        if generate {
-            generate_deploy_key(&path, repo_url)?;
-            return Ok(path.to_string_lossy().into_owned());
-        }
+        );
     }
 }
 
