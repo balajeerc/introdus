@@ -72,3 +72,87 @@ harness_clean() {
 harness_container() {
     podman ps --format '{{.Names}}' | grep '^introdus-harness-' || true
 }
+
+# Run `introdus launch` (attach fails without a tty, but the detached session
+# persists), then wait for the session, the running container, and the clone.
+# Sets HARNESS_SESSION and HARNESS_CNAME. $1=session name, $2=project dir.
+harness_launch() {
+    HARNESS_SESSION="$1"
+    echo "==> introdus launch (builds the tmux session; attach fails without a tty)"
+    ( cd "$2" && introdus launch ) >"$HOME/launch.log" 2>&1 || true
+
+    local _
+    for _ in $(seq 1 30); do tmux has-session -t "$HARNESS_SESSION" 2>/dev/null && break; sleep 1; done
+    tmux has-session -t "$HARNESS_SESSION" 2>/dev/null \
+        || { echo "FATAL: session not created"; cat "$HOME/launch.log"; return 1; }
+
+    HARNESS_CNAME=""
+    for _ in $(seq 1 60); do HARNESS_CNAME="$(harness_container)"; [[ -n "$HARNESS_CNAME" ]] && break; sleep 1; done
+    [[ -n "$HARNESS_CNAME" ]] || { echo "FATAL: no container appeared"; return 1; }
+
+    echo "==> waiting for the container to come up + clone…"
+    for _ in $(seq 1 180); do
+        podman exec --user dev "$HARNESS_CNAME" test -d /home/dev/work/harness/.git 2>/dev/null && break
+        sleep 1
+    done
+    echo "    container: $HARNESS_CNAME"
+}
+
+# ---- helpers for driving the control menu (main-control window) -------------
+# Two captures: mc_vis is the VISIBLE pane (the whole menu list fits, used to
+# synchronize on menu state); mc_scroll includes scrollback (status block +
+# action logs scroll above the redrawn list).
+mc_pane() { echo "${HARNESS_SESSION}:main-control"; }
+mc_vis() { tmux capture-pane -t "$(mc_pane)" -p; }
+mc_scroll() { tmux capture-pane -t "$(mc_pane)" -p -S -; }
+mc_send() { tmux send-keys -t "$(mc_pane)" "$@"; }
+mc_reset() { tmux clear-history -t "$(mc_pane)" 2>/dev/null || true; }
+
+# The first menu row ("Terminals & agents") is visible ONLY when the menu is at
+# its top-level Select prompt (not during a sub-prompt or the action pause), so
+# it's a reliable "menu is ready for input" marker.
+mc_ready() {
+    local _
+    for _ in $(seq 1 80); do mc_vis | grep -qF "Terminals & agents" && return 0; sleep 0.5; done
+    echo "FATAL: menu never returned to the Select prompt:"; mc_vis | sed 's/^/      /'; return 1
+}
+
+# Wait for a substring in the VISIBLE pane — for sub-prompts (Text/Confirm).
+mc_wait_prompt() {
+    local pat="$1" lbl="${2:-$1}" _
+    for _ in $(seq 1 60); do mc_vis | grep -qF "$pat" && return 0; sleep 0.5; done
+    echo "FATAL: timed out waiting for prompt [$lbl]:"; mc_vis | sed 's/^/      /'; return 1
+}
+
+# Wait for a substring in the scrollback — for the status block / action logs.
+mc_wait_scroll() {
+    local pat="$1" lbl="${2:-$1}" _
+    for _ in $(seq 1 60); do mc_scroll | grep -qF "$pat" && return 0; sleep 0.5; done
+    echo "FATAL: timed out waiting for [$lbl]:"; mc_scroll | tail -40 | sed 's/^/      /'; return 1
+}
+
+# Select a menu item: wait until the menu is ready, clear scrollback so the
+# action's fresh output is isolated, then type the filter + Enter.
+mc_select() { mc_ready; mc_reset; mc_send "$1" Enter; }
+
+# Step past the "press Enter to continue" pause and wait until the menu is back
+# at the Select prompt (so the next action starts from a known state).
+mc_continue() { mc_send Enter; mc_ready; }
+
+# True if window $1 exists in the session (waits up to ~30s).
+harness_window_appears() {
+    local w="$1" _
+    for _ in $(seq 1 30); do
+        tmux list-windows -t "$HARNESS_SESSION" -F '#{window_name}' | grep -qx "$w" && return 0
+        sleep 1
+    done
+    return 1
+}
+
+# Poll a command until it succeeds (up to ~30s). $1=label, rest=command.
+harness_poll() {
+    local lbl="$1"; shift
+    local _
+    for _ in $(seq 1 60); do "$@" >/dev/null 2>&1 && return 0; sleep 0.5; done
+    echo "FATAL: condition never held: $lbl"; return 1
+}
