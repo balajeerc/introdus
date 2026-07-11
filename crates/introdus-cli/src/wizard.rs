@@ -378,7 +378,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn apply_agents_extends_whitelist() {
+    fn ta72_apply_agents_extends_whitelist() {
         let mut c = Config::new(
             "p".to_owned(),
             "git@github.com:o/r.git".to_owned(),
@@ -394,7 +394,7 @@ mod tests {
     }
 
     #[test]
-    fn key_match_tokens_splits_slug() {
+    fn ta74_key_match_tokens_splits_slug() {
         let tokens = key_match_tokens("Ship TBC");
         // "ship tbc" -> slug "ship-tbc": tokens "ship", "tbc", plus the slug.
         assert!(tokens.contains(&"ship".to_owned()));

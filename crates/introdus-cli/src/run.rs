@@ -331,7 +331,7 @@ mod tests {
     }
 
     #[test]
-    fn run_args_have_the_hardening_flags() {
+    fn ta42_run_args_have_the_hardening_flags() {
         let a = run_args(&ctx(), false).unwrap();
         assert!(a.contains(&"--cap-drop=ALL".to_owned()));
         assert!(a.contains(&"--cap-add=NET_ADMIN".to_owned()));
@@ -346,14 +346,14 @@ mod tests {
     }
 
     #[test]
-    fn disable_network_block_drops_net_admin() {
+    fn ta43_disable_network_block_drops_net_admin() {
         let a = run_args(&ctx(), true).unwrap();
         assert!(!a.contains(&"--cap-add=NET_ADMIN".to_owned()));
         assert!(a.iter().any(|s| s == "DISABLE_NETWORK_BLOCK=true"));
     }
 
     #[test]
-    fn publishes_webapp_and_extra_ports() {
+    fn ta44_publishes_webapp_and_extra_ports() {
         let a = run_args(&ctx(), false).unwrap();
         assert!(a.contains(&"127.0.0.1:3000:3000".to_owned()));
         assert!(a.contains(&"127.0.0.1:8123:8123".to_owned()));

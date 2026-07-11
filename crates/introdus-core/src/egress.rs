@@ -89,7 +89,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn git_host_forms() {
+    fn ta37_git_host_forms() {
         assert_eq!(git_host("git@github.com:org/repo.git"), "github.com");
         assert_eq!(
             git_host("ssh://git@gitlab.example.com:22/o/r.git"),
@@ -100,14 +100,14 @@ mod tests {
     }
 
     #[test]
-    fn pattern_matches_shell_escaping() {
+    fn ta38_pattern_matches_shell_escaping() {
         assert_eq!(allowlist_pattern("github.com"), "(^|\\.)github\\.com$");
         // '-' and ']' are not escaped; '.' is.
         assert_eq!(allowlist_pattern("a-b.co"), "(^|\\.)a-b\\.co$");
     }
 
     #[test]
-    fn container_whitelist_order_and_tunnel() {
+    fn ta39_container_whitelist_order_and_tunnel() {
         let wl = vec!["registry.npmjs.org".to_owned()];
         let hosts = container_whitelist("git@github.com:o/r.git", &wl, false);
         assert_eq!(hosts, vec!["github.com", "registry.npmjs.org"]);
@@ -117,7 +117,7 @@ mod tests {
     }
 
     #[test]
-    fn render_is_one_pattern_per_line() {
+    fn ta40_render_is_one_pattern_per_line() {
         let hosts = vec!["github.com".to_owned(), "pypi.org".to_owned()];
         assert_eq!(
             render_allowlist(&hosts),

@@ -56,13 +56,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn split_list_drops_blanks_and_newlines() {
+    fn ta09_split_list_drops_blanks_and_newlines() {
         assert_eq!(split_list("\n a \n b\nc \n"), vec!["a", "b", "c"]);
         assert_eq!(split_list(""), Vec::<String>::new());
     }
 
     #[test]
-    fn quote_scalar_bare_vs_quoted() {
+    fn ta10_quote_scalar_bare_vs_quoted() {
         assert_eq!(
             quote_scalar("git@github.com:o/r.git"),
             "git@github.com:o/r.git"

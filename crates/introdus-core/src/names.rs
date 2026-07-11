@@ -58,13 +58,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn slug_sanitizes() {
+    fn ta18_slug_sanitizes() {
         assert_eq!(image_slug("My Project!"), "my-project-");
         assert_eq!(image_slug("web.app_2"), "web.app_2");
     }
 
     #[test]
-    fn names_carry_suffix() {
+    fn ta17_names_carry_suffix() {
         assert_eq!(container_name("web", "ab12"), "introdus-web-ab12");
         assert_eq!(volume_name("web"), "introdus-vol-web");
         assert_eq!(
@@ -74,7 +74,7 @@ mod tests {
     }
 
     #[test]
-    fn fallback_suffix_is_deterministic_and_4_hex() {
+    fn ta19_fallback_suffix_is_deterministic_and_4_hex() {
         let a = fallback_suffix("web", "host1");
         let b = fallback_suffix("web", "host1");
         assert_eq!(a, b);

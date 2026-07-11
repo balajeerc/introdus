@@ -3,6 +3,7 @@
 # a sequence of control-menu actions against ONE running container with tmux
 # send-keys / capture-pane. Ordered non-destructive first; lifecycle teardown
 # (recreate/reset/destroy) lives in driver-lifecycle.sh.
+# Covers TEST_PLAN: TA48, TA67, TA85, TA89, TA90, TA91, TA94, TA109, TA111
 set -euo pipefail
 source /usr/local/bin/driver-common.sh
 

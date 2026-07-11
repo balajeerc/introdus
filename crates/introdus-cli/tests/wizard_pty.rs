@@ -23,7 +23,7 @@ fn finish_wizard(p: &mut PtySession) {
 }
 
 #[test]
-fn wizard_generates_a_new_key() {
+fn ta74_wizard_generates_a_new_key() {
     let fx = Fixture::new("ship-tbc");
     let mut p = spawn_command(fx.cmd("init"), TIMEOUT_MS).unwrap();
 
@@ -59,7 +59,7 @@ fn wizard_generates_a_new_key() {
 }
 
 #[test]
-fn wizard_reuses_a_matching_key_and_still_shows_registration() {
+fn ta75_wizard_reuses_a_matching_key_and_still_shows_registration() {
     let fx = Fixture::new("ship-tbc");
     // A pre-existing key whose name matches the project — the reuse flow should
     // find it and offer it via a plain yes/no.

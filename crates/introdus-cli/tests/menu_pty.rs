@@ -9,7 +9,7 @@ use common::{Fixture, TIMEOUT_MS};
 use rexpect::session::spawn_command;
 
 #[test]
-fn menu_reports_not_created_without_leaking_podman_error() {
+fn ta80_menu_reports_not_created_without_leaking_podman_error() {
     let fx = Fixture::new("ship-tbc");
     fx.write_env("ship-tbc");
 

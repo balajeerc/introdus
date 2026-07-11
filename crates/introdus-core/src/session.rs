@@ -48,7 +48,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn deterministic_and_shaped() {
+    fn ta70_deterministic_and_shaped() {
         assert_eq!(generate("web"), generate("web"));
         let name = generate("web");
         assert!(name.starts_with("introdus-"));
@@ -56,7 +56,7 @@ mod tests {
     }
 
     #[test]
-    fn adjectives_differ() {
+    fn ta71_adjectives_differ() {
         for p in ["web", "api", "worker", "site", "db", "x"] {
             let name = generate(p);
             let parts: Vec<&str> = name.split('-').collect();
@@ -68,7 +68,7 @@ mod tests {
     }
 
     #[test]
-    fn differs_between_projects() {
+    fn ta71_differs_between_projects() {
         assert_ne!(generate("web"), generate("api"));
     }
 }

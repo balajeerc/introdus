@@ -103,14 +103,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rejects_unknown_events() {
+    fn ta96_rejects_unknown_events() {
         assert!(Notification::parse("").is_none());
         assert!(Notification::parse("rm -rf /").is_none());
         assert!(Notification::parse("done\tweb").is_some());
     }
 
     #[test]
-    fn sanitizes_and_caps_label() {
+    fn ta97_sanitizes_and_caps_label() {
         assert_eq!(sanitize_label("we b;rm$"), "webrm");
         assert_eq!(sanitize_label(&"x".repeat(100)).len(), LABEL_MAX);
         // Control chars / brand-spoofing text are stripped.
@@ -118,7 +118,7 @@ mod tests {
     }
 
     #[test]
-    fn title_uses_label_when_present() {
+    fn ta98_title_uses_label_when_present() {
         let n = Notification::parse("done\tmyproj").unwrap();
         assert_eq!(n.event, Event::Done);
         assert_eq!(n.title(), "Claude Code — myproj");

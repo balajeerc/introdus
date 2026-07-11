@@ -101,13 +101,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn exec_builds_user_flag() {
+    fn ta26_exec_builds_user_flag() {
         assert_eq!(exec("cx", Some("dev")).label(), "podman exec --user dev cx");
         assert_eq!(exec("cx", None).label(), "podman exec cx");
     }
 
     #[test]
-    fn interactive_exec_is_it() {
+    fn ta26_interactive_exec_is_it() {
         assert_eq!(
             exec_interactive("cx", Some("dev")).arg("bash").label(),
             "podman exec -it --user dev cx bash"

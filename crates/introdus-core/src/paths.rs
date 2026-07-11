@@ -45,7 +45,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn allowlist_path_is_under_state_dir() {
+    fn ta20_allowlist_path_is_under_state_dir() {
         // Uses the real state dir; just assert the shape, not that it's writable
         // in every CI sandbox.
         let p = allowlist_file("introdus-demo-ab12").unwrap();

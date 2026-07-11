@@ -7,6 +7,7 @@
 # with VERIFY_ONLY: it installs the nft default-deny filter, starts the
 # hostname-allowlist proxy, confirms the proxy reaches an allowlisted host AND
 # that a direct-IP dial is dropped, then exits without the workload.
+# Covers TEST_PLAN: TA23, TA33, TA49, TA110
 set -euo pipefail
 source /usr/local/bin/driver-common.sh
 

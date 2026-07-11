@@ -131,7 +131,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stale_tag_matching() {
+    fn ta32_stale_tag_matching() {
         let prefix = "introdus-web-";
         assert!(is_stale_project_tag("introdus-web-ab12:latest", prefix));
         assert!(!is_stale_project_tag(

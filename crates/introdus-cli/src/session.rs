@@ -110,7 +110,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn window_cmd_execs_binary() {
+    fn ta65_window_cmd_execs_binary() {
         let cmd = window_cmd(Path::new("/opt/introdus"), "up");
         assert_eq!(cmd, "exec '/opt/introdus' up");
     }

@@ -121,26 +121,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn label_accumulates_args() {
+    fn ta25_label_accumulates_args() {
         let c = Cmd::new("podman").arg("run").args(["--rm", "img"]);
         assert_eq!(c.label(), "podman run --rm img");
     }
 
     #[test]
-    fn run_ok_and_failure() {
+    fn ta25_run_ok_and_failure() {
         Cmd::new("true").run().unwrap();
         let err = Cmd::new("false").run().unwrap_err();
         assert!(err.to_string().contains("`false` exited"));
     }
 
     #[test]
-    fn stdout_is_captured_and_trimmed() {
+    fn ta25_stdout_is_captured_and_trimmed() {
         let out = Cmd::new("printf").arg("  hi  ").stdout().unwrap();
         assert_eq!(out, "hi");
     }
 
     #[test]
-    fn ok_probe() {
+    fn ta25_ok_probe() {
         assert!(Cmd::new("true").ok());
         assert!(!Cmd::new("false").ok());
         assert!(!Cmd::new("introdus-no-such-binary-xyz").ok());

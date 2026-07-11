@@ -1,8 +1,8 @@
 # introdus — Test Plan
 
 A feature-by-feature test catalogue for the `introdus` Rust control plane.
-Consult it when validating a feature. Each case notes whether an **automated
-test** covers it and a **manual-reliance rating (0–5)**.
+Consult it when validating a feature. Each case has a **stable ID** (`TAnn`), an
+**Automated** marker, and a **manual-reliance rating (0–5)**.
 
 ## Manual-reliance rating (0–5)
 
@@ -18,8 +18,18 @@ inverse of how much automation can prove it.
 | **4** | Largely manual — automation only touches helpers; real behaviour must be observed. |
 | **5** | Entirely manual — needs a live environment (podman / tmux / desktop / phone / network) and human eyes; no meaningful automation possible. |
 
-**Automated** column legend: ✅ = unit test named; ⚠️ = partial (helper logic
-only); ❌ = none.
+## Test IDs and the Automated column
+
+Every row has a stable `TAnn` ID (never renumbered — new cases get the next free
+number). The automated test backing a row is **named with that ID in the code**,
+so the ID is the link between plan and code:
+
+- Find / run it: `rg ta06` or `cargo test ta06` (a row backed by several test
+  functions shares the ID prefix, e.g. `ta25_*`).
+- **Automated** column: `✅` = a `taNN_…` test covers it · `⚠️` = only helper
+  logic is tested · `❌` = none · `→TAxx` = covered by the test owned by row
+  `TAxx` · **harness `<target>`** = asserted by `test-harness/harness.sh
+  <target>` (the `driver-*.sh` scripts), not `cargo test`.
 
 Run the fast suite with `cargo test --workspace` and the quality gates with
 `scripts/lint.sh --full` (or `--security`, which also runs semgrep). The
@@ -28,245 +38,243 @@ then the lint suite — on every commit.
 
 The interactive `inquire` TUI is covered by **pty integration tests** under
 `crates/introdus-cli/tests/` (`wizard_pty.rs`, `menu_pty.rs`), which spawn the
-real binary through a pseudo-terminal via `rexpect` and drive the prompts as a
-user would. They need no podman/tmux (the wizard is reached through the
-standalone `introdus init`), so they run anywhere `cargo test` does.
+real binary through a pseudo-terminal via `rexpect`. They need no podman/tmux
+(the wizard is reached through the standalone `introdus init`), so they run
+anywhere `cargo test` does.
 
 The **full experience** — real `introdus launch` → tmux session → nested rootless
 podman dev container → egress firewall → public-repo clone → live control TUI —
 is driven and asserted by the **rootless podman-in-podman harness**
 (`test-harness/harness.sh`, targets `verify` / `menu` / `egress` / `lifecycle` /
 `all`). It's heavy + opt-in (needs a rootless-podman host with `/dev/fuse` +
-`/dev/net/tun`), so NOT part of `cargo test`. Rows marked "harness `<target>`"
-are automated there. See `test-harness/README.md`.
+`/dev/net/tun`), so NOT part of `cargo test`. See `test-harness/README.md`.
 
 ---
 
 ## 1. Build & quality gates (M0)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 1.1 | Workspace compiles (debug + release) | ⚠️ CI-of-sorts via `cargo test` | 1 | `cargo build --workspace && cargo build --release` |
-| 1.2 | `scripts/lint.sh --full` passes (fmt, clippy, deny, audit, machete, tokei, jscpd) | ✅ the gate itself | 0 | `./scripts/lint.sh --full` |
-| 1.3 | `scripts/lint.sh --security` passes (adds semgrep) | ✅ the gate | 1 | needs a working `semgrep` (`pipx reinstall semgrep` if broken) |
-| 1.4 | Pre-commit hook installs; runs `cargo test` + lint; blocks a failing commit | ❌ | 2 | `./scripts/install-pre-commit.sh`; try committing a fmt violation or a failing test |
-| 1.5 | Release binary is a single self-contained artifact | ❌ | 1 | `ldd target/release/introdus`; run it on a clean box |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA01 | Workspace compiles (debug + release) | ⚠️ | 1 | `cargo build --workspace && cargo build --release` |
+| TA02 | `scripts/lint.sh --full` passes (fmt, clippy, deny, audit, machete, tokei, jscpd) | ✅ | 0 | `./scripts/lint.sh --full` (the gate itself) |
+| TA03 | `scripts/lint.sh --security` passes (adds semgrep) | ✅ | 1 | needs a working `semgrep` (`pipx reinstall semgrep` if broken) |
+| TA04 | Pre-commit hook installs; runs `cargo test` + lint; blocks a failing commit | ❌ | 2 | `./scripts/install-pre-commit.sh`; try committing a fmt violation or a failing test |
+| TA05 | Release binary is a single self-contained artifact | ❌ | 1 | `ldd target/release/introdus`; run it on a clean box |
 
 ## 2. Config & `.env` round-trip (M1 — `config.rs`, `env_file.rs`)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 2.1 | `render` → `load` is lossless for a fully-populated config | ✅ `round_trip_preserves_config` | 0 | — |
-| 2.2 | Defaults applied for a minimal `.env` (agents, whitelist, mem, pids, timeout, canary) | ✅ `defaults_applied_for_minimal_env` | 0 | — |
-| 2.3 | Missing required field errors (`REPO_URL`, etc.) | ✅ `missing_required_field_errors` | 0 | — |
-| 2.4 | Multi-line `WHITELIST_HOSTS` / `ON_LAUNCH_SCRIPT` parse (bash-quoted) | ✅ via 2.1 + `split_list…` | 1 | hand-write a multi-line `.env`, `introdus verify` reads it |
-| 2.5 | Value quoting escapes `"`, `\`, `$`, backtick correctly | ✅ `quote_scalar_bare_vs_quoted` | 0 | — |
-| 2.6 | An existing hand-written `.env` (from the bash flow) loads unchanged in meaning | ⚠️ | 2 | load a real project `.env`, diff `render` output for surprises |
-| 2.7 | Saving normalizes/rewrites the file (comments regenerated) | ⚠️ | 2 | run a menu action that saves; inspect the `.env` |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA06 | `render` → `load` is lossless for a fully-populated config | ✅ | 0 | — |
+| TA07 | Defaults applied for a minimal `.env` (agents, whitelist, mem, pids, timeout, canary) | ✅ | 0 | — |
+| TA08 | Missing required field errors (`REPO_URL`, etc.) | ✅ | 0 | — |
+| TA09 | Multi-line `WHITELIST_HOSTS` / `ON_LAUNCH_SCRIPT` parse (bash-quoted) | ✅ (→TA06 + `ta09_*`) | 1 | hand-write a multi-line `.env`, `introdus verify` reads it |
+| TA10 | Value quoting escapes `"`, `\`, `$`, backtick correctly | ✅ | 0 | — |
+| TA11 | An existing hand-written `.env` (from the bash flow) loads unchanged in meaning | ⚠️ | 2 | load a real project `.env`, diff `render` output for surprises |
+| TA12 | Saving normalizes/rewrites the file (comments regenerated) | ⚠️ | 2 | run a menu action that saves; inspect the `.env` |
 
 ## 3. Agent registry (M1 — `agents.rs`)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 3.1 | Ids unique; claude prebaked; codex not | ✅ `ids_are_unique_and_claude_is_prebaked` | 0 | — |
-| 3.2 | Script-method agents use URL specs | ✅ `script_agents_use_url_specs` | 0 | — |
-| 3.3 | Registry stays in sync with `container/agents.sh` | ❌ (hand-kept) | 3 | diff the two by eye when either changes |
-| 3.4 | Each agent's egress hosts are actually sufficient to auth | ❌ | 5 | install the agent, sign in, watch `egress-log` for blocks |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA13 | Ids unique; claude prebaked; codex not | ✅ | 0 | — |
+| TA14 | Script-method agents use URL specs | ✅ | 0 | — |
+| TA15 | Registry stays in sync with `container/agents.sh` | ❌ (hand-kept) | 3 | diff the two by eye when either changes |
+| TA16 | Each agent's egress hosts are actually sufficient to auth | ❌ | 5 | install the agent, sign in, watch `egress-log` for blocks |
 
 ## 4. Naming & paths (M1 — `names.rs`, `paths.rs`)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 4.1 | Container/volume/image names carry the suffix | ✅ `names_carry_suffix` | 0 | — |
-| 4.2 | Image slug sanitizes uppercase/space/punctuation | ✅ `slug_sanitizes` | 0 | — |
-| 4.3 | Fallback suffix deterministic, 4 hex, differs per host | ✅ `fallback_suffix_is_deterministic_and_4_hex` | 0 | — |
-| 4.4 | State/allowlist path under `$XDG_STATE_HOME/introdus` | ✅ `allowlist_path_is_under_state_dir` | 0 | — |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA17 | Container/volume/image names carry the suffix | ✅ | 0 | — |
+| TA18 | Image slug sanitizes uppercase/space/punctuation | ✅ | 0 | — |
+| TA19 | Fallback suffix deterministic, 4 hex, differs per host | ✅ | 0 | — |
+| TA20 | State/allowlist path under `$XDG_STATE_HOME/introdus` | ✅ | 0 | — |
 
 ## 5. Embedded assets (M2 — `assets.rs`)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 5.1 | All 11 assets embedded, non-empty; entrypoint contains `nft` | ✅ `assets_embed_nonempty` | 0 | — |
-| 5.2 | Materialize writes the tree with correct exec/non-exec modes | ✅ `materialize_writes_tree_with_modes` | 0 | — |
-| 5.3 | Materialized build context actually `podman build`s | ✅ harness `verify` | 1 | the harness builds the base image nested from materialized assets |
-| 5.4 | Embedded bash byte-identical to `container/` sources | ⚠️ (include_str! guarantees) | 1 | `git diff` shows no drift; rebuild after edits |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA21 | All 11 assets embedded, non-empty; entrypoint contains `nft` | ✅ | 0 | — |
+| TA22 | Materialize writes the tree with correct exec/non-exec modes | ✅ | 0 | — |
+| TA23 | Materialized build context actually `podman build`s | ✅ harness `verify` | 1 | the harness builds the base image nested from materialized assets |
+| TA24 | Embedded bash byte-identical to `container/` sources | ⚠️ (include_str! guarantees) | 1 | `git diff` shows no drift; rebuild after edits |
 
 ## 6. Process / podman / tmux wrappers (M2)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 6.1 | `Cmd` arg/label building, exit-code mapping, stdout capture, ok-probe | ✅ `process::tests::*` | 0 | — |
-| 6.2 | `podman exec` / `exec -it` flag building (`--user`) | ✅ `exec_builds_user_flag`, `interactive_exec_is_it` | 0 | — |
-| 6.3 | `tmux attach` label | ✅ `attach_label` | 0 | — |
-| 6.4 | The wrappers drive real podman/tmux correctly | ⚠️ harness (exercised throughout) | 2 | every harness launch/menu/exec action drives them for real |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA25 | `Cmd` arg/label building, exit-code mapping, stdout capture, ok-probe | ✅ (`ta25_*`) | 0 | — |
+| TA26 | `podman exec` / `exec -it` flag building (`--user`) | ✅ (`ta26_*`) | 0 | — |
+| TA27 | `tmux attach` label | ✅ | 0 | — |
+| TA28 | The wrappers drive real podman/tmux correctly | ⚠️ harness (exercised throughout) | 2 | every harness launch/menu/exec action drives them for real |
 
 ## 7. Preflight checks (M3 — `preflight.rs`)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 7.1 | Errors on non-Linux / root / missing podman / missing pasta / non-rootless | ❌ | 3 | temporarily rename `pasta`; run `introdus up`; expect a clear error |
-| 7.2 | `check_session` additionally requires tmux | ❌ | 3 | rename `tmux`; run `introdus`; expect the tmux hint |
-| 7.3 | Passes cleanly on a correct host | ⚠️ | 2 | `introdus up` gets past preflight into `.env`/wizard logic |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA29 | Errors on non-Linux / root / missing podman / missing pasta / non-rootless | ❌ | 3 | temporarily rename `pasta`; run `introdus up`; expect a clear error |
+| TA30 | `check_session` additionally requires tmux | ❌ | 3 | rename `tmux`; run `introdus`; expect the tmux hint |
+| TA31 | Passes cleanly on a correct host | ⚠️ | 2 | `introdus up` gets past preflight into `.env`/wizard logic |
 
 ## 8. Base image build / tag / prune (M3 — `image.rs`)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 8.1 | Stale project-tag matcher (`introdus-<slug>-XXXX:latest`) | ✅ `stale_tag_matching` | 0 | — |
-| 8.2 | Builds the base image when missing | ✅ harness `verify` | 2 | the harness builds it nested on a clean volume; manual for cache nuances |
-| 8.3 | Cached rebuild when the binary is newer than the image | ❌ | 4 | rebuild introdus, relaunch, watch for the "cached rebuild" line |
-| 8.4 | `rebuild-base` forces `--no-cache` | ❌ | 4 | `introdus rebuild-base`; confirm layers rebuild |
-| 8.5 | Per-project tag applied; stale suffixed tags pruned | ❌ | 3 | change `IMAGE_SUFFIX`, relaunch, `podman image ls` |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA32 | Stale project-tag matcher (`introdus-<slug>-XXXX:latest`) | ✅ | 0 | — |
+| TA33 | Builds the base image when missing | ✅ harness `verify` | 2 | the harness builds it nested on a clean volume; manual for cache nuances |
+| TA34 | Cached rebuild when the binary is newer than the image | ❌ | 4 | rebuild introdus, relaunch, watch for the "cached rebuild" line |
+| TA35 | `rebuild-base` forces `--no-cache` | ❌ | 4 | `introdus rebuild-base`; confirm layers rebuild |
+| TA36 | Per-project tag applied; stale suffixed tags pruned | ❌ | 3 | change `IMAGE_SUFFIX`, relaunch, `podman image ls` |
 
 ## 9. Egress allowlist generation (M3 — `egress.rs`)  ← security-critical
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 9.1 | Git-host extraction across `git@`/`ssh://`/`https://`/bare forms | ✅ `git_host_forms` | 0 | — |
-| 9.2 | Allowlist regex escaping matches the shell's `sed` | ✅ `pattern_matches_shell_escaping` | 0 | — |
-| 9.3 | Ordered whitelist = git host + WHITELIST + tunnel host | ✅ `container_whitelist_order_and_tunnel` | 1 | diff generated allowlist file vs a `./launch.sh` run |
-| 9.4 | Rendered allowlist file = one pattern per line | ✅ `render_is_one_pattern_per_line` | 0 | — |
-| 9.5 | **Proxy actually enforces the allowlist in the container** | ✅ harness `egress` | 1 | driver-egress.sh: allowed via proxy ✓, non-allowlisted ✗, direct dial dropped, `egress-log` shows it |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA37 | Git-host extraction across `git@`/`ssh://`/`https://`/bare forms | ✅ | 0 | — |
+| TA38 | Allowlist regex escaping matches the shell's `sed` | ✅ | 0 | — |
+| TA39 | Ordered whitelist = git host + WHITELIST + tunnel host | ✅ | 1 | diff generated allowlist file vs a `./launch.sh` run |
+| TA40 | Rendered allowlist file = one pattern per line | ✅ | 0 | — |
+| TA41 | **Proxy actually enforces the allowlist in the container** | ✅ harness `egress` | 1 | driver-egress.sh: allowed via proxy ✓, non-allowlisted ✗, direct dial dropped, `egress-log` shows it |
 
 ## 10. Container create — `podman run` flag set (M3 — `run.rs`)  ← security-critical
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 10.1 | Hardening flags present (`--cap-drop=ALL`, `no-new-privileges`, `pasta`, image→entrypoint) | ✅ `run_args_have_the_hardening_flags` | 1 | `podman inspect` the running container |
-| 10.2 | `--disable-network-block` drops `NET_ADMIN` and sets the env | ✅ `disable_network_block_drops_net_admin` | 2 | launch with the flag; confirm unfiltered egress |
-| 10.3 | Webapp + extra ports published to 127.0.0.1 | ✅ `publishes_webapp_and_extra_ports` | 1 | `podman port`, hit the port from host |
-| 10.4 | Extra-port parse/validate (bad, out-of-range, collision) | ✅ `ports::tests::*` | 0 | — |
-| 10.5 | All five bind-mounts + `/run/notify` + shared-data present | ⚠️ (built in 10.1) | 2 | `podman inspect` mounts on a live container |
-| 10.6 | Deploy-key / shared-data existence validation | ⚠️ `validate_inputs` (no test) | 2 | point `.env` at a missing key; expect a clear error |
-| 10.7 | Container actually boots, entrypoint drops to `dev` | ✅ harness `menu` | 1 | driver-menu.sh: dev terminal shows uid=1000(dev); egress self-check passes |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA42 | Hardening flags present (`--cap-drop=ALL`, `no-new-privileges`, `pasta`, image→entrypoint) | ✅ | 1 | `podman inspect` the running container |
+| TA43 | `--disable-network-block` drops `NET_ADMIN` and sets the env | ✅ | 2 | launch with the flag; confirm unfiltered egress |
+| TA44 | Webapp + extra ports published to 127.0.0.1 | ✅ | 1 | `podman port`, hit the port from host |
+| TA45 | Extra-port parse/validate (bad, out-of-range, collision) | ✅ (`ta45_*`) | 0 | — |
+| TA46 | All five bind-mounts + `/run/notify` + shared-data present | ⚠️ (built in TA42) | 2 | `podman inspect` mounts on a live container |
+| TA47 | Deploy-key / shared-data existence validation | ⚠️ (`validate_inputs`, no test) | 2 | point `.env` at a missing key; expect a clear error |
+| TA48 | Container actually boots, entrypoint drops to `dev` | ✅ harness `menu` | 1 | driver-menu.sh: dev terminal shows uid=1000(dev); egress self-check passes |
 
 ## 11. Egress self-check — `introdus verify` (M3)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 11.1 | Canary blocked, proxy reaches allowlisted host, direct-IP blocked | ✅ harness `verify` | 1 | `test-harness/harness.sh verify` → "verify passed" nested |
-| 11.2 | Verify aborts the launch on any failure | ❌ | 4 | remove the git host from WHITELIST; expect failure |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA49 | Canary blocked, proxy reaches allowlisted host, direct-IP blocked | ✅ harness `verify` | 1 | `test-harness/harness.sh verify` → "verify passed" nested |
+| TA50 | Verify aborts the launch on any failure | ❌ | 4 | remove the git host from WHITELIST; expect failure |
 
 ## 12. In-container update — `introdus update` (M3)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 12.1 | Errors if the container isn't running | ⚠️ | 2 | run against a stopped container |
-| 12.2 | apt/mise/claude/agents/lazyvim refresh runs through the proxy | ❌ | 5 | `introdus update`; watch it complete without egress blocks |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA51 | Errors if the container isn't running | ⚠️ | 2 | run against a stopped container |
+| TA52 | apt/mise/claude/agents/lazyvim refresh runs through the proxy | ❌ | 5 | `introdus update`; watch it complete without egress blocks |
 
 ## 13. Lifecycle — recreate / reset / pull (M3, M6 — `lifecycle.rs`)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 13.1 | Legacy pre-suffix container removed | ❌ | 3 | create a legacy-named container; relaunch |
-| 13.2 | Recreate drops container, keeps volume | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh: marker survives recreate |
-| 13.3 | Reset/destroy wipes the volume | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh: destroy removes the volume |
-| 13.4 | Reset scan detects **unstaged working-tree changes** | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh plants a modified tracked file; scan reports "working tree" |
-| 13.5 | Reset scan detects **staged-but-uncommitted changes** | ❌ | 4 | `git add` a change; reset; scan lists it (`git status --porcelain` shows both) |
-| 13.6 | Reset scan detects **untracked files** | ✅ harness `lifecycle` (via "working tree") | 2 | driver-lifecycle.sh plants an untracked file; `??` appears under working tree |
-| 13.7 | Reset scan detects **unpushed commits** (not on any remote) | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh commits locally; scan reports "unpushed commits: N" |
-| 13.8 | Reset scan detects **stashes** | ❌ | 4 | `git stash`; reset; scan lists the stash |
-| 13.9 | Scan walks **every repo** under `/home/dev/work` (multi-repo) | ❌ | 4 | dirty two repos; reset; both appear in the report |
-| 13.10 | Typed `yes` confirmation required (destroy/reset) | ⚠️ harness `lifecycle` (typed `yes` exercised) | 3 | harness sends the typed `yes`; manual for the "clean volume still demands yes" + non-`yes`-aborts branch |
-| 13.11 | Scan is read-only and non-fatal (best-effort; failure never blocks the confirm) | ✅ harness `lifecycle` | 2 | driver-lifecycle.sh: scan runs on a `:ro` mount and the flow reaches the `yes` prompt |
-| 13.12 | `--pull` sentinel triggers a ff-only pull on next start | ❌ | 4 | `introdus up --pull`; confirm the repo fast-forwards |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA53 | Legacy pre-suffix container removed | ❌ | 3 | create a legacy-named container; relaunch |
+| TA54 | Recreate drops container, keeps volume | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh: marker survives recreate |
+| TA55 | Reset/destroy wipes the volume | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh: destroy removes the volume |
+| TA56 | Reset scan detects **unstaged working-tree changes** | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh plants a modified tracked file; scan reports "working tree" |
+| TA57 | Reset scan detects **staged-but-uncommitted changes** | ❌ | 4 | `git add` a change; reset; scan lists it (`git status --porcelain` shows both) |
+| TA58 | Reset scan detects **untracked files** | ✅ harness `lifecycle` (via "working tree") | 2 | driver-lifecycle.sh plants an untracked file; `??` appears under working tree |
+| TA59 | Reset scan detects **unpushed commits** (not on any remote) | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh commits locally; scan reports "unpushed commits: N" |
+| TA60 | Reset scan detects **stashes** | ❌ | 4 | `git stash`; reset; scan lists the stash |
+| TA61 | Scan walks **every repo** under `/home/dev/work` (multi-repo) | ❌ | 4 | dirty two repos; reset; both appear in the report |
+| TA62 | Typed `yes` confirmation required (destroy/reset) | ⚠️ harness `lifecycle` (typed `yes` exercised) | 3 | harness sends the typed `yes`; manual for the "clean volume still demands yes" + non-`yes`-aborts branch |
+| TA63 | Scan is read-only and non-fatal (best-effort; failure never blocks the confirm) | ✅ harness `lifecycle` | 2 | driver-lifecycle.sh: scan runs on a `:ro` mount and the flow reaches the `yes` prompt |
+| TA64 | `--pull` sentinel triggers a ff-only pull on next start | ❌ | 4 | `introdus up --pull`; confirm the repo fast-forwards |
 
 ## 14. tmux session model — `introdus launch` (M4 — `session.rs`)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 14.1 | `window_cmd` builds `exec '<bin>' <sub>` | ✅ `window_cmd_execs_binary` | 0 | — |
-| 14.2 | Session name minted + persisted to `.env` on first launch | ⚠️ (generator tested) | 3 | first `introdus`; grep `SESSION_NAME` in `.env` |
-| 14.3 | Session created with main-control + notify + dev-container windows | ✅ harness `menu` | 1 | driver-menu.sh asserts all three windows exist |
-| 14.4 | Re-launch re-attaches instead of spawning a duplicate | ❌ | 3 | run `introdus` twice |
-| 14.5 | Wizard runs when `.env` is absent, then launches | ❌ | 4 | `introdus` in an empty dir |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA65 | `window_cmd` builds `exec '<bin>' <sub>` | ✅ | 0 | — |
+| TA66 | Session name minted + persisted to `.env` on first launch | ⚠️ (generator tested, →TA70) | 3 | first `introdus`; grep `SESSION_NAME` in `.env` |
+| TA67 | Session created with main-control + notify + dev-container windows | ✅ harness `menu` | 1 | driver-menu.sh asserts all three windows exist |
+| TA68 | Re-launch re-attaches instead of spawning a duplicate | ❌ | 3 | run `introdus` twice |
+| TA69 | Wizard runs when `.env` is absent, then launches | ❌ | 4 | `introdus` in an empty dir |
 
 ## 15. Session naming (M4 — `session.rs` core)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 15.1 | Deterministic per project, `introdus-adj-adj-noun` shape | ✅ `deterministic_and_shaped` | 0 | — |
-| 15.2 | Two adjectives differ; distinct across projects | ✅ `adjectives_differ`, `differs_between_projects` | 0 | — |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA70 | Deterministic per project, `introdus-adj-adj-noun` shape | ✅ | 0 | — |
+| TA71 | Two adjectives differ; distinct across projects | ✅ (`ta71_*`) | 0 | — |
 
 ## 16. Setup wizard (M5 — `wizard.rs`)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 16.1 | Selected agents' egress hosts appended to whitelist | ✅ `apply_agents_extends_whitelist` | 0 | — |
-| 16.2 | Prompts: name/repo/port/agents/tunnel/ntfy flow end-to-end | ✅ `wizard_pty::*` (pty-driven via `introdus init`) | 1 | `cargo test --test wizard_pty`; or walk it live |
-| 16.3a | Deploy key — "generate new?" asked first; **yes** → prompts *where to create* (default `~/.ssh/introdus-deploy-keys/<slug>-deploy-key`, dir chmod 700), writes the keypair, prints the `.pub`, refuses to overwrite an existing file | ✅ `wizard_generates_a_new_key` (+ tilde/slug units) | 2 | pty test covers the happy path; manual for chmod 700 + overwrite-refusal |
-| 16.3b | Deploy key — **no** → offers a project-matching key to reuse (yes/no; picker when several), else prompts for an existing path; registration step shown either way | ✅ `wizard_reuses_a_matching_key_and_still_shows_registration` | 2 | pty test covers reuse; manual for the bad-path re-ask |
-| 16.4 | Wizard writes a valid, loadable `.env` | ✅ `wizard_pty::*` assert `.env` contents (+ round-trip unit) | 1 | pty tests read back the written `.env` |
-| 16.5 | Cancel (Esc/Ctrl-C) aborts cleanly | ❌ | 3 | Esc mid-wizard |
-| 16.6 | `introdus init` runs the wizard standalone (no podman); confirms before overwriting an existing `.env` | ✅ (pty tests invoke `init`) | 2 | `cargo test --test wizard_pty`; manual for the overwrite confirm |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA72 | Selected agents' egress hosts appended to whitelist | ✅ | 0 | — |
+| TA73 | Prompts: name/repo/port/agents/tunnel/ntfy flow end-to-end | ✅ (→TA74, →TA75) | 1 | `cargo test --test wizard_pty`; or walk it live |
+| TA74 | Deploy key — "generate new?" asked first; **yes** → prompts *where to create* (default `~/.ssh/introdus-deploy-keys/<slug>-deploy-key`, dir chmod 700), writes the keypair, prints the `.pub`, refuses to overwrite | ✅ (`ta74_*`) | 2 | pty test covers the happy path; manual for chmod 700 + overwrite-refusal |
+| TA75 | Deploy key — **no** → offers a project-matching key to reuse (yes/no; picker when several), else prompts for an existing path; registration shown either way | ✅ | 2 | pty test covers reuse; manual for the bad-path re-ask |
+| TA76 | Wizard writes a valid, loadable `.env` | ✅ (→TA74, →TA75; + round-trip TA06) | 1 | pty tests read back the written `.env` |
+| TA77 | Cancel (Esc/Ctrl-C) aborts cleanly | ❌ | 3 | Esc mid-wizard |
+| TA78 | `introdus init` runs the wizard standalone (no podman); confirms before overwriting an existing `.env` | ✅ (→TA74, →TA75 invoke `init`) | 2 | `cargo test --test wizard_pty`; manual for the overwrite confirm |
 
 ## 17. Control TUI + utilities (M6 — `menu.rs`, `menu_actions.rs`)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 17.1 | Menu loop renders status header, dispatches, survives action errors | ⚠️ `menu_pty` (renders, groups, filters, quits) | 3 | `cargo test --test menu_pty`; live for dispatch/error paths |
-| 17.1a | Absent container reads as "not created" — no leaked `Error: no such container` | ✅ `menu_reports_not_created_without_leaking_podman_error` | 0 | pty regression test |
-| 17.1b | Grouped sections render (inert headers) and the whole menu shows at once | ✅ (asserted in `menu_pty`) | 1 | pty test asserts a section header; eyeball the full layout |
-| 17.2 | Show tunnel URL | ❌ | 5 | with `EXPOSE_WEBAPP`, menu → tunnel URL prints the trycloudflare URL |
-| 17.3 | Toggle expose-webapp (persist + offer recreate) | ❌ | 4 | toggle; grep `.env`; recreate; confirm tunnel starts |
-| 17.4 | Enable ntfy (topic prompt + persist) | ❌ | 4 | enable; grep `.env`; recreate; check phone |
-| 17.5 | Copy a host file/folder into the container | ✅ harness `menu` | 1 | driver-menu.sh asserts the file in /home/dev/uploads |
-| 17.6 | Install an agent at runtime (persist + whitelist + run install-agents) | ❌ | 5 | install codex; confirm `.env`, whitelist, and the binary in-container |
-| 17.7 | Launch an agent in a tmux window (claude via run-claude, remote control on) | ❌ | 5 | launch; new `agent-*` window; pair from phone |
-| 17.8 | List blocked egress URLs | ✅ harness `egress` | 1 | driver-egress.sh triggers a block, menu lists it |
-| 17.9 | Add allowlist hosts (persist + regen file + offer restart) | ✅ harness `menu` (persist + offer) | 2 | driver-menu.sh asserts .env; manual for post-restart reachability |
-| 17.10 | Open root terminal (new `root-bash` window, uid 0) | ✅ harness `menu` | 1 | driver-menu.sh asserts uid=0(root) |
-| 17.11 | Open dev terminal (new `dev-bash` window, uid 1000) | ✅ harness `menu` | 1 | driver-menu.sh asserts uid=1000(dev) |
-| 17.12 | Send test notification | ❌ | 5 | menu → test notify; observe popup/phone |
-| 17.13 | Recreate from the menu (respawns dev-container window, keeps volume) | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh: marker survives recreate |
-| 17.14 | Restart (podman restart in place) / Stop (podman stop) — error cleanly when absent | ✅ harness `menu` | 1 | driver-menu.sh asserts stopped→running transitions |
-| 17.15 | Destroy — double confirm (yes/no + dirty scan + typed 'yes'), wipes container + volume, deletes the local deploy key + `.pub` | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh asserts full teardown + key deleted |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA79 | Menu loop renders status header, dispatches, survives action errors | ⚠️ (→TA80) | 3 | `cargo test --test menu_pty`; live for dispatch/error paths |
+| TA80 | Absent container reads as "not created" — no leaked `Error: no such container` | ✅ | 0 | pty regression test (`ta80_*`) |
+| TA81 | Grouped sections render (inert headers) and the whole menu shows at once | ✅ (→TA80) | 1 | pty test asserts a section header; eyeball the full layout |
+| TA82 | Show tunnel URL | ❌ | 5 | with `EXPOSE_WEBAPP`, menu → tunnel URL prints the trycloudflare URL |
+| TA83 | Toggle expose-webapp (persist + offer recreate) | ❌ | 4 | toggle; grep `.env`; recreate; confirm tunnel starts |
+| TA84 | Enable ntfy (topic prompt + persist) | ❌ | 4 | enable; grep `.env`; recreate; check phone |
+| TA85 | Copy a host file/folder into the container | ✅ harness `menu` | 1 | driver-menu.sh asserts the file in /home/dev/uploads |
+| TA86 | Install an agent at runtime (persist + whitelist + run install-agents) | ❌ | 5 | install codex; confirm `.env`, whitelist, and the binary in-container |
+| TA87 | Launch an agent in a tmux window (claude via run-claude, remote control on) | ❌ | 5 | launch; new `agent-*` window; pair from phone |
+| TA88 | List blocked egress URLs | ✅ harness `egress` | 1 | driver-egress.sh triggers a block, menu lists it |
+| TA89 | Add allowlist hosts (persist + regen file + offer restart) | ✅ harness `menu` (persist + offer) | 2 | driver-menu.sh asserts .env; manual for post-restart reachability |
+| TA90 | Open root terminal (new `root-bash` window, uid 0) | ✅ harness `menu` | 1 | driver-menu.sh asserts uid=0(root) |
+| TA91 | Open dev terminal (new `dev-bash` window, uid 1000) | ✅ harness `menu` | 1 | driver-menu.sh asserts uid=1000(dev) |
+| TA92 | Send test notification | ❌ | 5 | menu → test notify; observe popup/phone |
+| TA93 | Recreate from the menu (respawns dev-container window, keeps volume) | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh: marker survives recreate |
+| TA94 | Restart (podman restart in place) / Stop (podman stop) — error cleanly when absent | ✅ harness `menu` | 1 | driver-menu.sh asserts stopped→running transitions |
+| TA95 | Destroy — double confirm (yes/no + dirty scan + typed 'yes'), wipes container + volume, deletes the local deploy key + `.pub` | ✅ harness `lifecycle` | 1 | driver-lifecycle.sh asserts full teardown + key deleted |
 
 ## 18. Notifications (M7 — `notify.rs` core + cli)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 18.1 | Event whitelist rejects unknown events | ✅ `rejects_unknown_events` | 0 | — |
-| 18.2 | Label sanitized to `[A-Za-z0-9._-]`, capped at 40 | ✅ `sanitizes_and_caps_label` | 0 | — |
-| 18.3 | Title uses label when present; body per event | ✅ `title_uses_label_when_present` | 0 | — |
-| 18.4 | FIFO created, event delivered end-to-end → desktop popup + sound | ❌ | 5 | run a task in-container; watch the host popup |
-| 18.5 | ntfy.sh push fires when enabled | ❌ | 5 | enable ntfy; trigger; check the phone app |
-| 18.6 | Two-hop forward (remote → laptop over TCP/ssh tunnel) renders locally | ❌ | 5 | set `RC_FORWARD_ADDR` + `notify-listen` on laptop; trigger |
-| 18.7 | notify-listen forces local render (no re-forward) | ⚠️ (env logic) | 4 | run `notify-listen`; confirm it renders, doesn't bounce |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA96 | Event whitelist rejects unknown events | ✅ | 0 | — |
+| TA97 | Label sanitized to `[A-Za-z0-9._-]`, capped at 40 | ✅ | 0 | — |
+| TA98 | Title uses label when present; body per event | ✅ | 0 | — |
+| TA99 | FIFO created, event delivered end-to-end → desktop popup + sound | ❌ | 5 | run a task in-container; watch the host popup |
+| TA100 | ntfy.sh push fires when enabled | ❌ | 5 | enable ntfy; trigger; check the phone app |
+| TA101 | Two-hop forward (remote → laptop over TCP/ssh tunnel) renders locally | ❌ | 5 | set `RC_FORWARD_ADDR` + `notify-listen` on laptop; trigger |
+| TA102 | notify-listen forces local render (no re-forward) | ⚠️ (env logic) | 4 | run `notify-listen`; confirm it renders, doesn't bounce |
 
 ## 19. Install / distribution (M8 — `install.rs`)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 19.1 | `introdus install` copies binary to `~/.local/bin`, chmod +x | ❌ | 3 | `introdus install`; `ls -l ~/.local/bin/introdus` |
-| 19.2 | Idempotent when already installed (same-file detection) | ❌ | 2 | run twice; second says "already installed" |
-| 19.3 | PATH guidance branch (on-PATH vs not) | ❌ | 2 | run with/without the dir on PATH |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA103 | `introdus install` copies binary to `~/.local/bin`, chmod +x | ❌ | 3 | `introdus install`; `ls -l ~/.local/bin/introdus` |
+| TA104 | Idempotent when already installed (same-file detection) | ❌ | 2 | run twice; second says "already installed" |
+| TA105 | PATH guidance branch (on-PATH vs not) | ❌ | 2 | run with/without the dir on PATH |
 
 ## 20. CLI surface & docs (M9)
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 20.1 | `--help` and each subcommand `help` render | ⚠️ smoke-tested manually | 1 | `introdus help <sub>` for all 11 |
-| 20.2 | `--version` matches crate version | ⚠️ | 1 | `introdus --version` |
-| 20.3 | README/`sample.env` match actual behaviour | ❌ | 2 | follow the README quickstart verbatim |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA106 | `--help` and each subcommand `help` render | ⚠️ smoke-tested manually | 1 | `introdus help <sub>` for all subcommands |
+| TA107 | `--version` matches crate version | ⚠️ | 1 | `introdus --version` |
+| TA108 | README/`sample.env` match actual behaviour | ❌ | 2 | follow the README quickstart verbatim |
 
 ## 21. End-to-end integration (M10)  ← the decisive pass
 
-Much of this is now automated by the **full-experience harness** (rootless
-podman-in-podman): `test-harness/harness.sh` drives the real `introdus launch`
-→ tmux session → dev container → egress firewall → public-repo clone → live
-control TUI and asserts on it. Heavy + opt-in (needs a rootless-podman host with
-`/dev/fuse` + `/dev/net/tun`), so not part of `cargo test`. See
-`test-harness/README.md`.
+Automated by the **full-experience harness** (rootless podman-in-podman):
+`test-harness/harness.sh` drives the real `introdus launch` → tmux session → dev
+container → egress firewall → public-repo clone → live control TUI and asserts on
+it. Heavy + opt-in (needs a rootless-podman host with `/dev/fuse` +
+`/dev/net/tun`), so not part of `cargo test`. See `test-harness/README.md`.
 
-| # | Test case | Automated | Manual | How to verify |
-|---|-----------|:---------:|:------:|---------------|
-| 21.1 | Fresh project: `launch` → tmux session (main-control/notify/dev-container) → container up + clone → live menu | ✅ harness `menu` | 2 | `test-harness/harness.sh menu` |
-| 21.2 | Egress self-check green; allowlisted reachable, others + direct-IP dropped | ✅ harness `verify` | 1 | `test-harness/harness.sh verify` |
-| 21.3 | Menu dispatches into the running container (open a dev terminal → `uid=1000(dev)`) | ✅ harness `menu` | 1 | asserted in driver-menu.sh |
-| 21.4 | Persistence across recreate (`/home/dev` volume survives) | ✅ harness `lifecycle` | 2 | driver-lifecycle.sh: marker survives; manual for node_modules/claude-auth specifics |
-| 21.5 | Drive Claude from phone via remote control | ❌ | 5 | pair and issue a prompt from the mobile app |
-| 21.6 | `.env` parity: generated vs a `./launch.sh` run behave identically | ❌ | 4 | diff both `.env`s and both containers' `podman inspect` |
+| ID | Test case | Automated | Manual | How to verify |
+|----|-----------|:---------:|:------:|---------------|
+| TA109 | Fresh project: `launch` → tmux session (main-control/notify/dev-container) → container up + clone → live menu | ✅ harness `menu` | 2 | `test-harness/harness.sh menu` |
+| TA110 | Egress self-check green; allowlisted reachable, others + direct-IP dropped | ✅ harness `verify` | 1 | `test-harness/harness.sh verify` |
+| TA111 | Menu dispatches into the running container (open a dev terminal → `uid=1000(dev)`) | ✅ harness `menu` | 1 | asserted in driver-menu.sh |
+| TA112 | Persistence across recreate (`/home/dev` volume survives) | ✅ harness `lifecycle` | 2 | driver-lifecycle.sh: marker survives; manual for node_modules/claude-auth specifics |
+| TA113 | Drive Claude from phone via remote control | ❌ | 5 | pair and issue a prompt from the mobile app |
+| TA114 | `.env` parity: generated vs a `./launch.sh` run behave identically | ❌ | 4 | diff both `.env`s and both containers' `podman inspect` |
 
 ---
 
@@ -277,30 +285,30 @@ control TUI and asserts on it. Heavy + opt-in (needs a rootless-podman host with
   ordering, extra-port validation, session-name generation, notification
   trust-boundary (event whitelist + label sanitization), `podman run` flag
   assembly, `Cmd`/podman/tmux arg building, asset embedding/materialization.
-- **Interactive TUI (now pty-automated):** the wizard prompts end-to-end incl.
-  the generate-new-key and reuse-matching-key branches (16.2–16.4, 16.6) and the
-  menu's render/group/quit + the `no such container` regression (17.1, 17.1a/b)
-  are driven through a real pty by `rexpect` — no live host needed.
-- **Full experience (now harness-automated):** the real `introdus launch` →
-  tmux session → nested dev container → egress firewall → clone → live control
-  TUI is driven and asserted by the rootless podman-in-podman harness
+- **Interactive TUI (pty-automated):** the wizard prompts end-to-end incl. the
+  generate-new-key and reuse-matching-key branches (TA73–TA76, TA78) and the
+  menu's render/group/quit + the `no such container` regression (TA79–TA81) are
+  driven through a real pty by `rexpect` — no live host needed.
+- **Full experience (harness-automated):** the real `introdus launch` → tmux
+  session → nested dev container → egress firewall → clone → live control TUI is
+  driven and asserted by the rootless podman-in-podman harness
   (`test-harness/harness.sh`, targets `verify` / `menu` / `egress` /
-  `lifecycle`). This moved a large block off manual-only: base build + egress
-  self-check (5.3, 8.2, 11.1), **workload egress enforcement (9.5)**, container
-  boot + privilege drop (10.7), the session + menu utilities (14.3, 17.5,
-  17.8–17.11, 17.13–17.15), and the **reset/destroy data-loss safety scan**
-  (13.2–13.4, 13.6, 13.7, 13.11 — planting uncommitted + unpushed state and
-  asserting the scan reports it) plus the end-to-end pass (21.1–21.4). Heavy +
-  opt-in, not in `cargo test`.
+  `lifecycle`): base build + egress self-check (TA23, TA33, TA49), **workload
+  egress enforcement (TA41)**, container boot + privilege drop (TA48), session +
+  menu utilities (TA67, TA85, TA88–TA91, TA93–TA95), the **reset/destroy
+  data-loss safety scan** (TA54–TA56, TA58, TA59, TA63 — planting uncommitted +
+  unpushed state and asserting the scan reports it), and the end-to-end pass
+  (TA109–TA112). Heavy + opt-in, not in `cargo test`.
 - **Highest manual reliance (rating 5):** what still needs external services or
   eyes no harness provides — notification delivery to a desktop/phone
-  (18.4–18.6), the Cloudflare tunnel + tunnel-URL (17.2), enabling ntfy
-  (17.3–17.4), runtime agent install/launch + agent auth egress (3.4, 17.6–17.7),
-  in-container `update` (12.2), and driving Claude from a phone (21.5). Residual
-  scan branches (staged-only 13.5, stashes 13.8, multi-repo 13.9) remain manual.
+  (TA99–TA101), the Cloudflare tunnel + tunnel-URL (TA82), enabling ntfy
+  (TA83–TA84), runtime agent install/launch + agent auth egress (TA16, TA86,
+  TA87), in-container `update` (TA52), and driving Claude from a phone (TA113).
+  Residual scan branches (staged-only TA57, stashes TA60, multi-repo TA61) remain
+  manual.
 
 The security-critical *inputs* (allowlist patterns, run flags, trust-boundary
 sanitization) are automated at rating 0; the security-critical *enforcement*
-(the proxy/nft actually dropping traffic) is now automated by the harness (9.5,
-11.1) nested — still worth an occasional cross-check against a real
+(the proxy/nft actually dropping traffic) is now automated by the harness (TA41,
+TA49) nested — still worth an occasional cross-check against a real
 `./launch.sh` container.

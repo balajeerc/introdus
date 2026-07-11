@@ -115,7 +115,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ids_are_unique_and_claude_is_prebaked() {
+    fn ta13_ids_are_unique_and_claude_is_prebaked() {
         let mut seen = std::collections::HashSet::new();
         for a in AGENTS {
             assert!(seen.insert(a.id), "duplicate agent id {}", a.id);
@@ -125,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    fn script_agents_use_url_specs() {
+    fn ta14_script_agents_use_url_specs() {
         for a in AGENTS {
             if a.method == InstallMethod::Script {
                 assert!(

@@ -141,7 +141,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn assets_embed_nonempty() {
+    fn ta21_assets_embed_nonempty() {
         assert!(ASSETS.iter().all(|a| !a.contents.is_empty()));
         // Spot-check the security-critical core is really embedded.
         let entry = ASSETS
@@ -155,7 +155,7 @@ mod tests {
     }
 
     #[test]
-    fn materialize_writes_tree_with_modes() {
+    fn ta22_materialize_writes_tree_with_modes() {
         let dir = std::env::temp_dir().join(format!("introdus-assets-{}", std::process::id()));
         std::fs::remove_dir_all(&dir).ok();
         materialize(&dir).unwrap();

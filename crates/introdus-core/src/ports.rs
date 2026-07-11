@@ -37,7 +37,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_single_and_mapped() {
+    fn ta45_parses_single_and_mapped() {
         let e = vec!["8123".to_owned(), "16379:6379".to_owned()];
         assert_eq!(
             parse_extra_ports(&e, 3000).unwrap(),
@@ -46,7 +46,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_bad_and_colliding() {
+    fn ta45_rejects_bad_and_colliding() {
         assert!(parse_extra_ports(&["0".to_owned()], 3000).is_err());
         assert!(parse_extra_ports(&["70000".to_owned()], 3000).is_err());
         assert!(parse_extra_ports(&["abc".to_owned()], 3000).is_err());

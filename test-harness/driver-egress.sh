@@ -2,6 +2,7 @@
 # Egress enforcement from the WORKLOAD's point of view (the dev user in the
 # running container) — the core security guarantee — plus the menu's
 # blocked-egress listing utility.
+# Covers TEST_PLAN: TA41, TA88
 set -euo pipefail
 source /usr/local/bin/driver-common.sh
 

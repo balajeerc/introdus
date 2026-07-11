@@ -3,6 +3,7 @@
 # volume — persistence) and Destroy (double confirm + dirty-git scan + deploy-key
 # deletion + full teardown). Kept separate from driver-menu.sh because it tears
 # the container/volume down.
+# Covers TEST_PLAN: TA54, TA55, TA56, TA58, TA59, TA62, TA63, TA93, TA95, TA112
 set -euo pipefail
 source /usr/local/bin/driver-common.sh
 

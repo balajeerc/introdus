@@ -77,7 +77,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn attach_label() {
+    fn ta27_attach_label() {
         assert_eq!(
             attach("introdus-web-ab12").label(),
             "tmux attach-session -t introdus-web-ab12"

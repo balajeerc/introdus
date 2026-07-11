@@ -345,7 +345,7 @@ mod tests {
     }
 
     #[test]
-    fn round_trip_preserves_config() {
+    fn ta06_round_trip_preserves_config() {
         let cfg = sample();
         let path = temp_env_path("roundtrip");
         cfg.save(&path).unwrap();
@@ -355,7 +355,7 @@ mod tests {
     }
 
     #[test]
-    fn defaults_applied_for_minimal_env() {
+    fn ta07_defaults_applied_for_minimal_env() {
         let path = temp_env_path("minimal");
         std::fs::write(
             &path,
@@ -375,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_required_field_errors() {
+    fn ta08_missing_required_field_errors() {
         let path = temp_env_path("bad");
         std::fs::write(&path, "PROJECT_NAME=web\n").unwrap();
         let err = Config::load(&path).unwrap_err();
