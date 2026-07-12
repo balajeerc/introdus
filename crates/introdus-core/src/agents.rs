@@ -19,6 +19,23 @@ pub enum InstallMethod {
     Script,
 }
 
+/// Whether an agent can bypass its approval/permission prompts, and how — used
+/// to offer an unattended-mode launch. Launch-time only: the shell registry in
+/// `container/agents.sh` has no counterpart, since nothing on that side ever
+/// launches an agent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Yolo {
+    /// A flag that bypasses ALL approval prompts (fully unattended, dangerous).
+    Bypass(&'static str),
+    /// A flag that auto-approves most actions but still honours deny rules — not
+    /// a guaranteed skip-everything.
+    Auto(&'static str),
+    /// Always auto-approves by design; no flag needed.
+    Always,
+    /// No bypass/auto option.
+    None,
+}
+
 /// A single coding agent the harness can install and launch.
 #[derive(Debug, Clone, Copy)]
 pub struct Agent {
@@ -38,6 +55,8 @@ pub struct Agent {
     /// Baked into the base image at build time; the in-container installer
     /// skips these and must not clobber their build-time native steps.
     pub prebaked: bool,
+    /// How this agent can skip its approval prompts, offered at launch time.
+    pub yolo: Yolo,
 }
 
 /// The full registry, in display/selection order. Mirrors `AGENT_IDS` and the
@@ -55,6 +74,7 @@ pub const AGENTS: &[Agent] = &[
         cmd: "claude",
         hosts: "", // native binary ships via the npm registry — no extra host
         prebaked: false,
+        yolo: Yolo::Bypass("--dangerously-skip-permissions"),
     },
     Agent {
         id: "codex",
@@ -64,6 +84,8 @@ pub const AGENTS: &[Agent] = &[
         cmd: "codex",
         hosts: "api.openai.com auth.openai.com chatgpt.com",
         prebaked: false,
+        // `--yolo` is the official alias; the long form is the documented flag.
+        yolo: Yolo::Bypass("--dangerously-bypass-approvals-and-sandbox"),
     },
     Agent {
         id: "antigravity",
@@ -73,6 +95,8 @@ pub const AGENTS: &[Agent] = &[
         cmd: "agy",
         hosts: "antigravity.google antigravity-cli-auto-updater-974169037036.us-central1.run.app storage.googleapis.com accounts.google.com oauth2.googleapis.com www.googleapis.com cloudcode-pa.googleapis.com iamcredentials.googleapis.com",
         prebaked: false,
+        // agy mirrors claude-code's flag name (not Gemini CLI's `--yolo`).
+        yolo: Yolo::Bypass("--dangerously-skip-permissions"),
     },
     Agent {
         id: "opencode",
@@ -82,6 +106,8 @@ pub const AGENTS: &[Agent] = &[
         cmd: "opencode",
         hosts: "opencode.ai models.dev openrouter.ai",
         prebaked: false,
+        // `--auto` auto-approves but still honours deny rules — not a full bypass.
+        yolo: Yolo::Auto("--auto"),
     },
     Agent {
         id: "pi",
@@ -91,6 +117,7 @@ pub const AGENTS: &[Agent] = &[
         cmd: "pi",
         hosts: "console.anthropic.com openrouter.ai",
         prebaked: false,
+        yolo: Yolo::Always, // no permission system by design — always auto-approves
     },
     Agent {
         id: "kilocode",
@@ -100,6 +127,7 @@ pub const AGENTS: &[Agent] = &[
         cmd: "kilo",
         hosts: "kilo.ai api.kilo.ai",
         prebaked: false,
+        yolo: Yolo::Auto("--auto"), // autonomous mode; deny rules still apply
     },
 ];
 
@@ -133,6 +161,33 @@ mod tests {
                     "{} spec must be a URL",
                     a.id
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn ta14_yolo_flags_match_the_known_cli_flags() {
+        // Guards the exact (typo-prone, dangerous) flag strings per agent.
+        let want = |id| find(id).map(|a| a.yolo);
+        assert_eq!(
+            want("claude"),
+            Some(Yolo::Bypass("--dangerously-skip-permissions"))
+        );
+        assert_eq!(
+            want("codex"),
+            Some(Yolo::Bypass("--dangerously-bypass-approvals-and-sandbox"))
+        );
+        assert_eq!(
+            want("antigravity"),
+            Some(Yolo::Bypass("--dangerously-skip-permissions"))
+        );
+        assert_eq!(want("opencode"), Some(Yolo::Auto("--auto")));
+        assert_eq!(want("pi"), Some(Yolo::Always));
+        assert_eq!(want("kilocode"), Some(Yolo::Auto("--auto")));
+        // Every Bypass/Auto flag is a real `--flag`.
+        for a in AGENTS {
+            if let Yolo::Bypass(f) | Yolo::Auto(f) = a.yolo {
+                assert!(f.starts_with("--"), "{} yolo flag must be a --flag", a.id);
             }
         }
     }

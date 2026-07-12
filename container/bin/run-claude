@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # run-claude — drop into a tmux session running Claude Code in this project's
-# working directory, with permission prompts bypassed.
+# working directory. Permission prompts are bypassed by default; pass `--safe`
+# to launch with prompts ON.
 #
 # Remote control is already enabled for every session via
 # /home/dev/.claude/settings.json ("remoteControlAtStartup": true), so once you
@@ -39,9 +40,20 @@ fi
 
 cd "$WORKDIR"
 
+# Claude arguments. The harness default (a bare `run-claude`, as the banner
+# suggests) skips the permission prompts so the agent runs unattended. The
+# control menu passes an explicit choice: the skip flag to confirm it, or
+# `--safe` to launch plain claude with prompts ON. Anything else is passed
+# through to claude verbatim.
+case "${1:-}" in
+    --safe) shift; CLAUDE_ARGS=("$@") ;;
+    "")     CLAUDE_ARGS=(--dangerously-skip-permissions) ;;
+    *)      CLAUDE_ARGS=("$@") ;;
+esac
+
 # Attach to an already-running session rather than starting a duplicate.
 if tmux has-session -t "$SESSION" 2>/dev/null; then
     exec tmux attach -t "$SESSION"
 fi
 
-exec tmux new-session -s "$SESSION" -c "$WORKDIR" "claude --dangerously-skip-permissions"
+exec tmux new-session -s "$SESSION" -c "$WORKDIR" "claude ${CLAUDE_ARGS[*]:-}"

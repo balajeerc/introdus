@@ -57,7 +57,9 @@ pub fn open_terminal(ctx: &LaunchContext, ui: &mut Ui, user: Option<&str>) -> Re
 }
 
 /// Launch an installed agent in its own tmux window (Claude via `run-claude`,
-/// with remote control already on; others via their own command).
+/// with remote control already on; others via their own command). When the
+/// agent supports a skip-permissions / auto-approve flag, offer to launch with
+/// it so the agent runs unattended.
 pub fn launch_agent(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     require_running(ctx)?;
     let installed = ctx.config.install_agents.clone();
@@ -65,18 +67,58 @@ pub fn launch_agent(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
         bail!("no agents configured to launch");
     }
     let id = ui.select("Launch which agent?", installed)?;
-    let run_cmd = if id == "claude" {
-        "run-claude".to_owned()
+    let agent = agents::find(&id);
+    let label = agent.map(|a| a.label).unwrap_or(id.as_str());
+    let flag = resolve_yolo(
+        agent.map(|a| a.yolo).unwrap_or(agents::Yolo::None),
+        label,
+        ui,
+    )?;
+
+    let mut cmd = exec_interactive(&ctx.container_name, Some("dev"));
+    if id == "claude" {
+        // claude launches through run-claude (repo cd + the remote-control 'claude'
+        // session). Tell it whether to skip permissions: the flag, or `--safe`.
+        cmd = cmd.arg("run-claude").arg(flag.unwrap_or("--safe"));
     } else {
-        agents::find(&id)
-            .map(|a| a.cmd.to_owned())
-            .unwrap_or(id.clone())
-    };
-    let cmd = exec_interactive(&ctx.container_name, Some("dev"))
-        .arg(&run_cmd)
-        .label()
-        .to_owned();
+        cmd = cmd.arg(agent.map(|a| a.cmd).unwrap_or(id.as_str()));
+        if let Some(f) = flag {
+            cmd = cmd.arg(f);
+        }
+    }
+    let cmd = cmd.label().to_owned();
     spawn_window(ctx, ui, &format!("agent-{id}"), &cmd)
+}
+
+/// Offer to launch with the agent's bypass/auto flag when it has one. Returns
+/// the flag to append (`None` = launch with prompts on / no flag). `Always`
+/// agents (e.g. pi) need no flag; a note is logged instead.
+fn resolve_yolo(yolo: agents::Yolo, label: &str, ui: &mut Ui) -> Result<Option<&'static str>> {
+    match yolo {
+        agents::Yolo::Bypass(flag) => {
+            let on = ui.confirm(
+                &format!("Launch {label} with {flag} — skips ALL permission prompts (unattended)?"),
+                true,
+            )?;
+            Ok(on.then_some(flag))
+        }
+        agents::Yolo::Auto(flag) => {
+            let on = ui.confirm(
+                &format!(
+                    "Launch {label} with {flag} — auto-approves actions (deny rules still apply)?"
+                ),
+                true,
+            )?;
+            Ok(on.then_some(flag))
+        }
+        agents::Yolo::Always => {
+            ui.log(format!(
+                "  {label} always runs in auto-approve mode — no flag needed."
+            ));
+            Ok(None)
+        }
+        agents::Yolo::None => Ok(None),
+    }
 }
 
 // ---- egress allowlist -------------------------------------------------------

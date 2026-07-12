@@ -192,7 +192,7 @@ pub(crate) fn confirm_step(code: KeyCode, mods: KeyModifiers, answer: &mut bool)
     match code {
         _ if cancel_key(code, mods) => Step::Cancel,
         // A single y/n submits immediately (the common expectation); Enter alone
-        // accepts the current default.
+        // accepts the currently-highlighted option.
         KeyCode::Char('y') | KeyCode::Char('Y') => {
             *answer = true;
             Step::Accept
@@ -201,17 +201,42 @@ pub(crate) fn confirm_step(code: KeyCode, mods: KeyModifiers, answer: &mut bool)
             *answer = false;
             Step::Accept
         }
+        // Move the highlight between Yes/No without committing, so the current
+        // choice is always visible before Enter.
+        KeyCode::Left | KeyCode::Right | KeyCode::Tab | KeyCode::BackTab => {
+            *answer = !*answer;
+            Step::Continue
+        }
         KeyCode::Enter => Step::Accept,
         _ => Step::Continue,
     }
 }
 
-pub(crate) fn confirm_line(prompt: &str, answer: bool) -> Line<'static> {
-    let hint = if answer { "(Y/n)" } else { "(y/N)" };
-    let mut spans = question(prompt).spans;
-    spans.push(Span::raw(" "));
-    spans.push(Span::styled(hint, Style::default().fg(DIM)));
-    Line::from(spans)
+/// The Yes/No option row, rendered on its OWN line below the question so the
+/// highlighted choice is always visible — never clipped off the right edge by a
+/// long prompt (as a single-line `? prompt … Yes/No` would be).
+pub(crate) fn confirm_options(answer: bool) -> Line<'static> {
+    Line::from(vec![
+        Span::raw("  "),
+        // The current option is highlighted (reversed accent), so it's obvious
+        // which way Enter will go — and which was just chosen.
+        confirm_pill("Yes", answer),
+        Span::styled(" / ", Style::default().fg(DIM)),
+        confirm_pill("No", !answer),
+        Span::styled("   (y/n · ←/→ · Enter)", Style::default().fg(DIM)),
+    ])
+}
+
+/// One Yes/No option; highlighted (reversed accent) when it's the active choice.
+fn confirm_pill(text: &str, active: bool) -> Span<'static> {
+    let style = if active {
+        Style::default()
+            .fg(ACCENT)
+            .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+    } else {
+        Style::default().fg(DIM)
+    };
+    Span::styled(format!(" {text} "), style)
 }
 
 // -- text --
@@ -370,13 +395,12 @@ struct ConfirmModal<'a> {
 }
 impl Modal for ConfirmModal<'_> {
     fn height(&self) -> u16 {
-        1
+        2
     }
     fn draw(&self, f: &mut Frame) {
-        f.render_widget(
-            Paragraph::new(confirm_line(self.prompt, self.answer)),
-            f.area(),
-        );
+        let rows = Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).split(f.area());
+        f.render_widget(Paragraph::new(question(self.prompt)), rows[0]);
+        f.render_widget(Paragraph::new(confirm_options(self.answer)), rows[1]);
     }
     fn step(&mut self, code: KeyCode, mods: KeyModifiers) -> Step {
         confirm_step(code, mods, &mut self.answer)
@@ -541,6 +565,14 @@ mod tests {
             Step::Accept
         ));
         assert!(d);
+        // ←/→/Tab move the highlight without committing, so the choice is visible
+        // before Enter.
+        let mut e = false;
+        for key in [KeyCode::Right, KeyCode::Left, KeyCode::Tab] {
+            let before = e;
+            assert!(matches!(confirm_step(key, none, &mut e), Step::Continue));
+            assert_eq!(e, !before, "{key:?} should toggle the highlight");
+        }
     }
 
     #[test]

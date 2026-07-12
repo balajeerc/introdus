@@ -29,7 +29,7 @@ use ratatui::{Frame, Terminal};
 use introdus_core::process::{self, CaptureGuard, OutputBuffer};
 
 use crate::ui::{
-    self, confirm_line, confirm_step, next_key, question, text_render, text_step, visible_items,
+    self, confirm_options, confirm_step, next_key, question, text_render, text_step, visible_items,
     Picker, Row, Status, Step, ACCENT, DIM,
 };
 
@@ -436,6 +436,8 @@ fn prompt_height(popup: &Popup) -> u16 {
     // +1 for the top separator border line.
     1 + match popup {
         Popup::Pick { items, .. } => (items.len() as u16).min(12) + 1,
+        // Question on its own row + the Yes/No option row below it.
+        Popup::Confirm { .. } => 2,
         _ => 1,
     }
 }
@@ -605,7 +607,9 @@ fn draw_prompt(f: &mut Frame, area: Rect, popup: &Popup) {
     f.render_widget(block, area);
     match *popup {
         Popup::Confirm { prompt, answer } => {
-            f.render_widget(Paragraph::new(confirm_line(prompt, answer)), inner);
+            let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(inner);
+            f.render_widget(Paragraph::new(question(prompt)), rows[0]);
+            f.render_widget(Paragraph::new(confirm_options(answer)), rows[1]);
         }
         Popup::Text {
             prompt,
