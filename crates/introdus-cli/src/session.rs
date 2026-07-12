@@ -5,9 +5,10 @@
 
 use std::convert::Infallible;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result};
-use introdus_core::{session as names, tmux, Config};
+use introdus_core::{paths, session as names, tmux, Config};
 
 use crate::context::env_path;
 use crate::launch::LaunchOpts;
@@ -17,8 +18,6 @@ use crate::preflight;
 const MAIN_WINDOW: &str = "main-control";
 /// The container-logs window (window 2).
 const DEV_WINDOW: &str = "dev-container";
-/// The notification-service window.
-const NOTIFY_WINDOW: &str = "notify";
 
 /// `introdus launch`: ensure the tmux session exists (creating the control +
 /// container windows on first run) and attach to it.
@@ -42,15 +41,12 @@ pub fn launch(_opts: LaunchOpts) -> Result<()> {
     let bin = current_exe()?;
     println!("==> creating tmux session {session}");
     tmux::new_detached_session(&session, MAIN_WINDOW, &window_cmd(&bin, "menu"), &dir)?;
-    // Notification service first, so the FIFO exists before the container mounts
-    // it; then the container window.
-    tmux::new_window(
-        &session,
-        NOTIFY_WINDOW,
-        &notify_cmd(&bin, &config),
-        false,
-        &dir,
-    )?;
+    // Start the notification service first, so the FIFO exists before the
+    // container mounts it. It runs DETACHED (no tmux window) with its output in a
+    // per-session log; the control menu shows that log on demand.
+    if let Err(e) = spawn_notify_host(&bin, &config, &session) {
+        eprintln!("warning: notifications unavailable — {e:#}");
+    }
     tmux::new_window(&session, DEV_WINDOW, &window_cmd(&bin, "up"), false, &dir)?;
     attach(&session).map(|_| ())
 }
@@ -79,21 +75,38 @@ fn window_cmd(bin: &Path, sub: &str) -> String {
     )
 }
 
-/// Build the notify-host window command, exporting the project's notification
-/// settings so the service renders ntfy / forwards / desktop popups correctly.
-fn notify_cmd(bin: &Path, config: &Config) -> String {
-    let q = crate::util::shell_quote;
-    let mut prefix = format!(
-        "ENABLE_NOTIFY_SH_ALERTS={} ",
-        config.enable_notify_sh_alerts
-    );
+/// Start `introdus notify-host` as a DETACHED background service — no tmux
+/// window. It drains the FIFO the container writes to and delivers alerts
+/// (desktop / sound / ntfy.sh push / tunnel forward) in real time, so it must
+/// keep running; its output goes to a per-session log the control menu can show
+/// on demand. `setsid` puts it in its own session so it survives the launching
+/// terminal closing, and `RC_SESSION` binds it to this tmux session's lifetime
+/// (it self-exits when the session ends). The project's notification settings
+/// are passed through so ntfy / forwards / desktop popups render correctly.
+fn spawn_notify_host(bin: &Path, config: &Config, session: &str) -> Result<()> {
+    let log_path = paths::notify_log(session)?;
+    let log = std::fs::File::create(&log_path)
+        .with_context(|| format!("creating notify log {}", log_path.display()))?;
+    let errlog = log.try_clone()?;
+    let mut cmd = Command::new("setsid");
+    cmd.arg(bin)
+        .arg("notify-host")
+        .env("RC_SESSION", session)
+        .env(
+            "ENABLE_NOTIFY_SH_ALERTS",
+            config.enable_notify_sh_alerts.to_string(),
+        )
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(log))
+        .stderr(Stdio::from(errlog));
     if let Some(topic) = &config.ntfy_sh_topic {
-        prefix.push_str(&format!("NTFY_SH_TOPIC={} ", q(topic)));
+        cmd.env("NTFY_SH_TOPIC", topic);
     }
     if let Some(addr) = &config.rc_forward_addr {
-        prefix.push_str(&format!("RC_FORWARD_ADDR={} ", q(addr)));
+        cmd.env("RC_FORWARD_ADDR", addr);
     }
-    format!("{prefix}exec {} notify-host", q(&bin.to_string_lossy()))
+    cmd.spawn().context("spawning the notify-host service")?;
+    Ok(())
 }
 
 /// Attach the terminal to `session` (never returns on success).

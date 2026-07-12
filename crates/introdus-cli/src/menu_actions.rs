@@ -13,6 +13,9 @@ use crate::context::{env_path, LaunchContext};
 use crate::panel::Ui;
 use crate::util::{expand_tilde, shell_quote};
 
+/// How many trailing lines of the notify-host log the menu shows.
+const NOTIFY_LOG_TAIL: usize = 40;
+
 // ---- read-only / runtime utilities -----------------------------------------
 
 /// Show the cached cloudflared quick-tunnel URL from inside the container. Its
@@ -35,7 +38,36 @@ pub fn test_notify(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     require_running(ctx)?;
     ui.log("  sending a test 'done' notification via rc-notify…");
     let _ = exec(ctx, Some("dev")).args(["rc-notify", "done"]).run();
-    ui.log("  (delivery needs the host notify listener — see `introdus notify-host`, M7)");
+    ui.log("  (delivery is handled by the detached notify service — see its log below)");
+    Ok(())
+}
+
+/// Show the tail of the detached notify-host service's log. The service has no
+/// tmux window of its own; this is how you inspect what it has delivered.
+pub fn notify_log(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
+    let path = introdus_core::paths::notify_log(&session_of(ctx))?;
+    match std::fs::read_to_string(&path) {
+        Ok(s) if !s.trim().is_empty() => {
+            let lines: Vec<&str> = s.lines().collect();
+            let start = lines.len().saturating_sub(NOTIFY_LOG_TAIL);
+            if start > 0 {
+                ui.log(format!(
+                    "  notification log (last {} lines of {}):",
+                    NOTIFY_LOG_TAIL,
+                    lines.len()
+                ));
+            } else {
+                ui.log("  notification log:");
+            }
+            for line in &lines[start..] {
+                ui.log(format!("    {line}"));
+            }
+        }
+        _ => ui.log(format!(
+            "  no notifications logged yet ({})",
+            path.display()
+        )),
+    }
     Ok(())
 }
 

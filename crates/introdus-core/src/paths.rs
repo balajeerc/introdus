@@ -25,6 +25,12 @@ pub fn state_dir() -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// Per-session log for the detached `notify-host` service (which has no tmux
+/// window of its own). Viewable from the control menu on demand.
+pub fn notify_log(session_name: &str) -> Result<PathBuf> {
+    Ok(state_dir()?.join(format!("notify-{session_name}.log")))
+}
+
 /// Per-container proxy allowlist file, bind-mounted read-only at
 /// `/etc/tinyproxy/egress-allowlist.txt`. Regenerated on every launch.
 pub fn allowlist_file(container_name: &str) -> Result<PathBuf> {
@@ -65,6 +71,13 @@ mod tests {
     fn ta20_launch_marker_path_is_per_container() {
         let p = launch_marker("introdus-demo-ab12").unwrap();
         assert!(p.ends_with("launching-introdus-demo-ab12"));
+        assert!(p.to_string_lossy().contains(STATE_DIR_NAME));
+    }
+
+    #[test]
+    fn ta20_notify_log_path_is_per_session() {
+        let p = notify_log("swift-otter").unwrap();
+        assert!(p.ends_with("notify-swift-otter.log"));
         assert!(p.to_string_lossy().contains(STATE_DIR_NAME));
     }
 }

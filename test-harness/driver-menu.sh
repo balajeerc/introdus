@@ -21,11 +21,21 @@ cname="$HARNESS_CNAME"
 
 echo "==> session windows:"
 tmux list-windows -t "$session" -F '    #{window_name}'
-for w in main-control notify dev-container; do
+for w in main-control dev-container; do
     tmux list-windows -t "$session" -F '#{window_name}' | grep -qx "$w" \
         || { echo "FATAL: missing window '$w'"; exit 1; }
 done
-echo "    ✓ main-control / notify / dev-container present"
+echo "    ✓ main-control / dev-container present"
+
+# ---- the notify service runs DETACHED (no window) + its log is viewable -----
+# notify-host used to occupy a 'notify' tmux window; it now runs as a detached
+# background process (logging to a per-session file), so the window must be gone
+# but the process must be up.
+echo "==> notify-host runs detached (no 'notify' tmux window)"
+tmux list-windows -t "$session" -F '#{window_name}' | grep -qx notify \
+    && { echo "FATAL: a 'notify' window exists — it should run detached"; exit 1; }
+harness_poll "notify-host running detached" pgrep -f 'notify-host'
+echo "    ✓ notify-host running detached, no window in the session"
 
 # ---- menu renders, grouped, with live status ------------------------------
 mc_ready
@@ -41,6 +51,14 @@ mc_wait_prompt "running" "running status"
 mc_vis | grep -qF "$cname" \
     || { echo "FATAL: container name not on the status panel"; mc_vis | sed 's/^/      /'; exit 1; }
 echo "    ✓ live status panel shows the container running"
+
+# ---- view the detached notify service's log from the menu ------------------
+# notify-host prints "rc-notify: reading FIFO …" to its log at startup; the menu
+# option surfaces that log in the output pane on demand.
+echo "==> menu: Show the notification log"
+mc_select "Show the notification log"
+mc_wait_prompt "reading FIFO" "notify log contents"
+echo "    ✓ notification log shown on demand in the output pane"
 
 # ---- open a dev terminal (dispatch into the container as dev) --------------
 echo "==> menu: Open a dev terminal"

@@ -80,6 +80,9 @@ pub fn run_host() -> Result<()> {
     let cfg = NotifyConfig::from_env();
     let path = fifo_path()?;
     ensure_fifo(&path)?;
+    // Launched detached (no tmux window of its own), so bind its lifetime to the
+    // owning tmux session — exit once that session is gone.
+    spawn_session_watcher();
     println!("rc-notify: reading FIFO {}", path.display());
     loop {
         // open() blocks until a writer connects; the loop yields lines until all
@@ -114,6 +117,22 @@ pub fn run_listen() -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// When `RC_SESSION` is set (the detached-service case), poll for that tmux
+/// session and exit the process once it disappears, so the background service
+/// never lingers past the session it belongs to. The watcher runs on its own
+/// thread so it fires even while the main thread is blocked opening the FIFO.
+fn spawn_session_watcher() {
+    let Some(session) = non_empty_env("RC_SESSION") else {
+        return;
+    };
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        if !introdus_core::tmux::has_session(&session) {
+            std::process::exit(0);
+        }
+    });
 }
 
 fn handle(raw: &str, cfg: &NotifyConfig) {

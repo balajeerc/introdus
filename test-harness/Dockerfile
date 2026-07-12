@@ -11,7 +11,9 @@ FROM quay.io/podman/stable
 # Tools the harness + driver need beyond podman itself. passt provides `pasta`
 # (rootless networking); nftables/tinyproxy live INSIDE the ubuntu dev image,
 # not here.
-RUN dnf -y install tmux git openssh-clients passt iproute procps-ng \
+# util-linux provides `setsid` (introdus launch uses it to detach the notify
+# service); procps-ng provides `pgrep` (drivers assert on it).
+RUN dnf -y install tmux git openssh-clients passt iproute procps-ng util-linux \
     && dnf clean all
 
 # The control-plane binary under test (built on the host by harness.sh).
