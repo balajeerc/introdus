@@ -155,6 +155,7 @@ fn push_env(ctx: &LaunchContext, disable_network_block: bool, a: &mut Vec<String
     env(a, "EXPOSE_WEBAPP", c.expose_webapp.to_string());
     env(a, "TUNNEL_EDGE_IPS", ctx.tunnel_edge_ips.join(" "));
     env(a, "TUNNEL_API_IPS", ctx.tunnel_api_ips.join(" "));
+    env(a, "PASEO_RELAY_IPS", ctx.paseo_relay_ips.join(" "));
     env(a, "WHITELIST_HOSTS", ctx.container_whitelist.join(" "));
     env(a, "INTERNAL_ALLOW_CIDRS", c.internal_allow_cidrs.join(" "));
     env(
@@ -168,6 +169,10 @@ fn push_env(ctx: &LaunchContext, disable_network_block: bool, a: &mut Vec<String
         c.ntfy_sh_topic.clone().unwrap_or_default(),
     );
     env(a, "INSTALL_AGENTS", c.install_agents.join(" "));
+    // paseo is opted into separately from the agent checklist; pass it so a fresh
+    // container's setup (install-agents) installs it when enabled — otherwise a
+    // wizard opt-in or a recreate would come up without paseo.
+    env(a, "INSTALL_PASEO", c.install_paseo.to_string());
 }
 
 fn push_publish(ctx: &LaunchContext, a: &mut Vec<String>) -> Result<()> {
@@ -240,6 +245,10 @@ pub fn verify(ctx: &LaunchContext) -> Result<()> {
         .args([
             "--env",
             &format!("TUNNEL_API_IPS={}", ctx.tunnel_api_ips.join(" ")),
+        ])
+        .args([
+            "--env",
+            &format!("PASEO_RELAY_IPS={}", ctx.paseo_relay_ips.join(" ")),
         ])
         .args([
             "--env",

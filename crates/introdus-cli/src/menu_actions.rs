@@ -193,6 +193,14 @@ fn resolve_yolo(yolo: agents::Yolo, label: &str, ui: &mut Ui) -> Result<Option<&
     }
 }
 
+/// Shell snippet that ensures the paseo daemon is running, for prefixing an
+/// interactive window command. `paseo daemon status` exits 0 whether the daemon
+/// is running OR stopped, so `status || start` never starts it (and `start` errors
+/// noisily when already up); gate on the `localDaemon` field of the JSON status
+/// instead. Without a running daemon the relay never connects and phone pairing
+/// times out.
+const PASEO_ENSURE_DAEMON: &str = r#"paseo daemon status --json 2>/dev/null | grep -Eq '"localDaemon":[[:space:]]*"running"' || paseo daemon start"#;
+
 /// Launch an agent under the paseo daemon, so it is driven both locally (this
 /// tmux window) and from the paseo phone/desktop/web app through the relay.
 /// Ensures the daemon is up, then runs `paseo run --provider <id>` interactively
@@ -205,9 +213,7 @@ fn launch_via_paseo(ctx: &LaunchContext, ui: &mut Ui, id: &str, label: &str) -> 
     let task = task.trim();
     // Start the daemon if it isn't already running, then hand the window off to
     // `paseo run` (exec, so it becomes the window's foreground process).
-    let mut inner = String::from(
-        "paseo daemon status >/dev/null 2>&1 || paseo daemon start; exec paseo run --provider ",
-    );
+    let mut inner = format!("{PASEO_ENSURE_DAEMON}; exec paseo run --provider ");
     inner.push_str(&shell_quote(id));
     if !task.is_empty() {
         inner.push(' ');
@@ -240,26 +246,42 @@ pub fn install_paseo(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     )? {
         return Ok(());
     }
-    // Record the opt-in + allow the paseo relay host, then regenerate the
-    // allowlist (offers a restart so the running proxy admits the relay).
+    // Record the opt-in + allow the paseo host at the proxy, and rewrite the
+    // bind-mounted allowlist. No restart here: paseo's daemon reaches the relay
+    // over a WebSocket that ignores the proxy, so it needs an nft IP bypass
+    // (PASEO_RELAY_IPS) — and container env is frozen at create, so only a
+    // *recreate* installs that hole. A plain restart would re-run the entrypoint
+    // with the old (paseo-less) env and pairing would still time out.
     let mut config = ctx.config.clone();
     config.install_paseo = true;
     let host = agents::paseo::HOST.to_owned();
     if !config.whitelist_hosts.contains(&host) {
         config.whitelist_hosts.push(host);
     }
-    save_and_regen_allowlist(ctx, ui, config, "enabled paseo (INSTALL_PASEO=true)")?;
-    // Install the CLI now, reusing install-agents' pnpm path + never-fatal logic.
+    save_and_write_allowlist(ctx, ui, config, "enabled paseo (INSTALL_PASEO=true)")?;
+
+    // Offer the recreate that bakes in the relay bypass. The fresh container's
+    // setup installs paseo (idempotent) and resolves relay.paseo.sh into the nft
+    // allowlist, so the daemon can dial out and a phone can pair.
+    if podman::container_running(&ctx.container_name)
+        && ui.confirm(
+            "Recreate the container now to apply paseo's relay access (needed for phone pairing)?",
+            false,
+        )?
+    {
+        remove_container_task(ctx, ui, "recreating the container")?;
+        return respawn_dev_window(ctx, ui);
+    }
+
+    // Declined (or no container running): install the CLI into the current
+    // container so paseo works locally, but be explicit that pairing won't work
+    // until a recreate wires the relay bypass.
     run_install_paseo(ctx, ui)?;
     if !container_has_cmd(ctx, agents::paseo::CMD) {
-        bail!(
-            "paseo still isn't installed after the attempt — check `egress-log` for a \
-             blocked host (it needs {}), then try again",
-            agents::paseo::HOST
-        );
+        bail!("paseo isn't installed — check `egress-log` for a blocked host, then retry");
     }
-    ui.log("  paseo installed. Use 'Show paseo pairing QR code' to connect a phone,");
-    ui.log("  or launch an agent and choose 'via paseo' to make it phone-drivable.");
+    ui.log("  paseo installed. NOTE: phone pairing needs the relay bypass, which only a");
+    ui.log("  container recreate wires — until you recreate, the daemon can't reach the relay.");
     Ok(())
 }
 
@@ -274,10 +296,9 @@ pub fn paseo_qr(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     }
     // Ensure the daemon is up, print the pairing QR (paseo renders it natively),
     // then drop to a shell so the code stays on screen long enough to scan.
-    let inner = "paseo daemon status >/dev/null 2>&1 || paseo daemon start; \
-                 paseo daemon pair; exec bash";
+    let inner = format!("{PASEO_ENSURE_DAEMON}; paseo daemon pair; exec bash");
     let cmd = exec_interactive(&ctx.container_name, Some("dev"))
-        .args(["bash", "-lc", inner])
+        .args(["bash", "-lc", &inner])
         .shell_line()
         .to_owned();
     ui.log("  opening the pairing QR — scan it from the paseo app to connect your phone.");
@@ -720,18 +741,32 @@ fn save_config(ctx: &LaunchContext, ui: &mut Ui, config: &Config) -> Result<()> 
     Ok(())
 }
 
-/// Save the config, then regenerate the bind-mounted allowlist file and offer a
-/// restart so the running proxy picks it up.
-fn save_and_regen_allowlist(
+/// Save the config and (re)write the bind-mounted proxy allowlist file from it.
+/// No restart: the allowlist is a file the proxy re-reads on the next start, so
+/// callers decide whether a restart/recreate is warranted (a frozen-env change
+/// like an nft IP bypass needs a full recreate — see [`offer_recreate`]).
+fn save_and_write_allowlist(
     ctx: &LaunchContext,
     ui: &mut Ui,
     config: Config,
     summary: &str,
 ) -> Result<()> {
     save_config(ctx, ui, &config)?;
-    let regen = LaunchContext::resolve(config, ctx.project_dir.clone())?;
-    regen.write_allowlist()?;
+    LaunchContext::resolve(config, ctx.project_dir.clone())?.write_allowlist()?;
     ui.log(format!("  {summary}"));
+    Ok(())
+}
+
+/// [`save_and_write_allowlist`] then offer a restart so the running proxy picks up
+/// the new hostnames — for allowlist-only changes (a bind-mounted file re-read on
+/// restart).
+fn save_and_regen_allowlist(
+    ctx: &LaunchContext,
+    ui: &mut Ui,
+    config: Config,
+    summary: &str,
+) -> Result<()> {
+    save_and_write_allowlist(ctx, ui, config, summary)?;
     if podman::container_running(&ctx.container_name)
         && ui.confirm("Restart the container to apply the new allowlist?", false)?
     {

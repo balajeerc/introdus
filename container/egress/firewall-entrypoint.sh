@@ -145,6 +145,10 @@ mk_set() { printf '%s' "$1" | tr ' ' '\n' | grep -E '.' | paste -sd, - || true; 
 INTERNAL_ELEMS=$(mk_set "${INTERNAL_ALLOW_CIDRS:-}")
 EDGE_ELEMS=$(mk_set "${TUNNEL_EDGE_IPS:-}")
 API_ELEMS=$(mk_set "${TUNNEL_API_IPS:-}")
+# paseo's daemon reaches relay.paseo.sh over a WebSocket (the `ws` lib) that
+# ignores HTTP(S)_PROXY, so — like cloudflared — it can't use the hostname proxy
+# and needs its relay IPs allowed directly on 443. Empty unless INSTALL_PASEO.
+PASEO_ELEMS=$(mk_set "${PASEO_RELAY_IPS:-}")
 
 {
     echo "table inet egress {"
@@ -157,6 +161,7 @@ API_ELEMS=$(mk_set "${TUNNEL_API_IPS:-}")
     [[ -n "$INTERNAL_ELEMS" ]] && echo "        ip daddr { ${INTERNAL_ELEMS} } accept"
     [[ -n "$EDGE_ELEMS" ]]     && echo "        ip daddr { ${EDGE_ELEMS} } tcp dport 7844 accept"
     [[ -n "$API_ELEMS" ]]      && echo "        ip daddr { ${API_ELEMS} } tcp dport 443 accept"
+    [[ -n "$PASEO_ELEMS" ]]    && echo "        ip daddr { ${PASEO_ELEMS} } tcp dport 443 accept"
     echo "        counter drop"
     echo "    }"
     echo "}"

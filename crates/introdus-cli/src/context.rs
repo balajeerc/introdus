@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use introdus_core::process::Cmd;
-use introdus_core::{assets, egress, names, paths, Config};
+use introdus_core::{agents, assets, egress, names, paths, Config};
 
 /// Resolved launch context for one project.
 pub struct LaunchContext {
@@ -32,6 +32,10 @@ pub struct LaunchContext {
     pub tunnel_edge_ips: Vec<String>,
     /// Resolved `api.trycloudflare.com` IPs (empty unless `EXPOSE_WEBAPP`).
     pub tunnel_api_ips: Vec<String>,
+    /// Resolved `relay.paseo.sh` IPs (empty unless `INSTALL_PASEO`). Allowed
+    /// directly on 443 by the nft filter because paseo's relay WebSocket ignores
+    /// the HTTP proxy.
+    pub paseo_relay_ips: Vec<String>,
 }
 
 impl LaunchContext {
@@ -70,6 +74,15 @@ impl LaunchContext {
             (Vec::new(), Vec::new())
         };
 
+        // paseo's daemon dials the relay over a WebSocket that ignores the proxy,
+        // so (like cloudflared) it needs a direct-by-IP nft hole. Only resolve
+        // when paseo is opted in; empty otherwise = no hole.
+        let paseo_relay_ips = if config.install_paseo {
+            resolve_ipv4(agents::paseo::RELAY_HOST)
+        } else {
+            Vec::new()
+        };
+
         Ok(Self {
             config,
             project_dir,
@@ -83,6 +96,7 @@ impl LaunchContext {
             container_whitelist,
             tunnel_edge_ips,
             tunnel_api_ips,
+            paseo_relay_ips,
         })
     }
 
@@ -127,7 +141,15 @@ fn hostname() -> String {
 /// allowed by IP on 443 in the nft filter. Anycast + stable, so a launch-time
 /// resolve is fine; empty on failure (registration then just warns).
 fn resolve_tunnel_api_ips() -> Vec<String> {
-    let mut v4: Vec<String> = (egress::TUNNEL_API_HOST, 443u16)
+    resolve_ipv4(egress::TUNNEL_API_HOST)
+}
+
+/// Resolve `host` to its sorted, de-duped IPv4 addresses (port 443). Used for the
+/// direct-by-IP nft holes needed by clients that bypass the HTTP proxy
+/// (cloudflared's tunnel API, paseo's relay WebSocket). Empty on failure — the
+/// caller then just can't reach that host directly and surfaces its own warning.
+fn resolve_ipv4(host: &str) -> Vec<String> {
+    let mut v4: Vec<String> = (host, 443u16)
         .to_socket_addrs()
         .map(|it| {
             it.filter(|a| a.is_ipv4())

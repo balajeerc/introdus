@@ -142,9 +142,19 @@ pub mod paseo {
     pub const SPEC: &str = "@getpaseo/cli";
     /// The command it installs.
     pub const CMD: &str = "paseo";
-    /// Egress host paseo needs — suffix-matching covers `app.paseo.sh` (pairing)
-    /// and the relay the daemon dials out to.
+    /// Proxy-allowlist host for paseo's plain-HTTPS traffic (pairing/registration
+    /// under `app.paseo.sh`, which honors `HTTPS_PROXY`). Suffix-matching also
+    /// admits `relay.paseo.sh` at the proxy — but the daemon's relay link is a
+    /// WebSocket via the `ws` lib, which ignores the proxy and dials the relay
+    /// directly, so the proxy entry alone can't carry it. See [`RELAY_HOST`].
     pub const HOST: &str = "paseo.sh";
+    /// The relay endpoint the daemon dials OUT to over a WebSocket
+    /// (`wss://relay.paseo.sh/ws`). Because `ws` bypasses `HTTPS_PROXY`, this host
+    /// is resolved at launch and its IPs are allowed directly on 443 by the nft
+    /// filter (same shape as the cloudflared tunnel bypass) — without it, the
+    /// workload's default-deny egress blackholes the relay and phone pairing
+    /// times out. Anycast/stable enough for a launch-time resolve.
+    pub const RELAY_HOST: &str = "relay.paseo.sh";
     /// The installed agents paseo can launch natively, by provider id (a subset
     /// of the registry). Gates the "launch via paseo" offer; other agents still
     /// launch directly.
@@ -202,6 +212,20 @@ mod tests {
         for id in paseo::PROVIDERS {
             assert!(is_known(id), "paseo provider {id} must be a known agent");
         }
+    }
+
+    #[test]
+    fn ta130_paseo_relay_host_is_under_the_proxy_allowlist_host() {
+        // The relay bypass resolves RELAY_HOST by IP, but the same host must also
+        // be admitted at the proxy (suffix of HOST) so paseo's non-WS traffic to
+        // it isn't separately blocked.
+        assert_eq!(paseo::RELAY_HOST, "relay.paseo.sh");
+        assert!(
+            paseo::RELAY_HOST.ends_with(paseo::HOST),
+            "relay host {} must be covered by the proxy allowlist host {}",
+            paseo::RELAY_HOST,
+            paseo::HOST
+        );
     }
 
     #[test]
