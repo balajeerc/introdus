@@ -126,6 +126,21 @@ pub fn launch_agent(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
         }
     }
 
+    // When paseo is enabled and can drive this agent natively, offer to launch it
+    // *via* paseo: the same session, but supervised by the daemon so it's also
+    // drivable from the phone/app through the relay. Declining — or an agent
+    // paseo can't drive — falls through to the direct launch below.
+    if ctx.config.install_paseo
+        && agents::paseo::supports(&id)
+        && container_has_cmd(ctx, agents::paseo::CMD)
+        && ui.confirm(
+            &format!("Launch {label} via paseo (also drivable from your phone)?"),
+            true,
+        )?
+    {
+        return launch_via_paseo(ctx, ui, &id, label);
+    }
+
     let flag = resolve_yolo(
         agent.map(|a| a.yolo).unwrap_or(agents::Yolo::None),
         label,
@@ -176,6 +191,111 @@ fn resolve_yolo(yolo: agents::Yolo, label: &str, ui: &mut Ui) -> Result<Option<&
         }
         agents::Yolo::None => Ok(None),
     }
+}
+
+/// Launch an agent under the paseo daemon, so it is driven both locally (this
+/// tmux window) and from the paseo phone/desktop/web app through the relay.
+/// Ensures the daemon is up, then runs `paseo run --provider <id>` interactively
+/// — the daemon supervises the very session this window is attached to.
+fn launch_via_paseo(ctx: &LaunchContext, ui: &mut Ui, id: &str, label: &str) -> Result<()> {
+    let task = ui.text(
+        "Initial task for the agent (blank = interactive session):",
+        false,
+    )?;
+    let task = task.trim();
+    // Start the daemon if it isn't already running, then hand the window off to
+    // `paseo run` (exec, so it becomes the window's foreground process).
+    let mut inner = String::from(
+        "paseo daemon status >/dev/null 2>&1 || paseo daemon start; exec paseo run --provider ",
+    );
+    inner.push_str(&shell_quote(id));
+    if !task.is_empty() {
+        inner.push(' ');
+        inner.push_str(&shell_quote(task));
+    }
+    let cmd = exec_interactive(&ctx.container_name, Some("dev"))
+        .args(["bash", "-lc", &inner])
+        .label()
+        .to_owned();
+    ui.log(format!(
+        "  launching {label} via paseo — drivable from your phone too."
+    ));
+    spawn_window(ctx, ui, &format!("paseo-{id}"), &cmd)
+}
+
+// ---- paseo orchestrator -----------------------------------------------------
+
+/// Install the paseo orchestrator into the running container and record the
+/// opt-in (`INSTALL_PASEO=true` + its relay egress host), so agents become
+/// launchable via paseo and phone pairing works.
+pub fn install_paseo(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
+    require_running(ctx)?;
+    if ctx.config.install_paseo && container_has_cmd(ctx, agents::paseo::CMD) {
+        ui.log("  paseo is already installed and enabled.");
+        return Ok(());
+    }
+    if !ui.confirm(
+        "Install paseo? It runs your agents and lets you drive them from a phone/desktop.",
+        true,
+    )? {
+        return Ok(());
+    }
+    // Record the opt-in + allow the paseo relay host, then regenerate the
+    // allowlist (offers a restart so the running proxy admits the relay).
+    let mut config = ctx.config.clone();
+    config.install_paseo = true;
+    let host = agents::paseo::HOST.to_owned();
+    if !config.whitelist_hosts.contains(&host) {
+        config.whitelist_hosts.push(host);
+    }
+    save_and_regen_allowlist(ctx, ui, config, "enabled paseo (INSTALL_PASEO=true)")?;
+    // Install the CLI now, reusing install-agents' pnpm path + never-fatal logic.
+    run_install_paseo(ctx, ui)?;
+    if !container_has_cmd(ctx, agents::paseo::CMD) {
+        bail!(
+            "paseo still isn't installed after the attempt — check `egress-log` for a \
+             blocked host (it needs {}), then try again",
+            agents::paseo::HOST
+        );
+    }
+    ui.log("  paseo installed. Use 'Show paseo pairing QR code' to connect a phone,");
+    ui.log("  or launch an agent and choose 'via paseo' to make it phone-drivable.");
+    Ok(())
+}
+
+/// Open a tmux window that starts the paseo daemon (if needed) and prints the
+/// pairing QR code, so you can scan it from the paseo phone app. The daemon
+/// dials out to the relay (needs `paseo.sh` allowlisted) and the phone connects
+/// through that relay — nothing is exposed inbound.
+pub fn paseo_qr(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
+    require_running(ctx)?;
+    if !container_has_cmd(ctx, agents::paseo::CMD) {
+        bail!("paseo isn't installed — run 'Install paseo (drive agents from your phone)' first");
+    }
+    // Ensure the daemon is up, print the pairing QR (paseo renders it natively),
+    // then drop to a shell so the code stays on screen long enough to scan.
+    let inner = "paseo daemon status >/dev/null 2>&1 || paseo daemon start; \
+                 paseo daemon pair; exec bash";
+    let cmd = exec_interactive(&ctx.container_name, Some("dev"))
+        .args(["bash", "-lc", inner])
+        .label()
+        .to_owned();
+    ui.log("  opening the pairing QR — scan it from the paseo app to connect your phone.");
+    spawn_window(ctx, ui, "paseo-qr", &cmd)
+}
+
+/// Stream `install-agents` with only the paseo opt-in set. `INSTALL_AGENTS=` is
+/// passed empty so the installer touches paseo alone and leaves the agent list
+/// untouched (an unset `INSTALL_AGENTS` would default to installing claude).
+fn run_install_paseo(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
+    ui.run_task(
+        "install-agents (paseo)",
+        exec(ctx, Some("dev"))
+            .arg("env")
+            .arg("INSTALL_AGENTS=")
+            .arg("INSTALL_PASEO=true")
+            .arg("install-agents"),
+    )
 }
 
 // ---- egress allowlist -------------------------------------------------------

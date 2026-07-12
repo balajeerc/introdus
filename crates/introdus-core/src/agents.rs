@@ -131,6 +131,31 @@ pub const AGENTS: &[Agent] = &[
     },
 ];
 
+/// Paseo — the optional agent *orchestrator* (not a coding agent itself). A
+/// daemon that runs the installed agents and lets you drive them from a
+/// phone/desktop/web/CLI client through the paseo relay: the daemon dials OUT to
+/// the relay with end-to-end encryption, so nothing is exposed inbound. Opted
+/// into separately from the agent checklist (`INSTALL_PASEO`), installed via the
+/// same pnpm path. Mirrors the `PASEO_*` constants in `container/agents.sh`.
+pub mod paseo {
+    /// npm package providing the paseo CLI + daemon.
+    pub const SPEC: &str = "@getpaseo/cli";
+    /// The command it installs.
+    pub const CMD: &str = "paseo";
+    /// Egress host paseo needs — suffix-matching covers `app.paseo.sh` (pairing)
+    /// and the relay the daemon dials out to.
+    pub const HOST: &str = "paseo.sh";
+    /// The installed agents paseo can launch natively, by provider id (a subset
+    /// of the registry). Gates the "launch via paseo" offer; other agents still
+    /// launch directly.
+    pub const PROVIDERS: &[&str] = &["claude", "codex", "opencode", "pi"];
+
+    /// Whether an installed agent `id` can be launched via paseo.
+    pub fn supports(id: &str) -> bool {
+        PROVIDERS.contains(&id)
+    }
+}
+
 /// Look up an agent by its id.
 pub fn find(id: &str) -> Option<&'static Agent> {
     AGENTS.iter().find(|a| a.id == id)
@@ -162,6 +187,20 @@ mod tests {
                     a.id
                 );
             }
+        }
+    }
+
+    #[test]
+    fn ta125_paseo_supports_only_native_providers() {
+        for id in ["claude", "codex", "opencode", "pi"] {
+            assert!(paseo::supports(id), "{id} should be a paseo provider");
+        }
+        for id in ["antigravity", "kilocode", "nope"] {
+            assert!(!paseo::supports(id), "{id} must not be a paseo provider");
+        }
+        // Every paseo provider is (except none) a real, known agent id.
+        for id in paseo::PROVIDERS {
+            assert!(is_known(id), "paseo provider {id} must be a known agent");
         }
     }
 

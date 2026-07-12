@@ -53,6 +53,14 @@ fn finish_wizard(p: &mut PtySession) {
     p.exp_string("Coding agents to install").unwrap();
     send(p, " "); // opt-in: Space ticks the first row (Claude)
     enter(p);
+    p.exp_string("Also install paseo").unwrap();
+    enter(p); // default No
+    finish_expose_ntfy(p);
+}
+
+/// The final leg shared by every branch: from the "Expose the webapp" confirm
+/// through ntfy to the `.env` being written. Takes each remaining default.
+fn finish_expose_ntfy(p: &mut PtySession) {
     p.exp_string("Expose the webapp").unwrap();
     enter(p); // default No
     p.exp_string("mobile push notifications").unwrap();
@@ -97,17 +105,41 @@ fn ta77_wizard_agents_are_opt_in_nothing_preselected() {
     p.exp_string("[ ] Claude").unwrap();
     // Confirm without toggling anything -> no coding agent selected.
     enter(&mut p);
-    p.exp_string("Expose the webapp").unwrap();
-    enter(&mut p);
-    p.exp_string("mobile push notifications").unwrap();
-    enter(&mut p);
-    p.exp_string("wrote").unwrap();
-    p.exp_eof().unwrap();
+    p.exp_string("Also install paseo").unwrap();
+    enter(&mut p); // default No
+    finish_expose_ntfy(&mut p);
 
     let env = std::fs::read_to_string(fx.env_file()).unwrap();
     assert!(
         env.contains("INSTALL_AGENTS=\"\""),
         "agents must be opt-in — nothing selected should write an empty list:\n{env}"
+    );
+}
+
+#[test]
+fn ta127_wizard_paseo_opt_in_records_flag_and_relay_host() {
+    let fx = Fixture::new("ship-tbc");
+    let mut p = spawn_command(fx.cmd("init"), TIMEOUT_MS).unwrap();
+
+    start_with_new_key(&mut p);
+    p.exp_string("Webapp port").unwrap();
+    enter(&mut p);
+    p.exp_string("Coding agents to install").unwrap();
+    send(&mut p, " "); // tick Claude
+    enter(&mut p);
+    // Opt INTO paseo (default is No) — a single 'y' submits the confirm.
+    p.exp_string("Also install paseo").unwrap();
+    send(&mut p, "y");
+    finish_expose_ntfy(&mut p);
+
+    let env = std::fs::read_to_string(fx.env_file()).unwrap();
+    assert!(
+        env.contains("INSTALL_PASEO=\"true\"") || env.contains("INSTALL_PASEO=true"),
+        "paseo opt-in must set INSTALL_PASEO:\n{env}"
+    );
+    assert!(
+        env.contains("paseo.sh"),
+        "paseo opt-in must allowlist the relay host paseo.sh:\n{env}"
     );
 }
 

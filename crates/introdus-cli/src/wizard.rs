@@ -31,6 +31,13 @@ pub fn run(project_dir: &Path) -> Result<Config> {
     let webapp_port = ask_port("Webapp port (bound in the container):", 3000)?;
 
     let install_agents = prompt_agents()?;
+    // Paseo is an orchestrator, opted into separately from the agent checklist:
+    // it lets you drive the installed agents from a phone/desktop/web/CLI client
+    // through the paseo relay (the daemon dials out, so nothing is exposed).
+    let install_paseo = ui::confirm(
+        "Also install paseo, to drive these agents from your phone (agent orchestrator)?",
+        false,
+    )?;
     let expose_webapp = ui::confirm(
         "Expose the webapp to the internet via a Cloudflare tunnel?",
         false,
@@ -39,6 +46,7 @@ pub fn run(project_dir: &Path) -> Result<Config> {
 
     let mut config = Config::new(project_name, repo_url, deploy_key_path, webapp_port);
     apply_agents(&mut config, install_agents);
+    apply_paseo(&mut config, install_paseo);
     config.expose_webapp = expose_webapp;
     config.enable_notify_sh_alerts = enable_notify_sh_alerts;
     config.ntfy_sh_topic = ntfy_sh_topic;
@@ -62,6 +70,18 @@ fn apply_agents(config: &mut Config, selected: Vec<String>) {
                     config.whitelist_hosts.push(host);
                 }
             }
+        }
+    }
+}
+
+/// Record the paseo opt-in and, when enabled, add its relay egress host so the
+/// daemon can reach the pairing/relay service.
+fn apply_paseo(config: &mut Config, enabled: bool) {
+    config.install_paseo = enabled;
+    if enabled {
+        let host = agents::paseo::HOST.to_owned();
+        if !config.whitelist_hosts.contains(&host) {
+            config.whitelist_hosts.push(host);
         }
     }
 }
@@ -383,6 +403,37 @@ mod tests {
         // codex's hosts (api.openai.com, ...) were appended.
         assert!(c.whitelist_hosts.contains(&"api.openai.com".to_owned()));
         assert!(c.whitelist_hosts.len() > before);
+    }
+
+    #[test]
+    fn ta126_apply_paseo_sets_flag_and_host() {
+        let mut c = Config::new(
+            "p".to_owned(),
+            "git@github.com:o/r.git".to_owned(),
+            "/k".to_owned(),
+            3000,
+        );
+        apply_paseo(&mut c, false);
+        assert!(!c.install_paseo);
+        assert!(!c.whitelist_hosts.contains(&"paseo.sh".to_owned()));
+
+        apply_paseo(&mut c, true);
+        assert!(c.install_paseo);
+        assert!(c.whitelist_hosts.contains(&"paseo.sh".to_owned()));
+        // Idempotent: enabling again doesn't duplicate the host.
+        let count = c
+            .whitelist_hosts
+            .iter()
+            .filter(|h| *h == "paseo.sh")
+            .count();
+        apply_paseo(&mut c, true);
+        assert_eq!(
+            c.whitelist_hosts
+                .iter()
+                .filter(|h| *h == "paseo.sh")
+                .count(),
+            count
+        );
     }
 
     #[test]

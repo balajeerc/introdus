@@ -56,6 +56,9 @@ pub struct Config {
 
     // ---- agents & egress ----
     pub install_agents: Vec<String>,
+    /// Install the paseo orchestrator so agents can be driven from a phone/app
+    /// through the relay (opt-in, separate from the agent list).
+    pub install_paseo: bool,
     pub whitelist_hosts: Vec<String>,
     pub internal_allow_cidrs: Vec<String>,
 
@@ -100,6 +103,7 @@ impl Config {
             deploy_key_path,
             webapp_port,
             install_agents: vec!["claude".to_owned()],
+            install_paseo: false,
             whitelist_hosts: DEFAULT_WHITELIST.iter().map(|s| (*s).to_owned()).collect(),
             internal_allow_cidrs: Vec::new(),
             on_launch_script: None,
@@ -132,6 +136,7 @@ impl Config {
                 .parse()
                 .context("WEBAPP_PORT must be a port number")?,
             install_agents: list_or(&m, "INSTALL_AGENTS", &["claude"]),
+            install_paseo: flag(&m, "INSTALL_PASEO"),
             whitelist_hosts: list_or(&m, "WHITELIST_HOSTS", DEFAULT_WHITELIST),
             internal_allow_cidrs: list_or(&m, "INTERNAL_ALLOW_CIDRS", &[]),
             on_launch_script: opt(&m, "ON_LAUNCH_SCRIPT"),
@@ -174,6 +179,7 @@ impl Config {
             "Coding agents (space-separated ids; see container/agents.sh)",
         );
         inline_list(&mut o, "INSTALL_AGENTS", &self.install_agents);
+        scalar(&mut o, "INSTALL_PASEO", bool_str(self.install_paseo));
 
         section(&mut o, "Egress: proxy hostname allowlist (default-deny)");
         multiline_list(&mut o, "WHITELIST_HOSTS", &self.whitelist_hosts);
@@ -330,6 +336,7 @@ mod tests {
             3000,
         );
         c.install_agents = vec!["claude".to_owned(), "codex".to_owned()];
+        c.install_paseo = true;
         c.internal_allow_cidrs = vec!["10.2.5.131".to_owned()];
         c.extra_ports = vec!["8123".to_owned(), "16379:6379".to_owned()];
         c.on_launch_script = Some("pnpm install\npnpm dev --host 0.0.0.0".to_owned());
@@ -365,6 +372,7 @@ mod tests {
         let c = Config::load(&path).unwrap();
         std::fs::remove_file(&path).ok();
         assert_eq!(c.install_agents, vec!["claude".to_owned()]);
+        assert!(!c.install_paseo);
         assert_eq!(c.whitelist_hosts.len(), DEFAULT_WHITELIST.len());
         assert_eq!(c.mem_limit, "8g");
         assert_eq!(c.pids_limit, 16384);

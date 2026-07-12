@@ -97,6 +97,20 @@ declare -A AGENT_HOSTS=(
     [kilocode]="kilo.ai api.kilo.ai"
 )
 
+# ---- Paseo: optional agent orchestrator -------------------------------------
+# Paseo is NOT a coding agent — it's a daemon that supervises the installed
+# agents and lets you drive them from a phone/desktop/web/CLI client through the
+# paseo relay (end-to-end encrypted; the daemon dials OUT to the relay, so no
+# inbound port is exposed). Installed via the same pnpm path as the pnpm agents,
+# but gated on its own opt-in ($INSTALL_PASEO) rather than the agent checklist.
+# Mirrors the `paseo` module in crates/introdus-core/src/agents.rs.
+PASEO_SPEC="@getpaseo/cli"
+PASEO_CMD="paseo"
+PASEO_HOSTS="paseo.sh"   # suffix-covers app.paseo.sh (pairing) + the relay
+# The installed agents paseo can launch natively (a subset of AGENT_IDS), used
+# by the TUI to gate the "launch via paseo" offer. Others still launch directly.
+PASEO_PROVIDERS=(claude codex opencode pi)
+
 # Agents baked into the base image at build time. Currently none: every agent
 # (claude included) is installed at container setup from $INSTALL_AGENTS, so an
 # unselected agent is genuinely absent. Kept as an (empty) extension point — an

@@ -88,6 +88,24 @@ install_pnpm_build_agent() {
     fi
 }
 
+# Paseo — the optional orchestrator. Not a coding agent, so it is NOT in
+# $INSTALL_AGENTS; it is installed on its own opt-in ($INSTALL_PASEO=true) via
+# the same pnpm path (idempotent, never fatal). $PASEO_SPEC/$PASEO_CMD come from
+# the registry (rc-agents.sh).
+install_paseo() {
+    if command -v "$PASEO_CMD" >/dev/null 2>&1; then
+        log "paseo ($PASEO_SPEC): already installed — skipping"
+        return 0
+    fi
+    log "paseo: installing $PASEO_SPEC (pnpm add -g --ignore-scripts)"
+    if pnpm add -g --ignore-scripts "$PASEO_SPEC"; then
+        log "paseo: installed"
+    else
+        warn "paseo: pnpm install of $PASEO_SPEC failed (continuing) — see egress-log"
+        return 1
+    fi
+}
+
 install_script_agent() {
     local id="$1" url="${AGENT_SPEC[$1]}" cmd="${AGENT_CMD[$1]:-$id}"
     if command -v "$cmd" >/dev/null 2>&1; then
@@ -131,6 +149,13 @@ for id in $SELECTED; do
         *)          warn "agent '$id' has unknown install method '${AGENT_METHOD[$id]}'" ;;
     esac
 done
+
+# Paseo is opted into separately from the agent checklist. An unset var (a bare
+# manual run) leaves it off; only an explicit INSTALL_PASEO=true installs it.
+if [[ "${INSTALL_PASEO:-false}" == "true" ]]; then
+    any=true
+    install_paseo
+fi
 
 $any || log "no agents selected — nothing to install"
 exit 0
