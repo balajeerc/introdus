@@ -37,9 +37,12 @@ fi
 source "$REGISTRY"
 
 # Non-interactive bash does not source .bashrc; put mise/pnpm on PATH.
-export PATH="${HOME}/.local/bin:${HOME}/.local/share/pnpm/bin:$PATH"
-eval "$(${HOME}/.local/bin/mise activate bash)" 2>/dev/null || true
+# pnpm's global bin directory IS $PNPM_HOME itself (not $PNPM_HOME/bin) — pnpm
+# refuses to `add -g` unless that exact dir is on PATH. Include the /bin form too
+# so this stays correct if a future pnpm reverts to the older layout.
 export PNPM_HOME="${HOME}/.local/share/pnpm"
+export PATH="${HOME}/.local/bin:${PNPM_HOME}:${PNPM_HOME}/bin:$PATH"
+eval "$(${HOME}/.local/bin/mise activate bash)" 2>/dev/null || true
 
 log()  { printf '    %s\n' "$*"; }
 warn() { printf '    warning: %s\n' "$*" >&2; }

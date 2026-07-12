@@ -161,8 +161,12 @@ ENV IS_SANDBOX=1
 # user didn't pick is genuinely absent. That runtime install goes through the
 # egress proxy; claude's native binary ships as an npm optionalDependency, so
 # the already-whitelisted registry.npmjs.org is all it needs.
+# pnpm's global bin directory IS $PNPM_HOME itself (not $PNPM_HOME/bin): that is
+# where `pnpm add -g` links agent binaries, and pnpm refuses to install unless
+# that exact dir is on PATH. Keep the /bin form too so a pnpm version that uses
+# the older layout still resolves.
 ENV PNPM_HOME="/home/dev/.local/share/pnpm"
-ENV PATH="/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/home/dev/.local/share/pnpm/bin:${PATH}"
+ENV PATH="/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/home/dev/.local/share/pnpm:/home/dev/.local/share/pnpm/bin:${PATH}"
 
 USER dev
 WORKDIR /home/dev
@@ -187,7 +191,7 @@ RUN printf '%s\n' \
     '# --- remote-code-harness ---' \
     'export PATH="/home/dev/.local/bin:$PATH"' \
     'export PNPM_HOME="/home/dev/.local/share/pnpm"' \
-    'export PATH="$PNPM_HOME/bin:$PATH"' \
+    'export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"' \
     'eval "$(/home/dev/.local/bin/mise activate bash)"' \
     '[ -f /usr/share/bash-completion/bash_completion ] && . /usr/share/bash-completion/bash_completion' \
     '# --- end remote-code-harness ---' \
