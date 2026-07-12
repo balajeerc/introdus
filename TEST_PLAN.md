@@ -283,6 +283,7 @@ it. Heavy + opt-in (needs a rootless-podman host with `/dev/fuse` +
 | TA118 | claude is opt-in: installable on demand through the menu via `pnpm --allow-build` (its native binary ships as an npm optionalDependency — no extra egress host) | ✅ harness `agents` | 1 | driver-agents.sh: menu-install claude, then `command -v claude` succeeds |
 | TA119 | Launching an agent offers its skip-permissions/auto flag and passes it: accepting claude's prompt launches it with `--dangerously-skip-permissions` | ✅ harness `agent-launch` | 1 | driver-agent-launch.sh: pick claude → confirm → `pgrep -f 'run-claude --dangerously-skip-permissions'` |
 | TA120 | Confirm prompts render the choice as highlighted Yes/No options (visible, not clipped) | ✅ harness `agent-launch` | 1 | driver-agent-launch.sh: the skip-permissions confirm shows Yes + No |
+| TA121 | Status shows "starting container…" while a launch is underway (per-container marker), not "not created"/"stopped" | ✅ harness `menu` | 1 | driver-menu.sh: drop a fresh launch marker on the stopped container → status flips, reverts when cleared |
 | TA77 | Wizard agents are opt-in: nothing pre-checked (Claude shows `[ ]`), confirming with none ticked writes `INSTALL_AGENTS=""` | ✅ pty `wizard_pty` | 1 | ta77_wizard_agents_are_opt_in_nothing_preselected |
 
 ---

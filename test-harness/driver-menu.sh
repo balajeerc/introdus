@@ -92,6 +92,20 @@ harness_poll "container stopped" running false
 mc_wait_prompt "stopped" "stopped status"
 echo "    ✓ Stop worked; the status panel shows stopped"
 
+# ---- 'starting container…' status while a launch marker is present ---------
+# `introdus launch` writes a per-container marker at bring-up and execs into
+# podman, so the polling menu shows "starting container…" until the container is
+# running. Reproduce that state deterministically on the stopped container by
+# dropping a fresh marker, then assert the status flips (and reverts when gone).
+echo "==> a launch marker makes the status show 'starting container…'"
+marker="${XDG_STATE_HOME:-$HOME/.local/state}/introdus/launching-$cname"
+touch "$marker"
+mc_wait_prompt "starting container" "starting status"
+echo "    ✓ status shows 'starting container…' while the launch marker is present"
+rm -f "$marker"
+mc_wait_prompt "stopped" "status reverts to stopped once the marker clears"
+echo "    ✓ status reverts to stopped once the marker is cleared"
+
 echo "==> menu: Restart the container"
 mc_select "Restart the container"
 harness_poll "container running again" running true

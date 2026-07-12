@@ -171,8 +171,17 @@ fn dispatch(action: Action, ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
 
 /// Snapshot the live status shown in the panel's header.
 fn status_of(ctx: &LaunchContext) -> ui::Status {
+    let launching = crate::launch::is_launching(ctx);
     let state = match podman::container_state(&ctx.container_name) {
-        ContainerState::Running => "running",
+        ContainerState::Running => {
+            // The container is up — the launch (if any) is done, so drop the
+            // marker; a later Stop must read as "stopped", not "starting".
+            crate::launch::clear_launch_marker(ctx);
+            "running"
+        }
+        // A launch is underway but the container isn't running yet (still being
+        // created, or existing-but-not-started): report it as starting.
+        ContainerState::Stopped | ContainerState::Absent if launching => "starting container…",
         ContainerState::Stopped => "stopped",
         ContainerState::Absent => "not created",
     };

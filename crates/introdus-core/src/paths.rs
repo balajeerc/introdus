@@ -31,6 +31,14 @@ pub fn allowlist_file(container_name: &str) -> Result<PathBuf> {
     Ok(state_dir()?.join(format!("allowlist-{container_name}.txt")))
 }
 
+/// Per-container "launch in progress" marker. Written when a launch begins and
+/// cleared once the container is observed running (or on launch failure) so the
+/// control menu can show "starting container…" during the bring-up window —
+/// which the launch process itself can't report, since it execs into podman.
+pub fn launch_marker(container_name: &str) -> Result<PathBuf> {
+    Ok(state_dir()?.join(format!("launching-{container_name}")))
+}
+
 /// Directory holding the materialized copies of the embedded bash core for a
 /// given container, bind-mounted into it at launch.
 pub fn assets_dir(container_name: &str) -> Result<PathBuf> {
@@ -50,6 +58,13 @@ mod tests {
         // in every CI sandbox.
         let p = allowlist_file("introdus-demo-ab12").unwrap();
         assert!(p.ends_with("allowlist-introdus-demo-ab12.txt"));
+        assert!(p.to_string_lossy().contains(STATE_DIR_NAME));
+    }
+
+    #[test]
+    fn ta20_launch_marker_path_is_per_container() {
+        let p = launch_marker("introdus-demo-ab12").unwrap();
+        assert!(p.ends_with("launching-introdus-demo-ab12"));
         assert!(p.to_string_lossy().contains(STATE_DIR_NAME));
     }
 }

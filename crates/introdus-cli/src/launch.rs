@@ -2,14 +2,18 @@
 //! together — the flow the old `launch_dev_container.sh` ran end to end.
 
 use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{bail, Result};
-use introdus_core::podman;
-use introdus_core::Config;
+use introdus_core::{paths, podman, Config};
 
 use crate::context::{env_path, LaunchContext};
 use crate::lifecycle::Lifecycle;
 use crate::{image, lifecycle, preflight, run};
+
+/// A launch marker older than this is treated as stale (a crashed/killed
+/// launch) and ignored, so the status never sticks on "starting" forever.
+const LAUNCH_MARKER_TTL: Duration = Duration::from_secs(30 * 60);
 
 /// Options shared by the launch-style subcommands.
 #[derive(Debug, Clone, Copy, Default)]
@@ -47,11 +51,25 @@ pub fn run_launch(lifecycle: Lifecycle, opts: LaunchOpts) -> Result<()> {
     if lifecycle == Lifecycle::Reset {
         lifecycle::confirm_reset(&ctx)?;
     }
-    image::ensure(&ctx, false)?;
-    lifecycle::apply(&ctx, lifecycle)?;
-    lifecycle::ensure_volume(&ctx)?;
+    // Tell the control menu a launch is underway — it shows "starting container…"
+    // until the container is running. On success we exec into podman below and
+    // the menu clears the marker when it first sees the container running; if the
+    // bring-up fails first, clear it here so the status doesn't stick.
+    mark_launching(&ctx);
+    let result = bring_up(&ctx, lifecycle, opts);
+    clear_launch_marker(&ctx); // only reached if bring_up failed (else it exec'd)
+    result
+}
+
+/// The actual bring-up. On success the `run::*_and_exec` call replaces this
+/// process with podman, so this never returns `Ok`; any earlier failure returns
+/// `Err` so the caller can clear the launch marker.
+fn bring_up(ctx: &LaunchContext, lifecycle: Lifecycle, opts: LaunchOpts) -> Result<()> {
+    image::ensure(ctx, false)?;
+    lifecycle::apply(ctx, lifecycle)?;
+    lifecycle::ensure_volume(ctx)?;
     if opts.pull {
-        lifecycle::schedule_pull(&ctx)?;
+        lifecycle::schedule_pull(ctx)?;
     }
     ctx.write_allowlist()?;
 
@@ -66,11 +84,47 @@ pub fn run_launch(lifecycle: Lifecycle, opts: LaunchOpts) -> Result<()> {
     }
 
     if podman::container_exists(&ctx.container_name) {
-        run::start_and_exec(&ctx)?;
+        run::start_and_exec(ctx)?;
     } else {
-        run::create_and_exec(&ctx, opts.disable_network_block)?;
+        run::create_and_exec(ctx, opts.disable_network_block)?;
     }
     Ok(()) // unreachable: the calls above exec into podman.
+}
+
+/// Write the launch-in-progress marker (best-effort — a failure here just means
+/// the menu shows "not created"/"stopped" during bring-up, never a hard error).
+pub(crate) fn mark_launching(ctx: &LaunchContext) {
+    if let Ok(p) = paths::launch_marker(&ctx.container_name) {
+        let _ = std::fs::write(&p, b"");
+    }
+}
+
+/// Remove the launch-in-progress marker (best-effort).
+pub(crate) fn clear_launch_marker(ctx: &LaunchContext) {
+    if let Ok(p) = paths::launch_marker(&ctx.container_name) {
+        let _ = std::fs::remove_file(p);
+    }
+}
+
+/// True when a fresh launch marker exists — i.e. a launch is underway and the
+/// container isn't running yet. A stale marker (past the TTL) reads as false.
+pub(crate) fn is_launching(ctx: &LaunchContext) -> bool {
+    let Ok(p) = paths::launch_marker(&ctx.container_name) else {
+        return false;
+    };
+    match std::fs::metadata(&p).and_then(|m| m.modified()) {
+        Ok(modified) => marker_fresh(modified, SystemTime::now()),
+        Err(_) => false,
+    }
+}
+
+/// A marker is "fresh" if it was written within the TTL. A modified time in the
+/// future (clock skew right after writing) also counts as fresh.
+fn marker_fresh(modified: SystemTime, now: SystemTime) -> bool {
+    match now.duration_since(modified) {
+        Ok(age) => age < LAUNCH_MARKER_TTL,
+        Err(_) => true,
+    }
 }
 
 /// `introdus verify`.
@@ -91,4 +145,25 @@ pub fn run_update() -> Result<()> {
 pub fn run_rebuild_base() -> Result<()> {
     preflight::check_launch()?;
     image::rebuild(&load_context()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ta20_launch_marker_freshness() {
+        let now = SystemTime::now();
+        // Just written -> fresh.
+        assert!(marker_fresh(now, now));
+        // Within the TTL -> fresh.
+        assert!(marker_fresh(now - Duration::from_secs(60), now));
+        // Past the TTL -> stale (a crashed launch shouldn't stick on "starting").
+        assert!(!marker_fresh(
+            now - (LAUNCH_MARKER_TTL + Duration::from_secs(1)),
+            now
+        ));
+        // A future mtime (clock skew right after writing) still counts as fresh.
+        assert!(marker_fresh(now + Duration::from_secs(5), now));
+    }
 }

@@ -447,6 +447,7 @@ fn prompt_height(popup: &Popup, width: u16) -> u16 {
 fn draw_status_panel(f: &mut Frame, area: Rect, status: &Status) {
     let (color, glyph) = match status.state {
         "running" => (Color::Green, "●"),
+        "starting container…" => (Color::Cyan, "◌"),
         "stopped" => (Color::Yellow, "◐"),
         _ => (Color::Red, "○"),
     };
