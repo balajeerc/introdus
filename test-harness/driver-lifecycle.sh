@@ -76,6 +76,10 @@ echo "$scan" | grep -qF "unpushed commits" \
     || { echo "FATAL: safety scan missed unpushed commits"; echo "$scan" | tail -25 | sed 's/^/      /'; exit 1; }
 echo "    ✓ safety scan reported uncommitted working-tree + unpushed commits"
 mc_send "yes" Enter
+# Teardown streams as a spinner-backed task now (no UI freeze): the state line +
+# footer show "tearing down the container…" during the ~SIGKILL-grace removal.
+mc_wait_prompt "tearing down the container" "teardown spinner label"
+echo "    ✓ status shows 'tearing down the container…' during teardown (no freeze)"
 # 3) offer to delete the local deploy key (single y submits)
 mc_wait_prompt "Also delete the local deploy key" "deploy-key prompt"
 mc_send "y"

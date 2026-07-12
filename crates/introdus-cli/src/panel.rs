@@ -416,7 +416,9 @@ fn draw_frame(
     let left = Layout::vertical([Constraint::Length(7), Constraint::Min(3)]).split(cols[0]);
 
     // While a task runs, the menu is disabled — dim it and drop the highlight.
-    draw_status_panel(f, left[0], status);
+    // The status panel also reflects the in-progress op (e.g. "restarting the
+    // container") in its state line, so the state — not just the footer — shows it.
+    draw_status_panel(f, left[0], status, busy);
     draw_menu_list(
         f,
         left[1],
@@ -444,12 +446,21 @@ fn prompt_height(popup: &Popup, width: u16) -> u16 {
     }
 }
 
-fn draw_status_panel(f: &mut Frame, area: Rect, status: &Status) {
-    let (color, glyph) = match status.state {
-        "running" => (Color::Green, "●"),
-        "starting container…" => (Color::Cyan, "◌"),
-        "stopped" => (Color::Yellow, "◐"),
-        _ => (Color::Red, "○"),
+fn draw_status_panel(f: &mut Frame, area: Rect, status: &Status, busy: Option<(&str, char)>) {
+    // While a lifecycle op runs, surface it in the state line itself (spinner +
+    // label, e.g. "⠹ tearing down the container") so the status — not just the
+    // footer — reflects that something is in progress.
+    let (color, glyph, state_text) = match busy {
+        Some((label, spin)) => (Color::Yellow, spin.to_string(), label.to_owned()),
+        None => {
+            let (c, g) = match status.state {
+                "running" => (Color::Green, "●"),
+                "starting container…" => (Color::Cyan, "◌"),
+                "stopped" => (Color::Yellow, "◐"),
+                _ => (Color::Red, "○"),
+            };
+            (c, g.to_owned(), status.state.to_owned())
+        }
     };
     let label = Style::default().fg(DIM);
     let bold = Style::default().add_modifier(Modifier::BOLD);
@@ -467,7 +478,7 @@ fn draw_status_panel(f: &mut Frame, area: Rect, status: &Status) {
         Line::from(vec![
             Span::styled(" state      ", label),
             Span::styled(
-                format!("{glyph} {}", status.state),
+                format!("{glyph} {state_text}"),
                 Style::default().fg(color).add_modifier(Modifier::BOLD),
             ),
         ]),

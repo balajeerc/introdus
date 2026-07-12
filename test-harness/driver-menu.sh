@@ -106,6 +106,11 @@ running() { podman container inspect -f '{{.State.Running}}' "$cname" 2>/dev/nul
 
 echo "==> menu: Stop the container"
 mc_select "Stop the container"
+# The lifecycle op streams as a spinner-backed task now (no UI freeze): the state
+# line + footer surface it. Stop reliably takes the full SIGTERM→SIGKILL grace,
+# so the in-progress label is on screen long enough to catch.
+mc_wait_prompt "stopping the container" "stop spinner label"
+echo "    ✓ status shows 'stopping the container…' during the op (no freeze)"
 harness_poll "container stopped" running false
 mc_wait_prompt "stopped" "stopped status"
 echo "    ✓ Stop worked; the status panel shows stopped"
@@ -126,6 +131,9 @@ echo "    ✓ status reverts to stopped once the marker is cleared"
 
 echo "==> menu: Restart the container"
 mc_select "Restart the container"
+# (Restart here is fast — the container is already stopped, so it's just a start,
+# not a stop+start — so we don't race for its in-progress label; the Stop above
+# and Destroy's teardown cover the spinner-label behaviour on reliably-slow ops.)
 harness_poll "container running again" running true
 mc_wait_prompt "running" "running status"
 echo "    ✓ Restart worked; the status panel shows running again"

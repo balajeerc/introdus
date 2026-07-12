@@ -451,7 +451,12 @@ pub fn copy_file(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     exec(ctx, Some("dev"))
         .args(["mkdir", "-p", "/home/dev/uploads"])
         .run()?;
-    podman().arg("cp").arg(&src).arg(&dest).run()?;
+    // A large file/folder can take a while — stream it as a task so the panel
+    // shows a spinner rather than freezing on a blocking copy.
+    ui.run_task(
+        "copying into the container",
+        podman().arg("cp").arg(&src).arg(&dest),
+    )?;
     exec(ctx, None)
         .args(["chown", "-R", "dev:dev", "/home/dev/uploads"])
         .run()?;
@@ -470,7 +475,7 @@ pub fn recreate(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     )? {
         return Ok(());
     }
-    podman::remove_container(&ctx.container_name)?;
+    remove_container_task(ctx, ui, "recreating the container")?;
     respawn_dev_window(ctx, ui)
 }
 
@@ -478,8 +483,8 @@ pub fn recreate(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
 /// Guarded by the same dirty-git scan + typed confirmation as `introdus reset`.
 pub fn reset(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     confirm_wipe(ctx, ui)?;
-    podman::remove_container(&ctx.container_name)?;
-    podman::remove_volume(&ctx.volume_name)?;
+    remove_container_task(ctx, ui, "resetting the container")?;
+    remove_volume_task(ctx, ui, "wiping the volume")?;
     respawn_dev_window(ctx, ui)
 }
 
@@ -492,8 +497,10 @@ pub fn restart(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
             ctx.container_name
         );
     }
-    ui.log(format!("  restarting {}…", ctx.container_name));
-    podman().args(["restart", &ctx.container_name]).run()?;
+    ui.run_task(
+        "restarting the container",
+        podman().args(["restart", &ctx.container_name]),
+    )?;
     ui.log("  restarted.");
     Ok(())
 }
@@ -510,8 +517,10 @@ pub fn stop_for_quit(ctx: &LaunchContext, ui: &mut Ui) -> Result<bool> {
         return Ok(false);
     }
     if podman::container_running(&ctx.container_name) {
-        ui.log(format!("  stopping {}…", ctx.container_name));
-        podman().args(["stop", &ctx.container_name]).run()?;
+        ui.run_task(
+            "stopping the container",
+            podman().args(["stop", &ctx.container_name]),
+        )?;
         ui.log("  container stopped.");
     } else {
         ui.log("  container already stopped.");
@@ -529,7 +538,10 @@ pub fn stop(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
             Ok(())
         }
         podman::ContainerState::Running => {
-            podman().args(["stop", &ctx.container_name]).run()?;
+            ui.run_task(
+                "stopping the container",
+                podman().args(["stop", &ctx.container_name]),
+            )?;
             ui.log(format!("  stopped {}.", ctx.container_name));
             Ok(())
         }
@@ -553,8 +565,8 @@ pub fn destroy(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     }
     // Second, stronger confirmation: scans for uncommitted work, requires typed 'yes'.
     confirm_wipe(ctx, ui)?;
-    podman::remove_container(&ctx.container_name)?;
-    podman::remove_volume(&ctx.volume_name)?;
+    remove_container_task(ctx, ui, "tearing down the container")?;
+    remove_volume_task(ctx, ui, "removing the volume")?;
     ui.log(format!(
         "  destroyed container {} and its volume.",
         ctx.container_name
@@ -639,6 +651,27 @@ fn require_running(ctx: &LaunchContext) -> Result<()> {
     }
 }
 
+/// Force-remove the container (if present) as a spinner-backed task labelled
+/// `label`. Routing through `run_task` (which streams on a worker thread) means
+/// the panel shows an animated `working: <label>…` footer and stays responsive
+/// during the ~10s SIGTERM→SIGKILL teardown, instead of freezing on a blocking
+/// `.run()`. No-op if the container is already gone.
+fn remove_container_task(ctx: &LaunchContext, ui: &mut Ui, label: &str) -> Result<()> {
+    if podman::container_exists(&ctx.container_name) {
+        ui.run_task(label, podman().args(["rm", "-f", &ctx.container_name]))?;
+    }
+    Ok(())
+}
+
+/// Remove the project volume (if present) as a spinner-backed task labelled
+/// `label`, for the same non-blocking reason as [`remove_container_task`].
+fn remove_volume_task(ctx: &LaunchContext, ui: &mut Ui, label: &str) -> Result<()> {
+    if podman::volume_exists(&ctx.volume_name) {
+        ui.run_task(label, podman().args(["volume", "rm", &ctx.volume_name]))?;
+    }
+    Ok(())
+}
+
 /// Whether `cmd` resolves inside the container for the dev user. Probes with a
 /// plain `podman exec … sh -c 'command -v'`, which sees the image's ENV PATH —
 /// the exact PATH the agent launch itself runs under (pnpm's global bin dir is
@@ -702,7 +735,10 @@ fn save_and_regen_allowlist(
     if podman::container_running(&ctx.container_name)
         && ui.confirm("Restart the container to apply the new allowlist?", false)?
     {
-        podman().args(["restart", &ctx.container_name]).run()?;
+        ui.run_task(
+            "restarting the container",
+            podman().args(["restart", &ctx.container_name]),
+        )?;
     }
     Ok(())
 }
@@ -712,7 +748,7 @@ fn offer_recreate(ctx: &LaunchContext, ui: &mut Ui, changed: &str) -> Result<()>
         "  {changed} saved — it applies only after a container recreate (env is frozen at create)."
     ));
     if ui.confirm("Recreate the container now?", false)? {
-        podman::remove_container(&ctx.container_name)?;
+        remove_container_task(ctx, ui, "recreating the container")?;
         return respawn_dev_window(ctx, ui);
     }
     Ok(())

@@ -88,6 +88,14 @@ harness_launch() {
     tmux has-session -t "$HARNESS_SESSION" 2>/dev/null \
         || { echo "FATAL: session not created"; cat "$HOME/launch.log"; return 1; }
 
+    # tmux defaults a detached session to 80x24, but the control panel's grouped
+    # menu is taller than 24 rows, so lower sections (e.g. "Container lifecycle")
+    # would be clipped in capture-pane. Real terminals are taller; give the
+    # session a realistic height so the whole menu renders and mc_vis sees every
+    # section. The panel autoresizes on its next redraw tick.
+    tmux set-option -t "$HARNESS_SESSION" window-size manual 2>/dev/null || true
+    tmux resize-window -t "$HARNESS_SESSION" -x 80 -y 50 2>/dev/null || true
+
     HARNESS_CNAME=""
     for _ in $(seq 1 60); do HARNESS_CNAME="$(harness_container)"; [[ -n "$HARNESS_CNAME" ]] && break; sleep 1; done
     [[ -n "$HARNESS_CNAME" ]] || { echo "FATAL: no container appeared"; return 1; }
