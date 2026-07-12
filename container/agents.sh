@@ -10,10 +10,12 @@
 # host bash and the container bash can source it safely. Requires bash 4+
 # (associative arrays) — the harness already relies on bash 4 elsewhere.
 #
-# Supply-chain posture: every npm-published agent is installed with
-# `pnpm add -g --ignore-scripts` (no lifecycle scripts run). Agents that are NOT
-# on npm (method=script) run a vendor installer instead — those are inherently
-# less contained and are flagged as such in the wizard.
+# Supply-chain posture: npm-published agents are installed with
+# `pnpm add -g --ignore-scripts` (no lifecycle scripts run). The lone exception
+# is claude (method=pnpm-build): its postinstall is allowed to run so it can copy
+# its native binary — shipped as an npm optionalDependency, so still registry-only
+# — into place. Agents NOT on npm (method=script) run a vendor installer instead;
+# those are inherently less contained and are flagged as such in the wizard.
 
 # Display / selection order.
 AGENT_IDS=(claude codex antigravity opencode pi kilocode)
@@ -28,11 +30,15 @@ declare -A AGENT_LABEL=(
 )
 
 # How each agent is installed:
-#   pnpm    -> pnpm add -g --ignore-scripts <spec>   (spec = npm package)
-#   script  -> curl <spec> | bash   (spec = installer URL) — NOT contained by
-#              --ignore-scripts; runs vendor code at container setup.
+#   pnpm        -> pnpm add -g --ignore-scripts <spec>   (spec = npm package)
+#   pnpm-build  -> pnpm add -g --allow-build=<spec> <spec> — like pnpm but the
+#                  package's own postinstall IS allowed to run (claude-code's
+#                  install.cjs copies its native binary, shipped as an npm
+#                  optionalDependency, into place). Still registry-only.
+#   script      -> curl <spec> | bash   (spec = installer URL) — NOT contained by
+#                  --ignore-scripts; runs vendor code at container setup.
 declare -A AGENT_METHOD=(
-    [claude]=pnpm
+    [claude]=pnpm-build
     [codex]=pnpm
     [antigravity]=script
     [opencode]=pnpm
@@ -91,9 +97,8 @@ declare -A AGENT_HOSTS=(
     [kilocode]="kilo.ai api.kilo.ai"
 )
 
-# Agents already baked into the base image (installed at build time with direct
-# egress). The in-container installer skips these — it never has to reinstall
-# them, and it must not clobber claude's build-time native-binary step.
-declare -A AGENT_PREBAKED=(
-    [claude]=true
-)
+# Agents baked into the base image at build time. Currently none: every agent
+# (claude included) is installed at container setup from $INSTALL_AGENTS, so an
+# unselected agent is genuinely absent. Kept as an (empty) extension point — an
+# entry set to `true` here makes the in-container installer skip that agent.
+declare -A AGENT_PREBAKED=()

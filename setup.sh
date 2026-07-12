@@ -71,12 +71,13 @@ do_prepare() {
         fi
     fi
 
-    # Install the coding agents picked in the wizard (idempotent; claude is
-    # baked into the image and skipped). Never fatal — the container comes up
-    # even if an agent fails to install.
+    # Install the coding agents picked in the wizard (idempotent; every agent,
+    # claude included, is installed here — nothing is baked into the image).
+    # No colon in the default: unset -> claude, explicitly empty -> nothing.
+    # Never fatal — the container comes up even if an agent fails to install.
     if [[ -x /usr/local/bin/install-agents ]]; then
-        log "installing selected agents: ${INSTALL_AGENTS:-claude}"
-        INSTALL_AGENTS="${INSTALL_AGENTS:-claude}" /usr/local/bin/install-agents \
+        log "installing selected agents: ${INSTALL_AGENTS-claude}"
+        INSTALL_AGENTS="${INSTALL_AGENTS-claude}" /usr/local/bin/install-agents \
             || echo "  warning: install-agents reported a problem (continuing)"
     fi
 }
@@ -90,14 +91,7 @@ print_banner() {
 
 Shell into the container (as the dev user):
   podman exec -it --user dev $CNAME bash
-
-Start Claude Code (remote control is on by default — pair from
-claude.ai/code or the mobile app to drive it from your phone):
-  podman exec -it --user dev $CNAME run-claude
-  (cds into the repo, opens the 'claude' tmux session, and runs
-   claude --dangerously-skip-permissions; re-running re-attaches.
-   Ctrl-a d detaches without killing it.)
-${AGENTS_BANNER:-}
+${CLAUDE_BANNER:-}${AGENTS_BANNER:-}
 Connect with VSCode (Dev Containers):
 
 ${VSCODE_SETUP_INSTRUCTIONS:-}
@@ -222,6 +216,24 @@ TBEOF
         fi
     fi
 
+    # Claude gets its own section (with the remote-control pairing note) — but
+    # only when it was actually selected, since it's now opt-out-able.
+    CLAUDE_BANNER=""
+    case " ${INSTALL_AGENTS-claude} " in
+        *" claude "*)
+            CLAUDE_BANNER=$(cat <<CBEOF
+
+Start Claude Code (remote control is on by default — pair from
+claude.ai/code or the mobile app to drive it from your phone):
+  podman exec -it --user dev $CNAME run-claude
+  (cds into the repo, opens the 'claude' tmux session, and runs
+   claude --dangerously-skip-permissions; re-running re-attaches.
+   Ctrl-a d detaches without killing it.)
+CBEOF
+)
+            ;;
+    esac
+
     # List the other agents the user picked (claude has its own section above)
     # and the bare command each one installs, so they know how to launch them.
     AGENTS_BANNER=""
@@ -229,7 +241,7 @@ TBEOF
         # shellcheck source=/dev/null
         source /usr/local/lib/rc-agents.sh
         _lines=""
-        for _id in ${INSTALL_AGENTS:-claude}; do
+        for _id in ${INSTALL_AGENTS-}; do
             [[ "$_id" == "claude" ]] && continue
             [[ -n "${AGENT_LABEL[$_id]:-}" ]] || continue
             _lines+=$(printf '\n    %-24s run: %s' "${AGENT_LABEL[$_id]}" "${AGENT_CMD[$_id]:-$_id}")

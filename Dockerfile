@@ -106,7 +106,7 @@ RUN userdel --remove ubuntu 2>/dev/null || true \
 # ---- egress proxy: runtime dirs --------------------------------------------
 # The proxy config + firewall entrypoint themselves are COPY'd at the END of
 # this file (after the heavy toolchain layers) so iterating on them doesn't
-# invalidate the nvim/mise/claude cache. Here we just prep the dirs.
+# invalidate the nvim/mise cache. Here we just prep the dirs.
 RUN mkdir -p /etc/tinyproxy /var/log/tinyproxy /run/tinyproxy \
  && : > /etc/tinyproxy/egress-allowlist.txt \
  && chown rcproxy:rcproxy /etc/tinyproxy/egress-allowlist.txt /var/log/tinyproxy /run/tinyproxy
@@ -150,11 +150,17 @@ RUN install -d -m 700 -o dev -g dev /home/dev/.ssh \
 # `podman exec` sessions default to root, so keep the opt-in for those.
 ENV IS_SANDBOX=1
 
-# ---- dev-user toolchain (mise / node / pnpm / claude / nvim) ---------------
+# ---- dev-user toolchain (mise / node / pnpm / nvim) ------------------------
 # Installed under /home/dev so it lands in the project's persistent volume on
 # first launch. These steps run with DIRECT build-time egress; the HTTP_PROXY
 # env is set further down, AFTER all network build steps, so it only affects
 # runtime (a build-time proxy var would point at a proxy that isn't running).
+#
+# No coding agent is baked in here — every agent (claude included) is installed
+# at container setup from $INSTALL_AGENTS via install-agents, so an agent the
+# user didn't pick is genuinely absent. That runtime install goes through the
+# egress proxy; claude's native binary ships as an npm optionalDependency, so
+# the already-whitelisted registry.npmjs.org is all it needs.
 ENV PNPM_HOME="/home/dev/.local/share/pnpm"
 ENV PATH="/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/home/dev/.local/share/pnpm/bin:${PATH}"
 
@@ -163,11 +169,8 @@ WORKDIR /home/dev
 
 RUN curl -fsSL https://mise.jdx.dev/install.sh | sh
 
-# pnpm v10+ blocks postinstall scripts; claude-code's install.cjs downloads the
-# native binary, so whitelist it via --allow-build.
 RUN mkdir -p "$PNPM_HOME" \
- && mise use -g node@lts pnpm@latest \
- && mise exec -- pnpm add -g --allow-build=@anthropic-ai/claude-code @anthropic-ai/claude-code
+ && mise use -g node@lts pnpm@latest
 
 # Seed LazyVim and pre-install plugins + treesitter parsers so the first
 # interactive nvim doesn't race async installers.
@@ -229,8 +232,10 @@ RUN chmod +x /usr/local/bin/egress-log
 
 # Agent registry + installer. The registry is the single source of truth shared
 # with the host wizard (create-dev-container.sh); install-agents reads it and
-# the $INSTALL_AGENTS env var to install the picked agents at container setup
-# (claude is already baked above and is marked prebaked, so it's never touched).
+# the $INSTALL_AGENTS env var to install the picked agents at container setup.
+# Nothing is baked into the image, so an unpicked agent (claude included) stays
+# absent; claude installs via pnpm --allow-build (its native binary is an npm
+# optionalDependency), the others via pnpm --ignore-scripts or a vendor script.
 COPY container/agents.sh /usr/local/lib/rc-agents.sh
 COPY container/bin/install-agents /usr/local/bin/install-agents
 RUN chmod +x /usr/local/bin/install-agents

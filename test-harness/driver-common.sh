@@ -22,15 +22,17 @@ harness_dummy_key() {
 }
 
 # Write a project .env. $1=project dir, $2=optional SESSION_NAME.
+# $3 = INSTALL_AGENTS value (space-separated ids). Defaults to "claude"; pass ""
+# to select NO agents (exercises the opt-out path — claude must then be absent).
 harness_write_env() {
-    local proj="$1" session="${2:-}"
+    local proj="$1" session="${2:-}" agents="${3-claude}"
     mkdir -p "$proj"
     {
         echo "PROJECT_NAME=harness"
         echo "REPO_URL=$HARNESS_REPO_URL"
         echo "DEPLOY_KEY_PATH=$HOME/.ssh/harness-key"
         echo "WEBAPP_PORT=3000"
-        echo 'INSTALL_AGENTS="claude"'
+        echo "INSTALL_AGENTS=\"$agents\""
         [[ -n "$session" ]] && echo "SESSION_NAME=$session"
     } > "$proj/.env"
 }

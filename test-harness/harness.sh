@@ -12,7 +12,8 @@
 #     egress     workload default-deny enforcement + blocked-egress menu utility
 #     lifecycle  recreate (persistence) + destroy (confirm/scan/key) teardown
 #     install    install a coding agent: live progress + menu disabled (no cascade)
-#     all        verify + menu + egress + lifecycle + install (default)
+#     agents     claude is opt-out: absent when unselected, installable on demand
+#     all        verify + menu + egress + lifecycle + install + agents (default)
 #
 # This is a heavy, opt-in tier — it is NOT part of `cargo test`. It needs a
 # rootless-podman host with /dev/fuse and /dev/net/tun.
@@ -75,6 +76,10 @@ case "$target" in
         echo "==> install: install a coding agent — live progress + no cascade"
         run_driver driver-install.sh
         ;;
+    agents)
+        echo "==> agents: claude opt-out (absent unselected) + opt-in (menu install)"
+        run_driver driver-agents.sh
+        ;;
     all)
         echo "==> verify: nested base build + egress self-check"
         run_driver driver-verify.sh
@@ -84,11 +89,13 @@ case "$target" in
         run_driver driver-egress.sh
         echo "==> install: install a coding agent — live progress + no cascade"
         run_driver driver-install.sh
+        echo "==> agents: claude opt-out (absent unselected) + opt-in (menu install)"
+        run_driver driver-agents.sh
         echo "==> lifecycle: recreate persistence + destroy teardown"
         run_driver driver-lifecycle.sh
         ;;
     *)
-        echo "unknown target: $target (want: verify | launch | menu | egress | lifecycle | install | all)" >&2
+        echo "unknown target: $target (want: verify | launch | menu | egress | lifecycle | install | agents | all)" >&2
         exit 2
         ;;
 esac

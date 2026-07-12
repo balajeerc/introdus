@@ -279,6 +279,8 @@ it. Heavy + opt-in (needs a rootless-podman host with `/dev/fuse` +
 | TA114 | `.env` parity: generated vs a `./launch.sh` run behave identically | ❌ | 4 | diff both `.env`s and both containers' `podman inspect` |
 | TA115 | Runtime agent install streams live progress (spinner) and actually installs — codex (npm) + antigravity (vendor script, whose download host must be allowlisted) | ✅ harness `install` | 1 | `test-harness/harness.sh install` |
 | TA116 | A long action disables the menu: keys mashed during an install don't cascade into other actions (a stray Stop is ignored) | ✅ harness `install` | 1 | driver-install.sh: stray Stop during install → container still running |
+| TA117 | claude is opt-out: with `INSTALL_AGENTS=""` (nothing selected) claude is genuinely **absent** — nothing prebakes or force-installs it | ✅ harness `agents` | 1 | driver-agents.sh: `command -v claude` fails after launch |
+| TA118 | claude is opt-in: installable on demand through the menu via `pnpm --allow-build` (its native binary ships as an npm optionalDependency — no extra egress host) | ✅ harness `agents` | 1 | driver-agents.sh: menu-install claude, then `command -v claude` succeeds |
 
 ---
 
@@ -297,13 +299,15 @@ it. Heavy + opt-in (needs a rootless-podman host with `/dev/fuse` +
   session → nested dev container → egress firewall → clone → live control TUI is
   driven and asserted by the rootless podman-in-podman harness
   (`test-harness/harness.sh`, targets `verify` / `menu` / `egress` /
-  `lifecycle` / `install`): base build + egress self-check (TA23, TA33, TA49),
+  `lifecycle` / `install` / `agents`): base build + egress self-check (TA23, TA33, TA49),
   **workload egress enforcement (TA41)**, container boot + privilege drop
   (TA48), session + menu utilities (TA67, TA85, TA88–TA91, TA93–TA95), the
   **reset/destroy data-loss safety scan** (TA54–TA56, TA58, TA59, TA63 —
   planting uncommitted + unpushed state and asserting the scan reports it), the
   **runtime agent install** with live progress + menu-disabled-while-running
-  (TA86, TA115, TA116), and the end-to-end pass (TA109–TA112). Heavy + opt-in,
+  (TA86, TA115, TA116), **claude as an opt-out-able agent** (TA117, TA118 —
+  absent when unselected, installable on demand), and the end-to-end pass
+  (TA109–TA112). Heavy + opt-in,
   not in `cargo test`.
 - **Highest manual reliance (rating 5):** what still needs external services or
   eyes no harness provides — notification delivery to a desktop/phone

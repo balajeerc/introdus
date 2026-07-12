@@ -300,15 +300,17 @@ export PATH="/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/home/dev/.l
 eval "$(/home/dev/.local/bin/mise activate bash)"
 mise self-update -y || true
 mise upgrade
-pnpm update -g @anthropic-ai/claude-code
-node "$(pnpm root -g)/@anthropic-ai/claude-code/install.cjs"
+# Install any newly-selected agents (idempotent — skips those already present).
 [ -x /usr/local/bin/install-agents ] && /usr/local/bin/install-agents || true
+# Update the installed agents in place, honouring each one's install method.
+# claude is no longer special-cased — it's a normal pnpm-build agent now.
 if [ -f /usr/local/lib/rc-agents.sh ]; then
   . /usr/local/lib/rc-agents.sh
-  for _id in ${INSTALL_AGENTS:-claude}; do
-    [ "$_id" = claude ] && continue
-    [ "${AGENT_METHOD[$_id]:-}" = pnpm ] || continue
-    pnpm update -g --ignore-scripts "${AGENT_SPEC[$_id]}" || true
+  for _id in ${INSTALL_AGENTS-claude}; do
+    case "${AGENT_METHOD[$_id]:-}" in
+      pnpm)       pnpm update -g --ignore-scripts "${AGENT_SPEC[$_id]}" || true ;;
+      pnpm-build) pnpm update -g --allow-build="${AGENT_SPEC[$_id]}" "${AGENT_SPEC[$_id]}" || true ;;
+    esac
   done
 fi
 nvim --headless "+Lazy! sync" +qa"#;

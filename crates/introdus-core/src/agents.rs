@@ -8,6 +8,12 @@
 pub enum InstallMethod {
     /// `pnpm add -g --ignore-scripts <spec>` — no package lifecycle scripts run.
     Pnpm,
+    /// `pnpm add -g --allow-build=<spec> <spec>` — the package's own postinstall
+    /// IS allowed to run (claude-code's `install.cjs`, which copies the native
+    /// binary shipped as an npm optionalDependency into place). Still pulls only
+    /// from the npm registry; the sole relaxation vs. `Pnpm` is running that one
+    /// lifecycle script. Flagged in the wizard.
+    PnpmBuild,
     /// `curl <spec> | bash` — a vendor installer, NOT contained by
     /// `--ignore-scripts`. Flagged as higher-risk in the wizard.
     Script,
@@ -40,11 +46,15 @@ pub const AGENTS: &[Agent] = &[
     Agent {
         id: "claude",
         label: "Claude (Anthropic)",
-        method: InstallMethod::Pnpm,
+        // PnpmBuild, not Pnpm: claude-code's postinstall (install.cjs) copies the
+        // native binary (an npm optionalDependency, so still fetched only from the
+        // registry) over its placeholder. --ignore-scripts would leave a broken
+        // stub, so the build script is allowed for this package alone.
+        method: InstallMethod::PnpmBuild,
         spec: "@anthropic-ai/claude-code",
         cmd: "claude",
-        hosts: "",
-        prebaked: true,
+        hosts: "", // native binary ships via the npm registry — no extra host
+        prebaked: false,
     },
     Agent {
         id: "codex",

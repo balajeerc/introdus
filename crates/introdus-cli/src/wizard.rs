@@ -72,19 +72,18 @@ fn prompt_agents() -> Result<Vec<String>> {
         .iter()
         .position(|a| a.id == "claude")
         .unwrap_or(0);
+    // Claude is pre-ticked as the common default, but it's a real, opt-out-able
+    // choice now: untick it and it is genuinely not installed. Nothing forces it
+    // back into the selection.
     let picked = ui::multiselect_indexed(
         "Coding agents to install (space toggles, enter confirms):",
         &options,
         &[claude_idx],
     )?;
-    let mut ids: Vec<String> = picked
+    let ids: Vec<String> = picked
         .into_iter()
         .filter_map(|i| agents::AGENTS.get(i).map(|a| a.id.to_owned()))
         .collect();
-    // Claude is baked into the image; keep it selected regardless.
-    if !ids.iter().any(|id| id == "claude") {
-        ids.insert(0, "claude".to_owned());
-    }
     Ok(ids)
 }
 
@@ -93,6 +92,7 @@ fn prompt_agents() -> Result<Vec<String>> {
 fn choice_label(a: &'static Agent) -> String {
     let method_note = match a.method {
         agents::InstallMethod::Script => "  [vendor installer — runs remote code]",
+        agents::InstallMethod::PnpmBuild => "  [runs its own npm postinstall]",
         agents::InstallMethod::Pnpm => "",
     };
     format!("{}{}", a.label, method_note)

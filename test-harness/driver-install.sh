@@ -20,7 +20,8 @@ harness_launch "$session" "$proj"
 cname="$HARNESS_CNAME"
 running() { podman container inspect -f '{{.State.Running}}' "$cname" 2>/dev/null | grep -qx true; }
 
-# codex is not prebaked (only claude is), so it starts absent.
+# This project selected only claude (INSTALL_AGENTS="claude"), so codex is not
+# installed and starts absent.
 if podman exec --user dev "$cname" test -e /home/dev/.local/share/pnpm/bin/codex; then
     echo "FATAL: codex already present before the test"; exit 1
 fi
@@ -29,7 +30,7 @@ fi
 echo "==> menu: Install a coding agent → codex"
 mc_select "Install a coding agent"
 mc_wait_prompt "Install which agents" "install picker"
-mc_send Space   # toggle the first candidate (codex is first: claude is prebaked)
+mc_send Space   # toggle the first candidate (codex is first: claude already selected)
 mc_send Enter   # confirm the selection
 # Saving the new allowlist offers a restart to apply it; decline (default No).
 mc_wait_prompt "Restart the container to apply" "restart offer"
