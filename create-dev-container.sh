@@ -84,7 +84,8 @@ slugify() {
 }
 
 # Interactive checklist of coding agents to install (from the shared registry).
-# Claude is pre-selected (it is the harness default, baked into the base image).
+# Claude is pre-ticked as the common default, but it's opt-out-able — untick it
+# and it is genuinely not installed (nothing is baked into the base image).
 # Sets INSTALL_AGENTS (space-separated ids, registry order) and AGENT_EXTRA_HOSTS
 # (per-agent egress hosts to fold into the WHITELIST block).
 choose_agents() {
@@ -95,8 +96,9 @@ choose_agents() {
 
     echo
     echo "  Coding agents to install in the container:"
-    echo "    (npm agents install with 'pnpm add -g --ignore-scripts'; agents not on"
-    echo "     npm run a vendor installer, flagged below.)"
+    echo "    (npm agents install with 'pnpm add -g --ignore-scripts'; claude uses"
+    echo "     --allow-build so it can place its native binary; agents not on npm run"
+    echo "     a vendor installer, flagged below. Untick all for no agent.)"
     while true; do
         echo
         local i=1 mark note
@@ -125,9 +127,14 @@ choose_agents() {
     for id in "${AGENT_IDS[@]}"; do
         [[ "${picked[$id]}" == 1 ]] && INSTALL_AGENTS+="${INSTALL_AGENTS:+ }$id"
     done
-    [[ -n "$INSTALL_AGENTS" ]] || INSTALL_AGENTS="claude"
+    # No force-claude fallback: if the user unticked everything, INSTALL_AGENTS
+    # stays empty and no coding agent is installed.
     echo
-    echo "  ==> Agents: $INSTALL_AGENTS"
+    if [[ -n "$INSTALL_AGENTS" ]]; then
+        echo "  ==> Agents: $INSTALL_AGENTS"
+    else
+        echo "  ==> Agents: (none selected — no coding agent will be installed)"
+    fi
 
     for id in $INSTALL_AGENTS; do
         if [[ "${AGENT_METHOD[$id]}" == script ]]; then
@@ -375,7 +382,9 @@ ENV_OUT="$PROJECT_DIR/.env"
     echo "CPU_LIMIT=$CPU_LIMIT"
     echo
     echo "# Coding agents installed in the container (see container/agents.sh)."
-    echo "INSTALL_AGENTS=$INSTALL_AGENTS"
+    # Quoted so a multi-agent list ("claude codex") and an empty selection ("")
+    # both round-trip through launch_dev_container.sh's `set -a; source .env`.
+    echo "INSTALL_AGENTS=\"$INSTALL_AGENTS\""
     echo
     echo "SHARED_DATA_PATH=$SHARED_DATA_PATH"
     if [[ -n "$ON_LAUNCH_SCRIPT" ]]; then

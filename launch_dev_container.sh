@@ -120,8 +120,10 @@ if [[ "$ENABLE_NOTIFY_SH_ALERTS" == "true" && -z "$NTFY_SH_TOPIC" ]]; then
 fi
 
 # Space-separated agent ids to install in the container (see container/agents.sh
-# for the registry). Defaults to just claude, which is baked into the base image.
-INSTALL_AGENTS="${INSTALL_AGENTS:-claude}"
+# for the registry). Nothing is baked into the base image; every agent installs
+# at setup. No colon in the default: an unset var defaults to claude, but an
+# explicitly empty INSTALL_AGENTS="" (no agent picked) stays empty.
+INSTALL_AGENTS="${INSTALL_AGENTS-claude}"
 
 MEM_LIMIT="${MEM_LIMIT:-8g}"
 CPU_LIMIT="${CPU_LIMIT:-8}"
@@ -287,18 +289,17 @@ export PATH="/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/home/dev/.l
 eval "$(/home/dev/.local/bin/mise activate bash)"
 mise self-update -y || true
 mise upgrade
-# claude is baked into the image: update it and replay its native install step.
-pnpm update -g @anthropic-ai/claude-code
-node "$(pnpm root -g)/@anthropic-ai/claude-code/install.cjs"
-# Other selected agents: install any newly-added ones (idempotent), then update
-# the pnpm-managed ones in place with lifecycle scripts still ignored.
+# Install any newly-selected agents (idempotent — skips those already present).
 [ -x /usr/local/bin/install-agents ] && /usr/local/bin/install-agents || true
+# Update the installed agents in place, per each agent method (claude is no
+# longer special-cased — it is a normal pnpm-build agent now).
 if [ -f /usr/local/lib/rc-agents.sh ]; then
   . /usr/local/lib/rc-agents.sh
-  for _id in ${INSTALL_AGENTS:-claude}; do
-    [ "$_id" = claude ] && continue
-    [ "${AGENT_METHOD[$_id]:-}" = pnpm ] || continue
-    pnpm update -g --ignore-scripts "${AGENT_SPEC[$_id]}" || true
+  for _id in ${INSTALL_AGENTS-claude}; do
+    case "${AGENT_METHOD[$_id]:-}" in
+      pnpm)       pnpm update -g --ignore-scripts "${AGENT_SPEC[$_id]}" || true ;;
+      pnpm-build) pnpm update -g --allow-build="${AGENT_SPEC[$_id]}" "${AGENT_SPEC[$_id]}" || true ;;
+    esac
   done
 fi
 nvim --headless "+Lazy! sync" +qa'
