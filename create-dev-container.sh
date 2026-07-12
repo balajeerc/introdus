@@ -84,15 +84,14 @@ slugify() {
 }
 
 # Interactive checklist of coding agents to install (from the shared registry).
-# Claude is pre-ticked as the common default, but it's opt-out-able — untick it
-# and it is genuinely not installed (nothing is baked into the base image).
+# Every agent is explicit opt-in: nothing is pre-ticked, and nothing is baked
+# into the base image, so an agent is installed only if the user ticks it here.
 # Sets INSTALL_AGENTS (space-separated ids, registry order) and AGENT_EXTRA_HOSTS
 # (per-agent egress hosts to fold into the WHITELIST block).
 choose_agents() {
     local -A picked=()
     local id
     for id in "${AGENT_IDS[@]}"; do picked[$id]=0; done
-    picked[claude]=1
 
     echo
     echo "  Coding agents to install in the container:"

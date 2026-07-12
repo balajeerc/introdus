@@ -68,17 +68,13 @@ fn apply_agents(config: &mut Config, selected: Vec<String>) {
 
 fn prompt_agents() -> Result<Vec<String>> {
     let options: Vec<String> = agents::AGENTS.iter().map(choice_label).collect();
-    let claude_idx = agents::AGENTS
-        .iter()
-        .position(|a| a.id == "claude")
-        .unwrap_or(0);
-    // Claude is pre-ticked as the common default, but it's a real, opt-out-able
-    // choice now: untick it and it is genuinely not installed. Nothing forces it
-    // back into the selection.
+    // Every agent is explicit opt-in: nothing is pre-checked, so an agent is
+    // installed only if the user ticks it (space toggles). Confirming with none
+    // ticked installs no coding agent at all.
     let picked = ui::multiselect_indexed(
         "Coding agents to install (space toggles, enter confirms):",
         &options,
-        &[claude_idx],
+        &[],
     )?;
     let ids: Vec<String> = picked
         .into_iter()

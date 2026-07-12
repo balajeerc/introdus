@@ -404,7 +404,7 @@ fn draw_frame(
     // A prompt (if any) is a full-width band at the bottom, above the footer —
     // it never covers the panes, and its full width keeps long prompt text on a
     // single line (so the output pane stays fully visible alongside it).
-    let prompt_h = popup.map_or(0, prompt_height);
+    let prompt_h = popup.map_or(0, |p| prompt_height(p, f.area().width));
     let root = Layout::vertical([
         Constraint::Min(3),
         Constraint::Length(prompt_h),
@@ -432,12 +432,14 @@ fn draw_frame(
     draw_footer(f, root[2], query, busy);
 }
 
-fn prompt_height(popup: &Popup) -> u16 {
+fn prompt_height(popup: &Popup, width: u16) -> u16 {
     // +1 for the top separator border line.
     1 + match popup {
         Popup::Pick { items, .. } => (items.len() as u16).min(12) + 1,
-        // Question on its own row + the Yes/No option row below it.
-        Popup::Confirm { .. } => 2,
+        // The (wrapped) question rows + the Yes/No option row below it. The
+        // launch confirms name a long flag, so the question routinely wraps —
+        // size the band to show all of it rather than clipping at the edge.
+        Popup::Confirm { prompt, .. } => ui::confirm_question_rows(prompt, width) + 1,
         _ => 1,
     }
 }
@@ -607,8 +609,13 @@ fn draw_prompt(f: &mut Frame, area: Rect, popup: &Popup) {
     f.render_widget(block, area);
     match *popup {
         Popup::Confirm { prompt, answer } => {
-            let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(inner);
-            f.render_widget(Paragraph::new(question(prompt)), rows[0]);
+            // Question wraps in the top area; the Yes/No options are pinned to the
+            // last row so they're always visible even when the question wraps.
+            let rows = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).split(inner);
+            f.render_widget(
+                Paragraph::new(question(prompt)).wrap(Wrap { trim: false }),
+                rows[0],
+            );
             f.render_widget(Paragraph::new(confirm_options(answer)), rows[1]);
         }
         Popup::Text {

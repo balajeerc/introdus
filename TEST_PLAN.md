@@ -281,6 +281,9 @@ it. Heavy + opt-in (needs a rootless-podman host with `/dev/fuse` +
 | TA116 | A long action disables the menu: keys mashed during an install don't cascade into other actions (a stray Stop is ignored) | ✅ harness `install` | 1 | driver-install.sh: stray Stop during install → container still running |
 | TA117 | claude is opt-out: with `INSTALL_AGENTS=""` (nothing selected) claude is genuinely **absent** — nothing prebakes or force-installs it | ✅ harness `agents` | 1 | driver-agents.sh: `command -v claude` fails after launch |
 | TA118 | claude is opt-in: installable on demand through the menu via `pnpm --allow-build` (its native binary ships as an npm optionalDependency — no extra egress host) | ✅ harness `agents` | 1 | driver-agents.sh: menu-install claude, then `command -v claude` succeeds |
+| TA119 | Launching an agent offers its skip-permissions/auto flag and passes it: accepting claude's prompt launches it with `--dangerously-skip-permissions` | ✅ harness `agent-launch` | 1 | driver-agent-launch.sh: pick claude → confirm → `pgrep -f 'run-claude --dangerously-skip-permissions'` |
+| TA120 | Confirm prompts render the choice as highlighted Yes/No options (visible, not clipped) | ✅ harness `agent-launch` | 1 | driver-agent-launch.sh: the skip-permissions confirm shows Yes + No |
+| TA77 | Wizard agents are opt-in: nothing pre-checked (Claude shows `[ ]`), confirming with none ticked writes `INSTALL_AGENTS=""` | ✅ pty `wizard_pty` | 1 | ta77_wizard_agents_are_opt_in_nothing_preselected |
 
 ---
 
@@ -299,7 +302,7 @@ it. Heavy + opt-in (needs a rootless-podman host with `/dev/fuse` +
   session → nested dev container → egress firewall → clone → live control TUI is
   driven and asserted by the rootless podman-in-podman harness
   (`test-harness/harness.sh`, targets `verify` / `menu` / `egress` /
-  `lifecycle` / `install` / `agents`): base build + egress self-check (TA23, TA33, TA49),
+  `lifecycle` / `install` / `agents` / `agent-launch`): base build + egress self-check (TA23, TA33, TA49),
   **workload egress enforcement (TA41)**, container boot + privilege drop
   (TA48), session + menu utilities (TA67, TA85, TA88–TA91, TA93–TA95), the
   **reset/destroy data-loss safety scan** (TA54–TA56, TA58, TA59, TA63 —

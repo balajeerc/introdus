@@ -19,7 +19,7 @@ use ratatui::crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{List, ListItem, ListState, Paragraph};
+use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
 
 pub(crate) type Backend = CrosstermBackend<Stdout>;
@@ -227,6 +227,25 @@ pub(crate) fn confirm_options(answer: bool) -> Line<'static> {
     ])
 }
 
+/// Rows a single line of `text` occupies when wrapped to `width` columns
+/// (char-count approximation — fine for the ASCII prompts here).
+pub(crate) fn wrapped_line_count(text: &str, width: u16) -> u16 {
+    let w = width.max(1) as usize;
+    text.chars().count().div_ceil(w).max(1) as u16
+}
+
+/// Rows the wrapped confirm question needs, with a headroom row so word-wrap
+/// (which can break earlier than the char-count estimate) is never clipped. The
+/// Yes/No option row is added on top by the caller.
+pub(crate) fn confirm_question_rows(prompt: &str, width: u16) -> u16 {
+    let est = wrapped_line_count(&format!("? {prompt}"), width);
+    if est > 1 {
+        est + 1
+    } else {
+        1
+    }
+}
+
 /// One Yes/No option; highlighted (reversed accent) when it's the active choice.
 fn confirm_pill(text: &str, active: bool) -> Span<'static> {
     let style = if active {
@@ -395,11 +414,16 @@ struct ConfirmModal<'a> {
 }
 impl Modal for ConfirmModal<'_> {
     fn height(&self) -> u16 {
-        2
+        // Wrapped question rows + the Yes/No option row — so a long prompt
+        // (e.g. a reuse-key path) is fully shown rather than clipped.
+        confirm_question_rows(self.prompt, crossterm_size().0) + 1
     }
     fn draw(&self, f: &mut Frame) {
-        let rows = Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).split(f.area());
-        f.render_widget(Paragraph::new(question(self.prompt)), rows[0]);
+        let rows = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).split(f.area());
+        f.render_widget(
+            Paragraph::new(question(self.prompt)).wrap(Wrap { trim: false }),
+            rows[0],
+        );
         f.render_widget(Paragraph::new(confirm_options(self.answer)), rows[1]);
     }
     fn step(&mut self, code: KeyCode, mods: KeyModifiers) -> Step {
@@ -573,6 +597,21 @@ mod tests {
             assert!(matches!(confirm_step(key, none, &mut e), Step::Continue));
             assert_eq!(e, !before, "{key:?} should toggle the highlight");
         }
+    }
+
+    #[test]
+    fn ta81_confirm_question_grows_for_long_prompts() {
+        // A short prompt fits one row (the options row is added by the caller).
+        assert_eq!(confirm_question_rows("Delete it?", 80), 1);
+        // A long launch-style prompt wraps and gets a headroom row.
+        let long = "Launch Codex (OpenAI) with --dangerously-bypass-approvals-and-sandbox \
+                    — skips ALL permission prompts (unattended)?";
+        assert!(
+            confirm_question_rows(long, 80) >= 2,
+            "should wrap at 80 cols"
+        );
+        // A narrower terminal needs at least as many rows.
+        assert!(confirm_question_rows(long, 40) >= confirm_question_rows(long, 80));
     }
 
     #[test]
