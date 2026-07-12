@@ -101,6 +101,31 @@ pub fn launch_agent(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     let id = ui.select("Launch which agent?", installed)?;
     let agent = agents::find(&id);
     let label = agent.map(|a| a.label).unwrap_or(id.as_str());
+    let cmd_name = agent.map(|a| a.cmd).unwrap_or(id.as_str());
+
+    // The menu lists what was *selected* in `.env`, but install-agents is
+    // deliberately never-fatal: a blocked-egress or pnpm failure leaves the
+    // agent absent while it stays in the config. Launching a missing binary just
+    // flashes a tmux window that exits 127 ("command not found"). So verify the
+    // binary is actually present first, and offer to (re)install it if not.
+    if !container_has_cmd(ctx, cmd_name) {
+        ui.log(format!(
+            "  {label} is selected but its `{cmd_name}` command isn't installed"
+        ));
+        ui.log("  (the earlier install likely failed — e.g. blocked egress to the registry).");
+        if !ui.confirm(&format!("Install {label} now?"), true)? {
+            ui.log("  skipped — nothing launched.");
+            return Ok(());
+        }
+        install_one_agent(ctx, ui, &id)?;
+        if !container_has_cmd(ctx, cmd_name) {
+            bail!(
+                "{label} still isn't installed after the attempt — check `egress-log` \
+                 for a blocked host, then try Recreate + install again"
+            );
+        }
+    }
+
     let flag = resolve_yolo(
         agent.map(|a| a.yolo).unwrap_or(agents::Yolo::None),
         label,
@@ -113,7 +138,7 @@ pub fn launch_agent(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
         // session). Tell it whether to skip permissions: the flag, or `--safe`.
         cmd = cmd.arg("run-claude").arg(flag.unwrap_or("--safe"));
     } else {
-        cmd = cmd.arg(agent.map(|a| a.cmd).unwrap_or(id.as_str()));
+        cmd = cmd.arg(cmd_name);
         if let Some(f) = flag {
             cmd = cmd.arg(f);
         }
@@ -262,6 +287,22 @@ pub fn install_agent(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
         config.clone(),
         &format!("selected: {}", picked.join(", ")),
     )?;
+    run_install_agents(ctx, ui, &config.install_agents.join(" "))?;
+    ui.log(
+        "  note: new egress hosts apply after a restart — use Recreate if an install was blocked.",
+    );
+    Ok(())
+}
+
+/// Install a single agent on demand (used when a selected agent's binary is
+/// missing at launch). The agent is already in `.env`; this just (re)runs the
+/// in-container installer for it.
+fn install_one_agent(ctx: &LaunchContext, ui: &mut Ui, id: &str) -> Result<()> {
+    run_install_agents(ctx, ui, id)
+}
+
+/// Stream `install-agents` for the given space-separated agent ids.
+fn run_install_agents(ctx: &LaunchContext, ui: &mut Ui, agent_ids: &str) -> Result<()> {
     // Pass INSTALL_AGENTS *into* the container with an `env` prefix — a host-side
     // `.env()` on the podman process is NOT forwarded through `podman exec`, so
     // install-agents would otherwise only see the baked-in list and install
@@ -271,16 +312,9 @@ pub fn install_agent(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
         "install-agents",
         exec(ctx, Some("dev"))
             .arg("env")
-            .arg(format!(
-                "INSTALL_AGENTS={}",
-                config.install_agents.join(" ")
-            ))
+            .arg(format!("INSTALL_AGENTS={agent_ids}"))
             .arg("install-agents"),
-    )?;
-    ui.log(
-        "  note: new egress hosts apply after a restart — use Recreate if an install was blocked.",
-    );
-    Ok(())
+    )
 }
 
 // ---- copy a host file into the container ------------------------------------
@@ -342,6 +376,28 @@ pub fn restart(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     podman().args(["restart", &ctx.container_name]).run()?;
     ui.log("  restarted.");
     Ok(())
+}
+
+/// Quit flow: confirm, stop the container, and tell the caller to tear the
+/// whole tmux session down (closing every window). `Ok(true)` proceeds with the
+/// quit; `Ok(false)` means the user cancelled.
+pub fn stop_for_quit(ctx: &LaunchContext, ui: &mut Ui) -> Result<bool> {
+    if !ui.confirm(
+        "Quit introdus — stop the container and close all its windows?",
+        true,
+    )? {
+        ui.log("  cancelled.");
+        return Ok(false);
+    }
+    if podman::container_running(&ctx.container_name) {
+        ui.log(format!("  stopping {}…", ctx.container_name));
+        podman().args(["stop", &ctx.container_name]).run()?;
+        ui.log("  container stopped.");
+    } else {
+        ui.log("  container already stopped.");
+    }
+    ui.log("  closing all windows…");
+    Ok(true)
 }
 
 /// Stop the container (keeps it and its volume; Restart brings it back).
@@ -463,11 +519,21 @@ fn require_running(ctx: &LaunchContext) -> Result<()> {
     }
 }
 
+/// Whether `cmd` resolves inside the container for the dev user. Probes with a
+/// plain `podman exec … sh -c 'command -v'`, which sees the image's ENV PATH —
+/// the exact PATH the agent launch itself runs under (pnpm's global bin dir is
+/// on it), so a hit here means the launch will find the binary too.
+fn container_has_cmd(ctx: &LaunchContext, cmd: &str) -> bool {
+    exec(ctx, Some("dev"))
+        .args(["sh", "-c", &format!("command -v {}", shell_quote(cmd))])
+        .ok()
+}
+
 fn exec(ctx: &LaunchContext, user: Option<&str>) -> introdus_core::process::Cmd {
     podman::exec(&ctx.container_name, user)
 }
 
-fn session_of(ctx: &LaunchContext) -> String {
+pub(crate) fn session_of(ctx: &LaunchContext) -> String {
     ctx.config
         .session_name
         .clone()

@@ -45,6 +45,7 @@ enum Action {
     Destroy,
     Refresh,
     Quit,
+    QuitStop,
 }
 
 impl std::fmt::Display for Action {
@@ -68,7 +69,8 @@ impl std::fmt::Display for Action {
             Action::Reset => "Reset the container (wipe the volume)",
             Action::Destroy => "Destroy the container (remove volume + key)",
             Action::Refresh => "Refresh status",
-            Action::Quit => "Quit this menu",
+            Action::Quit => "Quit this menu (leave the container running)",
+            Action::QuitStop => "Quit introdus (stop the container)",
         };
         f.write_str(s)
     }
@@ -99,6 +101,7 @@ const MENU: &[Row] = &[
     Row::Header("Menu"),
     Row::Item(Action::Refresh),
     Row::Item(Action::Quit),
+    Row::Item(Action::QuitStop),
 ];
 
 /// Run the control menu for the current project until the user quits. The
@@ -107,45 +110,72 @@ const MENU: &[Row] = &[
 pub fn run() -> Result<()> {
     let dir = std::env::current_dir()?;
     let env = env_path(&dir);
-    let mut ui = Ui::new()?;
-    loop {
-        // Reload each iteration so actions that edited .env are reflected, and
-        // re-snapshot the container state for the status panel.
-        let config = Config::load(&env)?;
-        let ctx = LaunchContext::resolve(config, dir.clone())?;
-        let status = status_of(&ctx);
-        let rows: Vec<ui::Row> = MENU
-            .iter()
-            .map(|r| match r {
-                Row::Header(h) => ui::Row::Header((*h).to_owned()),
-                Row::Item(a) => ui::Row::Item(a.to_string()),
-            })
-            .collect();
-        ui.set_menu(status, rows);
+    // Set when the user picks "Quit introdus (stop the container)": after the Ui
+    // is torn down we kill this tmux session, closing every window.
+    let mut kill_session: Option<String> = None;
+    {
+        let mut ui = Ui::new()?;
+        loop {
+            // Reload each iteration so actions that edited .env are reflected, and
+            // re-snapshot the container state for the status panel.
+            let config = Config::load(&env)?;
+            let ctx = LaunchContext::resolve(config, dir.clone())?;
+            let status = status_of(&ctx);
+            let rows: Vec<ui::Row> = MENU
+                .iter()
+                .map(|r| match r {
+                    Row::Header(h) => ui::Row::Header((*h).to_owned()),
+                    Row::Item(a) => ui::Row::Item(a.to_string()),
+                })
+                .collect();
+            ui.set_menu(status, rows);
 
-        let action = match ui.run_menu()? {
-            Selection::Item(idx) => match MENU[idx] {
-                Row::Item(a) => a,
-                Row::Header(_) => continue,
-            },
-            // A poll tick: re-snapshot the status (the loop top does it) + redraw.
-            Selection::Tick => continue,
-            Selection::Quit => break,
-        };
-        match action {
-            Action::Quit => break,
-            // Refresh just falls through to the next loop, which re-snapshots.
-            Action::Refresh => continue,
-            _ => {
-                ui.begin(&action.to_string());
-                if let Err(e) = dispatch(action, &ctx, &mut ui) {
-                    ui.log(format!("  ! {e:#}"));
+            let action = match ui.run_menu()? {
+                Selection::Item(idx) => match MENU[idx] {
+                    Row::Item(a) => a,
+                    Row::Header(_) => continue,
+                },
+                // A poll tick: re-snapshot the status (loop top does it) + redraw.
+                Selection::Tick => continue,
+                Selection::Quit => break,
+            };
+            match action {
+                Action::Quit => break,
+                // Refresh just falls through to the next loop, which re-snapshots.
+                Action::Refresh => continue,
+                // Stop the container, then break out and (below, after the Ui is
+                // dropped) kill the whole session — closing every window.
+                Action::QuitStop => {
+                    ui.begin(&action.to_string());
+                    match act::stop_for_quit(&ctx, &mut ui) {
+                        Ok(true) => {
+                            kill_session = Some(act::session_of(&ctx));
+                            break;
+                        }
+                        Ok(false) => ui.drain_input(),
+                        Err(e) => {
+                            ui.log(format!("  ! {e:#}"));
+                            ui.drain_input();
+                        }
+                    }
                 }
-                // Discard keys mashed while the (possibly blocking) action ran,
-                // so they don't fire as a cascade of unintended selections.
-                ui.drain_input();
+                _ => {
+                    ui.begin(&action.to_string());
+                    if let Err(e) = dispatch(action, &ctx, &mut ui) {
+                        ui.log(format!("  ! {e:#}"));
+                    }
+                    // Discard keys mashed while the (possibly blocking) action ran,
+                    // so they don't fire as a cascade of unintended selections.
+                    ui.drain_input();
+                }
             }
         }
+    } // Ui dropped here: alternate screen exited + terminal restored.
+
+    if let Some(session) = kill_session {
+        // Closes every window (this TUI's included); the detached notify service
+        // self-exits once the session is gone.
+        let _ = introdus_core::tmux::kill_session(&session);
     }
     Ok(())
 }
@@ -169,7 +199,8 @@ fn dispatch(action: Action, ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
         Action::Recreate => act::recreate(ctx, ui),
         Action::Reset => act::reset(ctx, ui),
         Action::Destroy => act::destroy(ctx, ui),
-        Action::Refresh | Action::Quit => Ok(()),
+        // Handled directly in `run()` (they end the loop), never dispatched.
+        Action::Refresh | Action::Quit | Action::QuitStop => Ok(()),
     }
 }
 

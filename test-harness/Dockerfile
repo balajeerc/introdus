@@ -30,11 +30,14 @@ COPY test-harness/driver-lifecycle.sh /usr/local/bin/driver-lifecycle.sh
 COPY test-harness/driver-install.sh /usr/local/bin/driver-install.sh
 COPY test-harness/driver-agents.sh /usr/local/bin/driver-agents.sh
 COPY test-harness/driver-agent-launch.sh /usr/local/bin/driver-agent-launch.sh
+COPY test-harness/driver-agent-missing.sh /usr/local/bin/driver-agent-missing.sh
+COPY test-harness/driver-quit-stop.sh /usr/local/bin/driver-quit-stop.sh
 RUN chmod 0755 /usr/local/bin/driver-common.sh /usr/local/bin/driver-verify.sh \
     /usr/local/bin/driver-launch.sh /usr/local/bin/driver-menu.sh \
     /usr/local/bin/driver-egress.sh /usr/local/bin/driver-lifecycle.sh \
     /usr/local/bin/driver-install.sh /usr/local/bin/driver-agents.sh \
-    /usr/local/bin/driver-agent-launch.sh
+    /usr/local/bin/driver-agent-launch.sh /usr/local/bin/driver-agent-missing.sh \
+    /usr/local/bin/driver-quit-stop.sh
 
 # Run as the preconfigured rootless user — introdus refuses to run as root.
 USER podman

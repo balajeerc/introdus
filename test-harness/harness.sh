@@ -14,8 +14,10 @@
 #     install    install a coding agent: live progress + menu disabled (no cascade)
 #     agents     claude is opt-out: absent when unselected, installable on demand
 #     agent-launch  launch an agent with its skip-permissions flag from the menu
+#     agent-missing a selected-but-uninstalled agent is caught before launch
+#     quit-stop  "Quit introdus (stop the container)" stops it + kills the session
 #     all        verify + menu + egress + lifecycle + install + agents +
-#                agent-launch (default)
+#                agent-launch + agent-missing + quit-stop (default)
 #
 # This is a heavy, opt-in tier — it is NOT part of `cargo test`. It needs a
 # rootless-podman host with /dev/fuse and /dev/net/tun.
@@ -86,6 +88,14 @@ case "$target" in
         echo "==> agent-launch: launch an agent with its skip-permissions flag"
         run_driver driver-agent-launch.sh
         ;;
+    agent-missing)
+        echo "==> agent-missing: a selected-but-uninstalled agent is caught before launch"
+        run_driver driver-agent-missing.sh
+        ;;
+    quit-stop)
+        echo "==> quit-stop: Quit introdus stops the container + kills the session"
+        run_driver driver-quit-stop.sh
+        ;;
     all)
         echo "==> verify: nested base build + egress self-check"
         run_driver driver-verify.sh
@@ -99,11 +109,15 @@ case "$target" in
         run_driver driver-agents.sh
         echo "==> agent-launch: launch an agent with its skip-permissions flag"
         run_driver driver-agent-launch.sh
+        echo "==> agent-missing: a selected-but-uninstalled agent is caught before launch"
+        run_driver driver-agent-missing.sh
+        echo "==> quit-stop: Quit introdus stops the container + kills the session"
+        run_driver driver-quit-stop.sh
         echo "==> lifecycle: recreate persistence + destroy teardown"
         run_driver driver-lifecycle.sh
         ;;
     *)
-        echo "unknown target: $target (want: verify | launch | menu | egress | lifecycle | install | agents | agent-launch | all)" >&2
+        echo "unknown target: $target (want: verify | launch | menu | egress | lifecycle | install | agents | agent-launch | agent-missing | quit-stop | all)" >&2
         exit 2
         ;;
 esac

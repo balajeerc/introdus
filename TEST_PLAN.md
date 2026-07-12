@@ -286,6 +286,8 @@ it. Heavy + opt-in (needs a rootless-podman host with `/dev/fuse` +
 | TA121 | Status shows "starting container…" while a launch is underway (per-container marker), not "not created"/"stopped" | ✅ harness `menu` | 1 | driver-menu.sh: drop a fresh launch marker on the stopped container → status flips, reverts when cleared |
 | TA122 | notify-host runs detached (no `notify` tmux window) and its per-session log is viewable via the "Show the notification log" menu option | ✅ harness `menu` | 1 | driver-menu.sh: no notify window, `pgrep -f notify-host` up, menu shows the log ("reading FIFO") |
 | TA77 | Wizard agents are opt-in: nothing pre-checked (Claude shows `[ ]`), confirming with none ticked writes `INSTALL_AGENTS=""` | ✅ pty `wizard_pty` | 1 | ta77_wizard_agents_are_opt_in_nothing_preselected |
+| TA123 | Launching a selected-but-uninstalled agent is caught before launch: the menu reports the missing binary and offers to install it instead of spawning a window that exits 127 | ✅ harness `agent-missing` | 1 | driver-agent-missing.sh: select pi in .env without installing → Launch → "isn't installed" + install offer → decline → no `agent-pi` window |
+| TA124 | "Quit introdus (stop the container)" stops the container and tears down the whole tmux session (every window closed) | ✅ harness `quit-stop` | 1 | driver-quit-stop.sh: pick it → confirm → container not Running + `tmux has-session` fails |
 
 ---
 
