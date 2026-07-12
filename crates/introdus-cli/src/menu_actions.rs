@@ -83,7 +83,7 @@ pub fn open_terminal(ctx: &LaunchContext, ui: &mut Ui, user: Option<&str>) -> Re
     };
     let cmd = exec_interactive(&ctx.container_name, user)
         .arg("bash")
-        .label()
+        .shell_line()
         .to_owned();
     spawn_window(ctx, ui, window, &cmd)
 }
@@ -158,7 +158,7 @@ pub fn launch_agent(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
             cmd = cmd.arg(f);
         }
     }
-    let cmd = cmd.label().to_owned();
+    let cmd = cmd.shell_line().to_owned();
     spawn_window(ctx, ui, &format!("agent-{id}"), &cmd)
 }
 
@@ -215,7 +215,7 @@ fn launch_via_paseo(ctx: &LaunchContext, ui: &mut Ui, id: &str, label: &str) -> 
     }
     let cmd = exec_interactive(&ctx.container_name, Some("dev"))
         .args(["bash", "-lc", &inner])
-        .label()
+        .shell_line()
         .to_owned();
     ui.log(format!(
         "  launching {label} via paseo — drivable from your phone too."
@@ -278,7 +278,7 @@ pub fn paseo_qr(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
                  paseo daemon pair; exec bash";
     let cmd = exec_interactive(&ctx.container_name, Some("dev"))
         .args(["bash", "-lc", inner])
-        .label()
+        .shell_line()
         .to_owned();
     ui.log("  opening the pairing QR — scan it from the paseo app to connect your phone.");
     spawn_window(ctx, ui, "paseo-qr", &cmd)

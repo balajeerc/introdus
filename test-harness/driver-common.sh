@@ -158,6 +158,29 @@ harness_window_appears() {
     return 1
 }
 
+# Assert a spawned window's command actually reached the CONTAINER: a live
+# `podman exec` into $1 whose argv contains marker $2. The marker is a tail of a
+# quoted `bash -lc` script (e.g. '…; exec bash'). Those shell metacharacters only
+# survive in podman's argv when the whole script is passed as ONE quoted arg; if
+# the spawn command is built from an unquoted debug string (the bug: Cmd::label()
+# was used as a tmux command) the host shell splits on `;`/`||`/`>` and runs the
+# tail — including `paseo` — on the HOST ("command not found"), so it never
+# appears in any live `podman exec` argv. Polls up to ~15s.
+harness_assert_in_container_cmd() {
+    local cname="$1" marker="$2" lbl="${3:-$marker}" _
+    for _ in $(seq 1 30); do
+        ps -eww -o args= 2>/dev/null \
+            | grep -F 'podman' | grep -F ' exec ' | grep -F "$cname" | grep -qF "$marker" \
+            && return 0
+        sleep 0.5
+    done
+    echo "FATAL: [$lbl] did not run in the container — no live 'podman exec $cname …$marker'."
+    echo "       (spawn command likely leaked to the host shell.) podman-exec processes:"
+    ps -eww -o args= 2>/dev/null | grep -F 'podman' | grep -F ' exec ' | grep -F "$cname" \
+        | sed 's/^/      /' || true
+    return 1
+}
+
 # Poll a command until it succeeds (up to ~60s). $1=label, rest=command.
 harness_poll() {
     local lbl="$1"; shift

@@ -58,11 +58,21 @@ fn push_lines(buf: &OutputBuffer, bytes: &[u8]) {
     }
 }
 
+/// Single-quote one token so it survives re-parsing by `sh -c` intact
+/// (spaces, `;`, `|`, `>`, `&` and friends become literal).
+fn sh_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
 /// A builder around one external command invocation.
 pub struct Cmd {
     inner: Command,
     /// Human-readable form for error messages (`podman run …`).
     label: String,
+    /// Shell-safe form for handing to another shell (e.g. tmux runs a window's
+    /// command via `sh -c`). Each token is single-quoted so metacharacters in
+    /// arguments aren't reinterpreted by that outer shell.
+    shell_line: String,
 }
 
 impl Cmd {
@@ -71,6 +81,7 @@ impl Cmd {
         Self {
             inner: Command::new(program),
             label: program.to_owned(),
+            shell_line: sh_quote(program),
         }
     }
 
@@ -109,6 +120,14 @@ impl Cmd {
     /// The human-readable command line, for logs and errors.
     pub fn label(&self) -> &str {
         &self.label
+    }
+
+    /// The command line as a shell-safe string, for handing to another shell
+    /// (tmux runs a window's command via `sh -c`). Unlike [`label`](Self::label),
+    /// each token is quoted, so an argument like `bash -lc '…; exec bash'` stays a
+    /// single argument instead of leaking its `;`/`||`/redirects to that shell.
+    pub fn shell_line(&self) -> &str {
+        &self.shell_line
     }
 
     /// Run to completion; error on a non-zero exit. Inherits stdio normally, or
@@ -223,8 +242,11 @@ impl Cmd {
     }
 
     fn push_label(&mut self, arg: &OsStr) {
+        let arg = arg.to_string_lossy();
         self.label.push(' ');
-        self.label.push_str(&arg.to_string_lossy());
+        self.label.push_str(&arg);
+        self.shell_line.push(' ');
+        self.shell_line.push_str(&sh_quote(&arg));
     }
 }
 
@@ -236,6 +258,23 @@ mod tests {
     fn ta25_label_accumulates_args() {
         let c = Cmd::new("podman").arg("run").args(["--rm", "img"]);
         assert_eq!(c.label(), "podman run --rm img");
+    }
+
+    #[test]
+    fn ta25_shell_line_quotes_each_token() {
+        // A `bash -lc <script>` arg with spaces, `;`, `||` and redirects must stay
+        // a single token so an outer `sh -c` (tmux) doesn't reinterpret it.
+        let script = "paseo daemon status >/dev/null 2>&1 || paseo daemon pair; exec bash";
+        let c = Cmd::new("podman")
+            .args(["exec", "-it", "cx"])
+            .args(["bash", "-lc", script]);
+        assert_eq!(
+            c.shell_line(),
+            "'podman' 'exec' '-it' 'cx' 'bash' '-lc' \
+             'paseo daemon status >/dev/null 2>&1 || paseo daemon pair; exec bash'"
+        );
+        // A literal single quote is escaped, not left to terminate the quoting.
+        assert_eq!(Cmd::new("echo").arg("a'b").shell_line(), r"'echo' 'a'\''b'");
     }
 
     #[test]

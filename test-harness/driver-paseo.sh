@@ -78,6 +78,12 @@ echo "    ✓ launched claude via paseo (daemon-supervised)"
 harness_window_appears paseo-claude \
     || { echo "FATAL: no paseo-claude window spawned"; exit 1; }
 echo "    ✓ paseo-claude window spawned"
+# ...and it runs paseo INSIDE the container (one quoted `podman exec`), not on the
+# host. The `exec paseo run --provider` tail only reaches podman's argv when the
+# script is passed as a single quoted arg — proving the spawn command wasn't the
+# unquoted debug string that would leak it to the host shell.
+harness_assert_in_container_cmd "$cname" 'exec paseo run --provider' "paseo-claude in-container"
+echo "    ✓ paseo-claude runs in the container (script not leaked to the host)"
 
 # ---- 3. Show the pairing QR -------------------------------------------------
 echo "==> menu: Show paseo pairing QR code"
@@ -87,6 +93,12 @@ mc_wait_prompt "opening the pairing QR" "QR window log"
 harness_window_appears paseo-qr \
     || { echo "FATAL: no paseo-qr window spawned"; exit 1; }
 echo "    ✓ paseo-qr window spawned"
+# The QR window must render paseo's pairing code IN the container. The `; exec
+# bash` tail only survives in podman's argv when the script is a single quoted
+# arg; with the old unquoted-label bug it split on the host and ran `paseo` there
+# ("paseo: command not found" on the host, a blank/host shell instead of the QR).
+harness_assert_in_container_cmd "$cname" 'paseo daemon pair; exec bash' "paseo-qr in-container"
+echo "    ✓ paseo-qr runs in the container (QR renders in-container, not on the host)"
 
 echo
 echo "=== PASEO OK: installed from the menu (INSTALL_PASEO + paseo.sh persisted),"
