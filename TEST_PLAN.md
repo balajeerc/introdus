@@ -135,7 +135,7 @@ is driven and asserted by the **rootless podman-in-podman harness**
 |----|-----------|:---------:|:------:|---------------|
 | TA37 | Git-host extraction across `git@`/`ssh://`/`https://`/bare forms | ✅ | 0 | — |
 | TA38 | Allowlist regex escaping matches the shell's `sed` | ✅ | 0 | — |
-| TA39 | Ordered whitelist = git host + WHITELIST + tunnel host | ✅ | 1 | diff generated allowlist file vs a `./launch.sh` run |
+| TA39 | Ordered whitelist = git host + WHITELIST + tunnel host | ✅ | 1 | assert the generated allowlist matches the expected ordered patterns |
 | TA40 | Rendered allowlist file = one pattern per line | ✅ | 0 | — |
 | TA41 | **Proxy actually enforces the allowlist in the container** | ✅ harness `egress` | 1 | driver-egress.sh: allowed via proxy ✓, non-allowlisted ✗, direct dial dropped, `egress-log` shows it |
 
@@ -276,7 +276,7 @@ it. Heavy + opt-in (needs a rootless-podman host with `/dev/fuse` +
 | TA111 | Menu dispatches into the running container (open a dev terminal → `uid=1000(dev)`) | ✅ harness `menu` | 1 | asserted in driver-menu.sh |
 | TA112 | Persistence across recreate (`/home/dev` volume survives) | ✅ harness `lifecycle` | 2 | driver-lifecycle.sh: marker survives; manual for node_modules/claude-auth specifics |
 | TA113 | Drive Claude from phone via remote control | ❌ | 5 | pair and issue a prompt from the mobile app |
-| TA114 | `.env` parity: generated vs a `./launch.sh` run behave identically | ❌ | 4 | diff both `.env`s and both containers' `podman inspect` |
+| TA114 | `.env` parity: a wizard-written vs a hand-written `.env` behave identically (the legacy `./launch.sh` baseline this once diffed against has been removed) | ❌ | 4 | diff both `.env`s and both containers' `podman inspect` |
 | TA115 | Runtime agent install streams live progress (spinner) and actually installs — codex (npm) + antigravity (vendor script, whose download host must be allowlisted) | ✅ harness `install` | 1 | `test-harness/harness.sh install` |
 | TA116 | A long action disables the menu: keys mashed during an install don't cascade into other actions (a stray Stop is ignored) | ✅ harness `install` | 1 | driver-install.sh: stray Stop during install → container still running |
 | TA117 | claude is opt-out: with `INSTALL_AGENTS=""` (nothing selected) claude is genuinely **absent** — nothing prebakes or force-installs it | ✅ harness `agents` | 1 | driver-agents.sh: `command -v claude` fails after launch |
@@ -333,4 +333,4 @@ The security-critical *inputs* (allowlist patterns, run flags, trust-boundary
 sanitization) are automated at rating 0; the security-critical *enforcement*
 (the proxy/nft actually dropping traffic) is now automated by the harness (TA41,
 TA49) nested — still worth an occasional cross-check against a real
-`./launch.sh` container.
+`introdus` container on a live host.

@@ -1,8 +1,8 @@
 //! `introdus install` — put the single binary on `PATH`. Replaces
 //! `host_install.sh`'s PATH-symlink step. The notification listener is no longer
-//! a global systemd service — it runs per-session in the `notify` tmux window
-//! (see [`crate::session`]) — so there's nothing else to install for the local
-//! case.
+//! a global systemd service — `introdus launch` starts `notify-host` as a
+//! detached per-session service (see [`crate::session`]) — so there's nothing
+//! else to install for the local case.
 
 use std::path::PathBuf;
 
