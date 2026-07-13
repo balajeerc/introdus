@@ -115,11 +115,12 @@ fn push_mounts(ctx: &LaunchContext, a: &mut Vec<String>) -> Result<()> {
             .with_context(|| format!("resolving SHARED_DATA_PATH {shared}"))?;
         vol(a, &path_str(&canon)?, "/home/dev/shared_data:ro");
     }
-    // Notification endpoint: ensure the host FIFO exists and bind-mount it at
-    // /run/notify so the container's rc-notify hook can deliver events to the
-    // `introdus notify-host` service running in the session's notify window.
+    // Notification endpoint: bind-mount the host FIFO at /run/notify so the
+    // container's rc-notify hook can deliver events to the `introdus notify-host`
+    // service. Creating the FIFO is a launch-time side effect owned by the caller
+    // (`create_and_exec`); `run_args` stays a pure argv builder that never touches
+    // the filesystem, so it's safe to call (and unit-test) concurrently.
     let fifo = crate::notify::fifo_path()?;
-    crate::notify::ensure_fifo(&fifo)?;
     vol(a, &path_str(&fifo)?, "/run/notify");
     Ok(())
 }
@@ -196,6 +197,9 @@ fn path_str(p: &std::path::Path) -> Result<String> {
 /// success). The caller has already ensured the image, volume, and allowlist.
 pub fn create_and_exec(ctx: &LaunchContext, disable_network_block: bool) -> Result<Infallible> {
     println!("==> creating new container {}", ctx.container_name);
+    // Create the notification FIFO that run_args bind-mounts at /run/notify. This
+    // is the launch-time side effect kept out of the pure run_args builder.
+    crate::notify::ensure_fifo(&crate::notify::fifo_path()?)?;
     let argv = run_args(ctx, disable_network_block)?;
     podman().args(argv).exec()
 }
@@ -368,5 +372,20 @@ mod tests {
         let a = run_args(&ctx(), false).unwrap();
         assert!(a.contains(&"127.0.0.1:3000:3000".to_owned()));
         assert!(a.contains(&"127.0.0.1:8123:8123".to_owned()));
+    }
+
+    // run_args must be a PURE argv builder: it bind-mounts the notify FIFO at
+    // /run/notify but performs no filesystem side effect (creating the FIFO
+    // belongs to create_and_exec). That purity is what lets the ta4x tests run
+    // concurrently without racing on the host-shared FIFO path — the old
+    // regression. Asserted on the returned argv only, so the test itself never
+    // touches the shared path.
+    #[test]
+    fn ta45_run_args_bind_mounts_notify_fifo() {
+        let a = run_args(&ctx(), false).unwrap();
+        assert!(
+            a.iter().any(|s| s.ends_with(":/run/notify")),
+            "run_args should bind-mount the notify FIFO at /run/notify"
+        );
     }
 }

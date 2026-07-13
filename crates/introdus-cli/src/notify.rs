@@ -62,17 +62,23 @@ pub fn fifo_path() -> Result<PathBuf> {
 }
 
 /// Ensure `path` exists as a FIFO (created 0600). Idempotent: an existing FIFO
-/// is reused so a bind-mount into a running container isn't invalidated.
+/// is reused so a bind-mount into a running container isn't invalidated. The
+/// path is shared by every project on a host, so concurrent launches can race
+/// here — if `mkfifo` loses that race but the winner left a FIFO in place, that
+/// is success, not an error.
 pub fn ensure_fifo(path: &std::path::Path) -> Result<()> {
     if is_fifo(path) {
         return Ok(());
     }
     let _ = std::fs::remove_file(path);
-    Cmd::new("mkfifo")
-        .args(["-m", "600"])
-        .arg(path)
-        .run()
-        .context("mkfifo failed")
+    match Cmd::new("mkfifo").args(["-m", "600"]).arg(path).run() {
+        Ok(()) => Ok(()),
+        Err(e) if is_fifo(path) => {
+            let _ = e; // a concurrent launch created it first — reuse it
+            Ok(())
+        }
+        Err(e) => Err(e).context("mkfifo failed"),
+    }
 }
 
 /// `introdus notify-host`: serve the local endpoint and render events.
