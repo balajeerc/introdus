@@ -121,10 +121,10 @@ command -v "$PROXY_BIN" >/dev/null || { echo "FATAL: tinyproxy not found in imag
 # "api.github.com" but not "notgithub.com" or "github.com.evil.test".
 ALLOWLIST=/etc/tinyproxy/egress-allowlist.txt
 if [[ -s "$ALLOWLIST" ]]; then
-    # Pre-populated by launch.sh (bind-mounted, read-only). Use as-is: this is
+    # Pre-populated by introdus (bind-mounted, read-only). Use as-is: this is
     # what lets editing WHITELIST_HOSTS + a plain relaunch update the allowlist
-    # without --recreate (launch.sh rewrites this host file each run).
-    log "proxy allowlist: $(grep -c . "$ALLOWLIST" 2>/dev/null || echo 0) pattern(s) (from launch.sh)"
+    # without --recreate (introdus rewrites this host file each run).
+    log "proxy allowlist: $(grep -c . "$ALLOWLIST" 2>/dev/null || echo 0) pattern(s) (from introdus)"
 else
     # Fallback (e.g. running the image directly, no mount): build from the env.
     for h in ${WHITELIST_HOSTS:-}; do

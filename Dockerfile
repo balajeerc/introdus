@@ -188,13 +188,13 @@ RUN git clone --depth 1 https://github.com/LazyVim/starter /home/dev/.config/nvi
 
 # Interactive shells get mise + pnpm on PATH and bash-completion sourced.
 RUN printf '%s\n' \
-    '# --- remote-code-harness ---' \
+    '# --- introdus ---' \
     'export PATH="/home/dev/.local/bin:$PATH"' \
     'export PNPM_HOME="/home/dev/.local/share/pnpm"' \
     'export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"' \
     'eval "$(/home/dev/.local/bin/mise activate bash)"' \
     '[ -f /usr/share/bash-completion/bash_completion ] && . /usr/share/bash-completion/bash_completion' \
-    '# --- end remote-code-harness ---' \
+    '# --- end introdus ---' \
     >> /home/dev/.bashrc
 
 # ---- back to root: runtime proxy env, completions, copies ------------------
@@ -203,7 +203,7 @@ USER root
 # Runtime egress proxy for proxy-aware tools (mise, pnpm, claude, curl, git over
 # https, ...). Set HERE — after every network build step — so the build itself
 # never tries to use a proxy that isn't listening yet. NO_PROXY keeps loopback
-# and link-local direct; launch.sh/setup.sh extend it with INTERNAL_ALLOW_CIDRS.
+# and link-local direct; introdus/setup.sh extend it with INTERNAL_ALLOW_CIDRS.
 ENV HTTP_PROXY="http://127.0.0.1:8888" \
     HTTPS_PROXY="http://127.0.0.1:8888" \
     http_proxy="http://127.0.0.1:8888" \
@@ -234,8 +234,9 @@ RUN chmod +x /usr/local/bin/run-claude
 COPY container/bin/egress-log /usr/local/bin/egress-log
 RUN chmod +x /usr/local/bin/egress-log
 
-# Agent registry + installer. The registry is the single source of truth shared
-# with the host wizard (create-dev-container.sh); install-agents reads it and
+# Agent registry + installer. This is the container-side registry; the host
+# wizard (introdus) keeps a hand-synced mirror in crates/introdus-core/src/agents.rs.
+# install-agents reads this file and
 # the $INSTALL_AGENTS env var to install the picked agents at container setup.
 # Nothing is baked into the image, so an unpicked agent (claude included) stays
 # absent; claude installs via pnpm --allow-build (its native binary is an npm
@@ -246,7 +247,7 @@ RUN chmod +x /usr/local/bin/install-agents
 
 # Egress firewall entrypoint + proxy config — COPY'd LAST so iterating on them
 # doesn't invalidate the heavy nvim/mise/claude layers above. Both are also
-# bind-mounted by launch.sh at runtime (so edits apply with no rebuild); the
+# bind-mounted by introdus at runtime (so edits apply with no rebuild); the
 # baked copies are a fallback for running the image directly.
 COPY container/egress/tinyproxy.conf /etc/tinyproxy/tinyproxy.conf
 COPY container/egress/firewall-entrypoint.sh /usr/local/bin/firewall-entrypoint.sh
@@ -258,7 +259,7 @@ RUN chmod +x /usr/local/bin/firewall-entrypoint.sh
 # no view of dev's tmux sessions or /home/dev ownership.
 LABEL devcontainer.metadata='[{"remoteUser":"dev"}]'
 
-# Default command. launch.sh overrides it with the same path explicitly; the
+# Default command. introdus overrides it with the same path explicitly; the
 # entrypoint must run as root (the image's default user) to install nft, then
 # it drops to dev.
 CMD ["/usr/local/bin/firewall-entrypoint.sh"]

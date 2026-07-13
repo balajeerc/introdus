@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # rc-notify EVENT — send a notification event to the host-side listener.
 #
-# launch.sh bind-mounts the host endpoint at /run/notify. Its type depends on
+# introdus bind-mounts the host endpoint at /run/notify. Its type depends on
 # the host OS:
 #   - Linux: a FIFO. Some kernels refuse to let a process in the container's
 #     mount/user namespace connect() to a bind-mounted unix socket even when
@@ -20,7 +20,7 @@ TARGET="/run/notify"
 
 # Tag the event with this container's identity so the host (especially when one
 # host relays many containers' notifications) can show WHICH container finished.
-# PROJECT_NAME is injected by launch.sh; RC_LABEL can override it. The wire
+# PROJECT_NAME is injected by introdus; RC_LABEL can override it. The wire
 # format is "event<TAB>label"; the host re-validates the event and sanitizes
 # the label, so anything we send here is treated as untrusted there.
 LABEL="${RC_LABEL:-${PROJECT_NAME:-}}"

@@ -18,7 +18,7 @@ set -euo pipefail
 : "${REPO_URL:?}"
 : "${WEBAPP_PORT:?}"
 
-# HOST_OS is set by launch.sh and only controls which host-side instructions are
+# HOST_OS is set by introdus and only controls which host-side instructions are
 # printed at the end (the container is always Linux).
 HOST_OS="${HOST_OS:-linux}"
 EXPOSE_WEBAPP="${EXPOSE_WEBAPP:-false}"
@@ -26,11 +26,11 @@ EXPOSE_WEBAPP="${EXPOSE_WEBAPP:-false}"
 HOME="${HOME:-/home/dev}"
 WORKDIR="${HOME}/work/${PROJECT_NAME}"
 
-# Container name as created by launch.sh (carries the per-project suffix). Used
+# Container name as created by introdus (carries the per-project suffix). Used
 # only to print correct host-side exec/stop commands. Note: exec hints below use
 # `--user dev` because the workload, its tmux sessions, and its files all belong
 # to dev — a default (root) exec would miss dev's per-uid tmux socket.
-CNAME="${CONTAINER_NAME:-remote-code-$PROJECT_NAME}"
+CNAME="${CONTAINER_NAME:-introdus-$PROJECT_NAME}"
 
 log() { printf '\n==> %s\n' "$*"; }
 
@@ -57,7 +57,7 @@ do_prepare() {
     fi
     cd "$WORKDIR"
 
-    # One-shot --pull sentinel dropped by launch.sh. Always consume it (rm first)
+    # One-shot --pull sentinel dropped by introdus. Always consume it (rm first)
     # so a failed pull doesn't keep retrying on every relaunch.
     if [[ -f "${HOME}/.pull-on-next-start" ]]; then
         rm -f "${HOME}/.pull-on-next-start"
@@ -121,7 +121,7 @@ do_serve() {
         rm -f "${HOME}/.logs/tunnel-url.txt"
         # Pin edge IPs and force HTTP/2 so cloudflared skips SRV-based edge
         # discovery and avoids QUIC/UDP. Edge IPs come from TUNNEL_EDGE_IPS, set
-        # by launch.sh and allowed (by IP, on 7844) in the nft egress filter —
+        # by introdus and allowed (by IP, on 7844) in the nft egress filter —
         # cloudflared's edge protocol can't go through the HTTP proxy.
         EDGE_ARGS=""
         for ip in ${TUNNEL_EDGE_IPS:-}; do
@@ -190,7 +190,7 @@ print(d[0]['ConnectionInfo']['PodmanSocket']['Path'])
   $TUNNEL_URL
 
   Anyone with this URL can reach your webapp; the URL is the
-  only access control. Stable until the next ./launch.sh.
+  only access control. Stable until the next introdus launch.
   Cached at ~/.logs/tunnel-url.txt inside the container.
 
   attach: podman exec -it --user dev $CNAME tmux attach -t tunnel

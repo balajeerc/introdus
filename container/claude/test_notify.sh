@@ -15,7 +15,7 @@ EVENT="${1:-done}"
 
 if [[ ! -S "$TARGET" && ! -p "$TARGET" ]]; then
     echo "error: notify endpoint not present at $TARGET" >&2
-    echo "       ensure ./launch.sh on the host started the rc-notify listener and mounted it" >&2
+    echo "       ensure the host introdus launch started the rc-notify listener and mounted it" >&2
     exit 1
 fi
 

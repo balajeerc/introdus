@@ -1,13 +1,13 @@
 # shellcheck shell=bash
 # Single source of truth for the selectable coding agents.
 #
-# Sourced (never executed) by BOTH sides of the harness:
-#   - create-dev-container.sh  (host wizard) — renders the checklist and appends
-#                               each selected agent's egress hosts to WHITELIST.
-#   - install-agents           (in-container) — installs the selected agents.
+# Sourced (never executed) in-container by `install-agents`, which installs the
+# selected agents. The host side does NOT source this file: the introdus binary
+# carries a hand-kept mirror in crates/introdus-core/src/agents.rs (the wizard's
+# checklist + egress-host wiring) — keep the two in lock-step.
 #
-# Keep it a pure data file: only array definitions, no side effects, so both a
-# host bash and the container bash can source it safely. Requires bash 4+
+# Keep it a pure data file: only array definitions, no side effects, so the
+# container bash can source it safely. Requires bash 4+
 # (associative arrays) — the harness already relies on bash 4 elsewhere.
 #
 # Supply-chain posture: npm-published agents are installed with
