@@ -18,13 +18,20 @@ podman's built-in SSH client that doesn't read `~/.ssh/config`).
 ## On the remote container host (one-time)
 
 1. Install the [prerequisites](../README.md#prerequisites): rootless podman
-   and pasta. Egress is filtered **inside** the container (a default-deny nft
-   filter plus a hostname proxy), so the host does no firewall work and needs
-   no sudo for it.
-2. Clone this repo and run `./host_install.sh` — answer **yes** to forwarding
-   notifications and pick a port. Then `create-dev-container.sh` per project
-   (or, for the single-project flow, copy `sample.env` to `.env` and run
-   `./launch_dev_container.sh`).
+   and pasta (plus `tmux`). Egress is filtered **inside** the container (a
+   default-deny nft filter plus a hostname proxy), so the host does no firewall
+   work and needs no sudo for it.
+2. Clone this repo, build the binary, and put it on `PATH`:
+
+   ```bash
+   cargo build --release
+   ./target/release/introdus install       # copies introdus to ~/.local/bin
+   ```
+
+   Then, per project, `cd` into a project directory and run `introdus` — the
+   first run walks the setup wizard (repo + deploy key + agent picks), writes
+   `.env`, and launches. To forward notifications to your laptop, set
+   `RC_FORWARD_ADDR` in that project's `.env` (see below).
 
 That's it on the host — no podman socket to enable.
 
@@ -48,7 +55,7 @@ That's it on the host — no podman socket to enable.
    is independent of any Dev Containers install on your laptop.
 
 5. F1 → **Dev Containers: Attach to Running Container…** →
-   `remote-code-<project>-<suffix>` shows up because, from this VSCode's
+   `introdus-<project>-<suffix>` shows up because, from this VSCode's
    vantage point, podman is just local. The per-project `<suffix>` (distinct
    per host) ensures this remote container's name doesn't collide with a
    same-named project's container on your laptop, so VS Code keeps their
@@ -70,7 +77,7 @@ handles every cross-host call.
 
 ## Reaching the published ports
 
-`launch_dev_container.sh` binds the webapp port to `127.0.0.1` on the remote host, not
+`introdus` binds the webapp port to `127.0.0.1` on the remote host, not
 `0.0.0.0` — same posture as the local-only setup described in
 [How to connect to container.md](How%20to%20connect%20to%20container.md#connecting-from-your-phone).
 To reach it from your laptop's browser or phone, tunnel it over SSH:
@@ -86,12 +93,11 @@ session open.
 
 When the container host is remote rather than your laptop, "task complete /
 awaiting input" alerts tunnel back to a native popup + sound on your laptop over
-an SSH reverse tunnel. Setup is one command on the host (`./host_install.sh`,
-answer yes to forwarding) and one on the laptop
-(`./install_dev_machine_listener.sh <ssh-alias> 8765`), plus a small per-user
-`sshd` forwarding allowance. The full mechanics, the exact SSH config, the
-per-container label, and the optional ntfy phone-push live in
-[Notifications](Notifications.md).
+an SSH reverse tunnel. Setup is `RC_FORWARD_ADDR` in the project's `.env` on the
+host, plus — on the laptop — an `ssh -R` reverse tunnel and `introdus
+notify-listen`, and a small per-user `sshd` forwarding allowance. The full
+mechanics, the exact SSH config, the per-container label, and the optional ntfy
+phone-push live in [Notifications](Notifications.md).
 
 ## Things that feel different vs. local
 

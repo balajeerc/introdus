@@ -28,8 +28,9 @@ The URL is stable for the container's lifetime and rotates on relaunch.
 No Cloudflare account or domain required. The egress allowlist is
 auto-extended with `api.trycloudflare.com` (for tunnel registration)
 plus a pinned set of Cloudflare argotunnel edge IPs — these are
-hardcoded in [launch_dev_container.sh](../launch_dev_container.sh) since cloudflared's normal SRV-
-based edge discovery doesn't survive the container's restricted DNS.
+hardcoded in [egress.rs](../crates/introdus-core/src/egress.rs) (`TUNNEL_EDGE_IPS`)
+since cloudflared's normal SRV-based edge discovery doesn't survive the
+container's restricted DNS.
 If Cloudflare ever rotates these edges and the tunnel stops connecting,
 refresh them by running `dig +short SRV _v2-origintunneld._tcp.argotunnel.com`
 on a machine with normal DNS.
@@ -69,9 +70,10 @@ no tunnel is started and no extra hosts are added to the allowlist.
 
 To pick up a change to `EXPOSE_WEBAPP` on an existing container, you
 need to remove the container so the new env var is applied at create
-time: `podman rm -f remote-code-<project>-<suffix>` (or `./launch.sh --reset`,
-which also wipes the volume). The container name carries a per-project
-`<suffix>` — run `podman ps` to see the exact name.
+time: `introdus recreate` (keeps the volume) or `introdus reset` (also
+wipes the volume) — or `podman rm -f introdus-<project>-<suffix>`. The
+container name carries a per-project `<suffix>` — run `podman ps` to see
+the exact name.
 
 ## Connecting from VSCode
 
@@ -98,7 +100,7 @@ Remote-SSH flow instead — see
 [Running on a remote host.md](Running%20on%20a%20remote%20host.md).
 
 Then: Command Palette → **Dev Containers: Attach to Running Container…** →
-pick `remote-code-<project>-<suffix>` (run `podman ps` for the exact name;
+pick `introdus-<project>-<suffix>` (run `podman ps` for the exact name;
 the per-project suffix keeps each project's container — and VS Code's cached
 attach config for it — distinct, even when the same project runs on more than
 one host). From the new window, install the Claude Code extension — it lands
@@ -128,18 +130,21 @@ whenever `claude` starts. It works by making outbound HTTPS calls to the
 Anthropic API and polling for work; it does **not** open an inbound port on
 the container, so there's nothing to publish or tunnel for pairing.
 
-Start a session with the bundled `run-claude` helper, which cds into the
-repo, opens a tmux session named `claude`, and launches Claude Code with
-`--dangerously-skip-permissions`. Run this **on the container host** (over SSH
-if it's remote), or from a VS Code terminal already attached to the container:
+The easiest way to start an agent is from the **`introdus` control menu**
+("install/launch agents"), which spawns it in its own tmux window in the
+session. Or start Claude directly with the bundled `run-claude` helper, which
+cds into the repo, opens a tmux session named `claude`, and launches Claude Code
+with `--dangerously-skip-permissions`. Run this **on the container host** (over
+SSH if it's remote), or from a VS Code terminal already attached to the
+container:
 
 ```bash
-podman exec -it --user dev remote-code-<project>-<suffix> run-claude
+podman exec -it --user dev introdus-<project>-<suffix> run-claude
 ```
 
 The `--user dev` is required: the workload, its files under `/home/dev`, and
 its per-uid tmux socket all belong to the non-root `dev` user. Drop in with a
-shell the same way — `podman exec -it --user dev remote-code-<project>-<suffix> bash`.
+shell the same way — `podman exec -it --user dev introdus-<project>-<suffix> bash`.
 
 Re-running `run-claude` re-attaches to the existing `claude` session instead
 of spawning a second one (`Ctrl-a d` detaches without killing it; the
