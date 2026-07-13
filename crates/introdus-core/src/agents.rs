@@ -132,11 +132,14 @@ pub const AGENTS: &[Agent] = &[
 ];
 
 /// Paseo — the optional agent *orchestrator* (not a coding agent itself). A
-/// daemon that runs the installed agents and lets you drive them from a
-/// phone/desktop/web/CLI client through the paseo relay: the daemon dials OUT to
-/// the relay with end-to-end encryption, so nothing is exposed inbound. Opted
-/// into separately from the agent checklist (`INSTALL_PASEO`), installed via the
-/// same pnpm path. Mirrors the `PASEO_*` constants in `container/agents.sh`.
+/// daemon you pair a phone/desktop/web app with (via the QR flow) and then use
+/// to orchestrate the installed agents through the paseo relay: the daemon dials
+/// OUT to the relay with end-to-end encryption, so nothing is exposed inbound.
+/// The harness does not wrap agent launches in `paseo run` (headless mode isn't
+/// the intended path) — it only installs the CLI and wires the relay egress.
+/// Opted into separately from the agent checklist (`INSTALL_PASEO`), installed
+/// via the same pnpm path. Mirrors the `PASEO_*` constants in
+/// `container/agents.sh`.
 pub mod paseo {
     /// npm package providing the paseo CLI + daemon.
     pub const SPEC: &str = "@getpaseo/cli";
@@ -155,15 +158,6 @@ pub mod paseo {
     /// workload's default-deny egress blackholes the relay and phone pairing
     /// times out. Anycast/stable enough for a launch-time resolve.
     pub const RELAY_HOST: &str = "relay.paseo.sh";
-    /// The installed agents paseo can launch natively, by provider id (a subset
-    /// of the registry). Gates the "launch via paseo" offer; other agents still
-    /// launch directly.
-    pub const PROVIDERS: &[&str] = &["claude", "codex", "opencode", "pi"];
-
-    /// Whether an installed agent `id` can be launched via paseo.
-    pub fn supports(id: &str) -> bool {
-        PROVIDERS.contains(&id)
-    }
 }
 
 /// Look up an agent by its id.
@@ -197,20 +191,6 @@ mod tests {
                     a.id
                 );
             }
-        }
-    }
-
-    #[test]
-    fn ta125_paseo_supports_only_native_providers() {
-        for id in ["claude", "codex", "opencode", "pi"] {
-            assert!(paseo::supports(id), "{id} should be a paseo provider");
-        }
-        for id in ["antigravity", "kilocode", "nope"] {
-            assert!(!paseo::supports(id), "{id} must not be a paseo provider");
-        }
-        // Every paseo provider is (except none) a real, known agent id.
-        for id in paseo::PROVIDERS {
-            assert!(is_known(id), "paseo provider {id} must be a known agent");
         }
     }
 

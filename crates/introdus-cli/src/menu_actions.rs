@@ -126,21 +126,10 @@ pub fn launch_agent(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
         }
     }
 
-    // When paseo is enabled and can drive this agent natively, offer to launch it
-    // *via* paseo: the same session, but supervised by the daemon so it's also
-    // drivable from the phone/app through the relay. Declining — or an agent
-    // paseo can't drive — falls through to the direct launch below.
-    if ctx.config.install_paseo
-        && agents::paseo::supports(&id)
-        && container_has_cmd(ctx, agents::paseo::CMD)
-        && ui.confirm(
-            &format!("Launch {label} via paseo (also drivable from your phone)?"),
-            true,
-        )?
-    {
-        return launch_via_paseo(ctx, ui, &id, label);
-    }
-
+    // paseo does NOT wrap the agent launch: `paseo run` headless isn't the
+    // intended path. The daemon (started with the pairing QR) supervises agents,
+    // and you orchestrate them from the paseo phone/desktop app. So every agent —
+    // paseo enabled or not — launches directly in its own tmux window here.
     let flag = resolve_yolo(
         agent.map(|a| a.yolo).unwrap_or(agents::Yolo::None),
         label,
@@ -200,34 +189,6 @@ fn resolve_yolo(yolo: agents::Yolo, label: &str, ui: &mut Ui) -> Result<Option<&
 /// instead. Without a running daemon the relay never connects and phone pairing
 /// times out.
 const PASEO_ENSURE_DAEMON: &str = r#"paseo daemon status --json 2>/dev/null | grep -Eq '"localDaemon":[[:space:]]*"running"' || paseo daemon start"#;
-
-/// Launch an agent under the paseo daemon, so it is driven both locally (this
-/// tmux window) and from the paseo phone/desktop/web app through the relay.
-/// Ensures the daemon is up, then runs `paseo run --provider <id>` interactively
-/// — the daemon supervises the very session this window is attached to.
-fn launch_via_paseo(ctx: &LaunchContext, ui: &mut Ui, id: &str, label: &str) -> Result<()> {
-    let task = ui.text(
-        "Initial task for the agent (blank = interactive session):",
-        false,
-    )?;
-    let task = task.trim();
-    // Start the daemon if it isn't already running, then hand the window off to
-    // `paseo run` (exec, so it becomes the window's foreground process).
-    let mut inner = format!("{PASEO_ENSURE_DAEMON}; exec paseo run --provider ");
-    inner.push_str(&shell_quote(id));
-    if !task.is_empty() {
-        inner.push(' ');
-        inner.push_str(&shell_quote(task));
-    }
-    let cmd = exec_interactive(&ctx.container_name, Some("dev"))
-        .args(["bash", "-lc", &inner])
-        .shell_line()
-        .to_owned();
-    ui.log(format!(
-        "  launching {label} via paseo — drivable from your phone too."
-    ));
-    spawn_window(ctx, ui, &format!("paseo-{id}"), &cmd)
-}
 
 // ---- paseo orchestrator -----------------------------------------------------
 

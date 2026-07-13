@@ -107,9 +107,6 @@ declare -A AGENT_HOSTS=(
 PASEO_SPEC="@getpaseo/cli"
 PASEO_CMD="paseo"
 PASEO_HOSTS="paseo.sh"   # suffix-covers app.paseo.sh (pairing) + the relay
-# The installed agents paseo can launch natively (a subset of AGENT_IDS), used
-# by the TUI to gate the "launch via paseo" offer. Others still launch directly.
-PASEO_PROVIDERS=(claude codex opencode pi)
 
 # Agents baked into the base image at build time. Currently none: every agent
 # (claude included) is installed at container setup from $INSTALL_AGENTS, so an
