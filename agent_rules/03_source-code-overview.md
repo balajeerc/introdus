@@ -62,6 +62,9 @@ Not compiled — embedded by `assets.rs` and bind-mounted at launch.
 ## Tooling / meta
 
 - `scripts/lint.sh`, `scripts/install-pre-commit.sh` — see [04_linting.md](04_linting.md).
+- `scripts/gen-agent-rules.sh` — regenerate the root `AGENTS.md` (Codex/Pi/opencode)
+  from `agent_rules/*.md`; `--check` mode gates drift in `lint.sh --quick`. See
+  [00_agent_instructions.md](00_agent_instructions.md) for the rules-distribution setup.
 - `test-harness/` — heavy nested-podman E2E suite — see [06_testing.md](06_testing.md).
 - `deny.toml`, `clippy.toml`, `rustfmt.toml`, `Cargo.toml` `[workspace.lints]` —
   lint config.

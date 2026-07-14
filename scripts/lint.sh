@@ -94,6 +94,10 @@ if require_cmd cargo "https://rustup.rs (rustup-init)"; then
     run "clippy"  cargo clippy --workspace --all-targets --no-deps -- -D warnings
 fi
 
+# AGENTS.md is generated from agent_rules/*.md — fail if it has drifted from the
+# sources (see scripts/gen-agent-rules.sh).
+run "AGENTS.md up-to-date" "$REPO_DIR/scripts/gen-agent-rules.sh" --check
+
 # -------------------- full (heavier Rust checks) --------------------
 
 if [[ "$MODE" == "full" || "$MODE" == "security" ]]; then
