@@ -1,0 +1,1 @@
+../../agent_rules/06_testing.md
