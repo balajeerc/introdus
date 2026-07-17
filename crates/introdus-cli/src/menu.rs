@@ -77,7 +77,7 @@ impl std::fmt::Display for Action {
             Action::Reset => "Reset the container (wipe the volume)",
             Action::Destroy => "Destroy the container (remove volume + key)",
             Action::Refresh => "Refresh status",
-            Action::Quit => "Quit this menu (leave the container running)",
+            Action::Quit => "Quit this tmux session (leave the container running)",
             Action::QuitStop => "Quit introdus (stop the container)",
         };
         f.write_str(s)
@@ -122,10 +122,12 @@ const MENU: &[Row] = &[
 pub fn run() -> Result<()> {
     let dir = std::env::current_dir()?;
     let env = env_path(&dir);
-    // Set when the user picks "Quit introdus (stop the container)": after the Ui
-    // is torn down we kill this tmux session, closing every window.
-    let mut kill_session: Option<String> = None;
-    {
+    // The tmux session to kill once the Ui is torn down (closing every window),
+    // or `None` to leave it up. The loop breaks with this value; the enclosing
+    // block then drops the Ui before we act on it. Set by "Quit this tmux
+    // session" / Esc (container left running) and by "Quit introdus" (container
+    // stopped first).
+    let kill_session: Option<String> = {
         let mut ui = Ui::new()?;
         loop {
             // Reload each iteration so actions that edited .env are reflected, and
@@ -149,10 +151,14 @@ pub fn run() -> Result<()> {
                 },
                 // A poll tick: re-snapshot the status (loop top does it) + redraw.
                 Selection::Tick => continue,
-                Selection::Quit => break,
+                // Esc / Ctrl-C: same as the "Quit this tmux session" item — end the
+                // session (leaving the container running), not just this window.
+                Selection::Quit => break Some(act::session_of(&ctx)),
             };
             match action {
-                Action::Quit => break,
+                // Kill this tmux session (closing every window); the container keeps
+                // running and is reattachable on the next `introdus` launch.
+                Action::Quit => break Some(act::session_of(&ctx)),
                 // Refresh just falls through to the next loop, which re-snapshots.
                 Action::Refresh => continue,
                 // Stop the container, then break out and (below, after the Ui is
@@ -160,10 +166,7 @@ pub fn run() -> Result<()> {
                 Action::QuitStop => {
                     ui.begin(&action.to_string());
                     match act::stop_for_quit(&ctx, &mut ui) {
-                        Ok(true) => {
-                            kill_session = Some(act::session_of(&ctx));
-                            break;
-                        }
+                        Ok(true) => break Some(act::session_of(&ctx)),
                         Ok(false) => ui.drain_input(),
                         Err(e) => {
                             ui.log(format!("  ! {e:#}"));
@@ -182,7 +185,7 @@ pub fn run() -> Result<()> {
                 }
             }
         }
-    } // Ui dropped here: alternate screen exited + terminal restored.
+    }; // Ui dropped here: alternate screen exited + terminal restored.
 
     if let Some(session) = kill_session {
         // Closes every window (this TUI's included); the detached notify service

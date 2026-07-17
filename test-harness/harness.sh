@@ -17,9 +17,11 @@
 #     agent-launch  launch an agent with its skip-permissions flag from the menu
 #     agent-missing a selected-but-uninstalled agent is caught before launch
 #     quit-stop  "Quit introdus (stop the container)" stops it + kills the session
+#     quit-session "Quit this tmux session" kills the session, container survives
 #     paseo      install paseo, launch an agent directly, show the pairing QR
 #     all        verify + menu + egress + lifecycle + install + agents +
-#                agent-launch + agent-missing + quit-stop + paseo (default)
+#                agent-launch + agent-missing + quit-stop + quit-session +
+#                paseo (default)
 #
 # This is a heavy, opt-in tier — it is NOT part of `cargo test`. It needs a
 # rootless-podman host with /dev/fuse and /dev/net/tun.
@@ -102,6 +104,10 @@ case "$target" in
         echo "==> quit-stop: Quit introdus stops the container + kills the session"
         run_driver driver-quit-stop.sh
         ;;
+    quit-session)
+        echo "==> quit-session: Quit this tmux session kills the session, container survives"
+        run_driver driver-quit-session.sh
+        ;;
     paseo)
         echo "==> paseo: install paseo, launch an agent directly, show the pairing QR"
         run_driver driver-paseo.sh
@@ -125,13 +131,15 @@ case "$target" in
         run_driver driver-agent-missing.sh
         echo "==> quit-stop: Quit introdus stops the container + kills the session"
         run_driver driver-quit-stop.sh
+        echo "==> quit-session: Quit this tmux session kills the session, container survives"
+        run_driver driver-quit-session.sh
         echo "==> paseo: install paseo, launch an agent directly, show the pairing QR"
         run_driver driver-paseo.sh
         echo "==> lifecycle: recreate persistence + destroy teardown"
         run_driver driver-lifecycle.sh
         ;;
     *)
-        echo "unknown target: $target (want: verify | launch | reattach | menu | egress | lifecycle | install | agents | agent-launch | agent-missing | quit-stop | paseo | all)" >&2
+        echo "unknown target: $target (want: verify | launch | reattach | menu | egress | lifecycle | install | agents | agent-launch | agent-missing | quit-stop | quit-session | paseo | all)" >&2
         exit 2
         ;;
 esac
