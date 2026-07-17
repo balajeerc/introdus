@@ -55,7 +55,10 @@ behind NAT.
 
 ### On the container host
 
-Set the forward target in the project's `.env`:
+The first-run setup wizard asks *"Forward notifications to a separate dev machine
+over an SSH reverse tunnel?"* — answer **yes** on a remote/headless host and it
+writes the forward target for you. To set it by hand instead, put it in the
+project's `.introdus/config.env`:
 
 ```bash
 RC_FORWARD_ADDR=127.0.0.1:8765
@@ -64,6 +67,10 @@ RC_FORWARD_ADDR=127.0.0.1:8765
 `introdus notify-host` then forwards each validated event to that loopback port
 instead of rendering. The whitelist + label sanitization run here **and** again
 on the laptop.
+
+> `notify-host` reads `RC_FORWARD_ADDR` **once, when the tmux session starts**. If
+> you add or change it on an already-running session, restart the session (Quit
+> introdus → `introdus`) so the detached service picks up the new value.
 
 ### Host SSH-forwarding requirement
 
@@ -153,7 +160,7 @@ A label change takes effect the next time the container is (re)created
 ## Phone push (ntfy.sh)
 
 Independently of the desktop path, set `ENABLE_NOTIFY_SH_ALERTS=true` and
-`NTFY_SH_TOPIC=<your-private-topic>` in the project `.env` to also push each
+`NTFY_SH_TOPIC=<your-private-topic>` in the project `.introdus/config.env` to also push each
 alert to your phone via [ntfy.sh](https://ntfy.sh) (install the app, subscribe
 to the topic). Sent from the container host over outbound HTTPS, so it needs no
 forwarding. Treat the topic name like a password — anyone who knows it can

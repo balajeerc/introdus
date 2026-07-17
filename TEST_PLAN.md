@@ -300,6 +300,7 @@ it. Heavy + opt-in (needs a rootless-podman host with `/dev/fuse` +
 | TA135 | The generated `systemd --user` unit is `WantedBy=default.target`, `Restart=on-failure`, has the correct `ExecStart`, and never enables linger (notifications need the graphical session) | ✅ unit `introdus-cli` | 0 | ta135_render_unit_is_no_linger_default_target |
 | TA136 | `introdus init` on a legacy `./.env` project offers to migrate it into `.introdus/config.env`, moves it on accept, then treats the project as configured (offers reconfigure, not first-run wizard) | ✅ pty `wizard_pty` | 1 | ta136_init_migrates_legacy_env_into_introdus_dir |
 | TA137 | Bare `introdus notify-listen` (no flags / env / saved config) runs a wizard collecting SSH alias + port + systemd choice; `--dry-run` then prints the resolved listener + tunnel plan without side effects | ✅ pty `notify_listen_pty` | 1 | ta137_notify_listen_wizard_then_dry_run_plan |
+| TA138 | The setup wizard asks whether to forward notifications to a separate dev machine over an SSH reverse tunnel; opting in (with a port) writes `RC_FORWARD_ADDR=127.0.0.1:<port>` so a headless remote host forwards to the laptop from the first launch | ✅ pty `wizard_pty` | 1 | ta138_wizard_forward_opt_in_sets_rc_forward_addr |
 
 ---
 

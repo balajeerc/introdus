@@ -43,6 +43,7 @@ pub fn run(project_dir: &Path) -> Result<Config> {
         false,
     )?;
     let (enable_notify_sh_alerts, ntfy_sh_topic) = prompt_ntfy()?;
+    let rc_forward_addr = prompt_forward()?;
 
     let mut config = Config::new(project_name, repo_url, deploy_key_path, webapp_port);
     apply_agents(&mut config, install_agents);
@@ -50,6 +51,7 @@ pub fn run(project_dir: &Path) -> Result<Config> {
     config.expose_webapp = expose_webapp;
     config.enable_notify_sh_alerts = enable_notify_sh_alerts;
     config.ntfy_sh_topic = ntfy_sh_topic;
+    config.rc_forward_addr = rc_forward_addr;
 
     let env = crate::context::config_write_path(project_dir);
     config
@@ -121,6 +123,30 @@ fn prompt_ntfy() -> Result<(bool, Option<String>)> {
     }
     let topic = ask_nonempty("ntfy.sh topic (treat like a password)")?;
     Ok((true, Some(topic)))
+}
+
+/// Ask whether task notifications should be forwarded to a separate dev machine
+/// (a laptop running `introdus notify-listen`) over an SSH reverse tunnel. This
+/// is the headless-remote-host case: with no desktop here, `notify-host` forwards
+/// to a loopback port the laptop's tunnel carries instead of rendering locally.
+/// Answering yes writes `RC_FORWARD_ADDR=127.0.0.1:<port>`; say no if you sit at
+/// this host and want its own desktop popups.
+fn prompt_forward() -> Result<Option<String>> {
+    let enable = ui::confirm(
+        "Forward notifications to a separate dev machine over an SSH reverse tunnel? \
+         (No if you use this host's own desktop)",
+        false,
+    )?;
+    if !enable {
+        return Ok(None);
+    }
+    // Must match the port the laptop's `introdus notify-listen` binds (its own
+    // wizard defaults to the same 8765).
+    let port = ask_port(
+        "Loopback port your laptop's `introdus notify-listen` uses",
+        8765,
+    )?;
+    Ok(Some(format!("127.0.0.1:{port}")))
 }
 
 /// Deploy-key setup: ask up-front whether to generate a fresh key or point at

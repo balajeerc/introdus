@@ -58,15 +58,43 @@ fn finish_wizard(p: &mut PtySession) {
     finish_expose_ntfy(p);
 }
 
-/// The final leg shared by every branch: from the "Expose the webapp" confirm
-/// through ntfy to the `.env` being written. Takes each remaining default.
-fn finish_expose_ntfy(p: &mut PtySession) {
+/// Expose-webapp (No) + ntfy (No), leaving the wizard at the
+/// notification-forward confirm.
+fn through_ntfy(p: &mut PtySession) {
     p.exp_string("Expose the webapp").unwrap();
     enter(p); // default No
     p.exp_string("mobile push notifications").unwrap();
     enter(p); // default No
+}
+
+/// The final leg shared by every branch: from the "Expose the webapp" confirm
+/// through ntfy and the notification-forward confirm to the config being
+/// written. Takes each remaining default (No).
+fn finish_expose_ntfy(p: &mut PtySession) {
+    through_ntfy(p);
+    p.exp_string("Forward notifications to a separate dev machine")
+        .unwrap();
+    enter(p); // default No -> no RC_FORWARD_ADDR
     p.exp_string("wrote").unwrap();
     p.exp_eof().unwrap();
+}
+
+/// Spawn `init` and drive identity + key + webapp, stopping with the wizard
+/// showing the "Coding agents to install" checklist (nothing ticked yet).
+fn init_to_agent_checklist() -> (Fixture, PtySession) {
+    let fx = Fixture::new("ship-tbc");
+    let mut p = spawn_command(fx.cmd("init"), TIMEOUT_MS).unwrap();
+    start_with_new_key(&mut p);
+    p.exp_string("Webapp port").unwrap();
+    enter(&mut p);
+    p.exp_string("Coding agents to install").unwrap();
+    (fx, p)
+}
+
+/// Tick the first checklist row (Claude) and confirm the agent selection.
+fn tick_claude(p: &mut PtySession) {
+    send(p, " "); // opt-in: Space ticks the first row (Claude)
+    enter(p);
 }
 
 #[test]
@@ -93,15 +121,8 @@ fn ta74_wizard_generates_a_new_key() {
 
 #[test]
 fn ta77_wizard_agents_are_opt_in_nothing_preselected() {
-    let fx = Fixture::new("ship-tbc");
-    let mut p = spawn_command(fx.cmd("init"), TIMEOUT_MS).unwrap();
-
-    start_with_new_key(&mut p);
-
-    p.exp_string("Webapp port").unwrap();
-    enter(&mut p);
+    let (fx, mut p) = init_to_agent_checklist();
     // The agents checklist is opt-in: Claude starts UNticked ("[ ]", not "[x]").
-    p.exp_string("Coding agents to install").unwrap();
     p.exp_string("[ ] Claude").unwrap();
     // Confirm without toggling anything -> no coding agent selected.
     enter(&mut p);
@@ -118,15 +139,8 @@ fn ta77_wizard_agents_are_opt_in_nothing_preselected() {
 
 #[test]
 fn ta127_wizard_paseo_opt_in_records_flag_and_relay_host() {
-    let fx = Fixture::new("ship-tbc");
-    let mut p = spawn_command(fx.cmd("init"), TIMEOUT_MS).unwrap();
-
-    start_with_new_key(&mut p);
-    p.exp_string("Webapp port").unwrap();
-    enter(&mut p);
-    p.exp_string("Coding agents to install").unwrap();
-    send(&mut p, " "); // tick Claude
-    enter(&mut p);
+    let (fx, mut p) = init_to_agent_checklist();
+    tick_claude(&mut p);
     // Opt INTO paseo (default is No) — a single 'y' submits the confirm.
     p.exp_string("Also install paseo").unwrap();
     send(&mut p, "y");
@@ -140,6 +154,29 @@ fn ta127_wizard_paseo_opt_in_records_flag_and_relay_host() {
     assert!(
         env.contains("paseo.sh"),
         "paseo opt-in must allowlist the relay host paseo.sh:\n{env}"
+    );
+}
+
+#[test]
+fn ta138_wizard_forward_opt_in_sets_rc_forward_addr() {
+    let (fx, mut p) = init_to_agent_checklist();
+    tick_claude(&mut p);
+    p.exp_string("Also install paseo").unwrap();
+    enter(&mut p); // No
+    through_ntfy(&mut p);
+    // Opt INTO forwarding to a separate dev machine, accept the default port.
+    p.exp_string("Forward notifications to a separate dev machine")
+        .unwrap();
+    send(&mut p, "y");
+    p.exp_string("Loopback port your laptop").unwrap();
+    enter(&mut p); // default 8765
+    p.exp_string("wrote").unwrap();
+    p.exp_eof().unwrap();
+
+    let env = std::fs::read_to_string(fx.env_file()).unwrap();
+    assert!(
+        env.contains("RC_FORWARD_ADDR=127.0.0.1:8765"),
+        "forward opt-in must set RC_FORWARD_ADDR:\n{env}"
     );
 }
 
