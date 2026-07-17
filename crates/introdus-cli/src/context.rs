@@ -162,7 +162,110 @@ fn resolve_ipv4(host: &str) -> Vec<String> {
     v4
 }
 
-/// Ancestor helper for tests / callers: is a path a project dir (has `.env`)?
-pub fn env_path(project_dir: &Path) -> PathBuf {
+/// The per-project config subdirectory: `<project>/.introdus`. Namespaces our
+/// config (and any future per-project artifacts) so it never collides with the
+/// repo's own `.env`, and keeps the project root tidy.
+pub fn config_subdir(project_dir: &Path) -> PathBuf {
+    project_dir.join(".introdus")
+}
+
+/// The canonical config file we always *write*: `<project>/.introdus/config.env`.
+/// (`Config::save` creates the `.introdus` dir as needed.)
+pub fn config_write_path(project_dir: &Path) -> PathBuf {
+    config_subdir(project_dir).join("config.env")
+}
+
+/// The legacy config location, from before configs moved under `.introdus/`.
+fn legacy_env_path(project_dir: &Path) -> PathBuf {
     project_dir.join(".env")
+}
+
+/// The config file to *read* for `project_dir`: the canonical
+/// `.introdus/config.env` if it exists, else the legacy `.env` if it exists,
+/// else the canonical path (the not-yet-created case a fresh wizard writes to).
+pub fn env_path(project_dir: &Path) -> PathBuf {
+    let canonical = config_write_path(project_dir);
+    if canonical.exists() {
+        return canonical;
+    }
+    let legacy = legacy_env_path(project_dir);
+    if legacy.exists() {
+        return legacy;
+    }
+    canonical
+}
+
+/// True when this project still keeps its config at the legacy `./.env` and has
+/// not been migrated to `.introdus/config.env` yet.
+pub fn has_legacy_config(project_dir: &Path) -> bool {
+    !config_write_path(project_dir).exists() && legacy_env_path(project_dir).exists()
+}
+
+/// On the interactive entry points (launch / init), offer to move a legacy
+/// `./.env` into `.introdus/config.env`. Declining leaves it in place (it still
+/// loads via [`env_path`]'s fallback), so this is a one-time nudge, never a
+/// blocker. Best-effort: a failed move is reported but not fatal.
+pub fn migrate_legacy_config(project_dir: &Path) -> Result<()> {
+    if !has_legacy_config(project_dir) {
+        return Ok(());
+    }
+    let legacy = legacy_env_path(project_dir);
+    let canonical = config_write_path(project_dir);
+    let prompt = format!(
+        "Move this project's config from {} into {}?",
+        legacy.display(),
+        canonical.display()
+    );
+    if !crate::ui::confirm(&prompt, true)? {
+        return Ok(());
+    }
+    if let Some(parent) = canonical.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
+    }
+    std::fs::rename(&legacy, &canonical)
+        .with_context(|| format!("moving {} -> {}", legacy.display(), canonical.display()))?;
+    println!("  moved config to {}", canonical.display());
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_proj(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "introdus-ctx-{}-{tag}-{}",
+            std::process::id(),
+            // Distinct per call so parallel tests don't collide.
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn ta132_env_path_prefers_canonical_then_legacy() {
+        let dir = temp_proj("resolve");
+
+        // Nothing yet -> the canonical write path (what a fresh wizard uses).
+        assert_eq!(env_path(&dir), dir.join(".introdus/config.env"));
+        assert!(!has_legacy_config(&dir));
+
+        // Only a legacy `.env` -> read that, and flag it as needing migration.
+        std::fs::write(dir.join(".env"), "PROJECT_NAME=x\n").unwrap();
+        assert_eq!(env_path(&dir), dir.join(".env"));
+        assert!(has_legacy_config(&dir));
+
+        // Canonical present wins even with a legacy file still around.
+        std::fs::create_dir_all(dir.join(".introdus")).unwrap();
+        std::fs::write(dir.join(".introdus/config.env"), "PROJECT_NAME=x\n").unwrap();
+        assert_eq!(env_path(&dir), dir.join(".introdus/config.env"));
+        assert!(!has_legacy_config(&dir));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }

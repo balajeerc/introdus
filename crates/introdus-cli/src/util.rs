@@ -1,6 +1,16 @@
-//! Small shared helpers used across the CLI (path and shell-quoting).
+//! Small shared helpers used across the CLI (path, shell-quoting, PATH probe).
 
 use std::path::{Path, PathBuf};
+
+use introdus_core::process::Cmd;
+
+/// Whether `cmd` is resolvable on `PATH` (a `command -v` probe). Used to pick
+/// between optional tools (e.g. `autossh` vs `ssh`) and to gate desktop players.
+pub fn have(cmd: &str) -> bool {
+    Cmd::new("sh")
+        .args(["-c", &format!("command -v {cmd} >/dev/null 2>&1")])
+        .ok()
+}
 
 /// Expand a leading `~/` to the user's home directory; otherwise return the
 /// path unchanged.

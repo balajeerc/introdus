@@ -24,6 +24,8 @@ const DEV_WINDOW: &str = "dev-container";
 pub fn launch(_opts: LaunchOpts) -> Result<()> {
     preflight::check_session()?;
     let dir = std::env::current_dir()?;
+    // Offer to move a pre-`.introdus/` config before we resolve where to read it.
+    crate::context::migrate_legacy_config(&dir)?;
     let env = env_path(&dir);
     if !env.exists() {
         // First run for this project: set it up interactively, then launch.

@@ -43,7 +43,14 @@ impl Fixture {
         c
     }
 
+    /// The canonical per-project config file: `<project>/.introdus/config.env`
+    /// (where the wizard writes and the loaders read).
     pub fn env_file(&self) -> PathBuf {
+        self.proj.join(".introdus/config.env")
+    }
+
+    /// The pre-`.introdus/` config location, for exercising the migration path.
+    pub fn legacy_env_file(&self) -> PathBuf {
         self.proj.join(".env")
     }
 
@@ -51,9 +58,9 @@ impl Fixture {
         self.home.join(".ssh/introdus-deploy-keys")
     }
 
-    /// Write a minimal but valid `.env` (the four required fields plus a couple
-    /// of harmless flags) so `introdus menu` can load it.
-    pub fn write_env(&self, project: &str) {
+    /// Write a minimal but valid config (the four required fields plus a couple
+    /// of harmless flags) at `path` so `introdus menu` can load it.
+    pub fn write_env_at(&self, path: &Path, project: &str) {
         let body = format!(
             "PROJECT_NAME={project}\n\
              REPO_URL=git@github.com:o/{project}.git\n\
@@ -61,7 +68,15 @@ impl Fixture {
              WEBAPP_PORT=3000\n\
              EXPOSE_WEBAPP=false\n"
         );
-        std::fs::write(self.env_file(), body).unwrap();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, body).unwrap();
+    }
+
+    /// Write the minimal config at the canonical `.introdus/config.env`.
+    pub fn write_env(&self, project: &str) {
+        self.write_env_at(&self.env_file(), project);
     }
 }
 

@@ -39,7 +39,7 @@ cargo build --release            # produces target/release/introdus (one binary)
 ./target/release/introdus install  # copies it onto ~/.local/bin (PATH)
 
 mkdir ~/myproject && cd ~/myproject
-introdus                         # first run: setup wizard writes .env, then launches
+introdus                         # first run: setup wizard writes .introdus/config.env, then launches
 ```
 
 `introdus` puts each container inside one **tmux session** with a persistent
@@ -130,13 +130,15 @@ cargo build --release              # -> target/release/introdus
 ./target/release/introdus install  # copies it onto ~/.local/bin (PATH)
 
 mkdir ~/myproject && cd ~/myproject
-introdus                           # first run: setup wizard writes .env, then launches
+introdus                           # first run: setup wizard writes .introdus/config.env, then launches
 ```
 
 The first `introdus` in a project directory runs the **setup wizard** (repo +
-deploy key + agent picks), writes the project's `.env`, and launches. Later runs
-attach straight to that project's tmux session + control TUI. You can also write
-`.env` by hand from [sample.env](sample.env) and skip the wizard.
+deploy key + agent picks), writes the project's `.introdus/config.env`, and
+launches. Later runs attach straight to that project's tmux session + control
+TUI. You can also write the config by hand from [sample.env](sample.env) and skip
+the wizard. (Projects from before this move keep a top-level `.env`; introdus
+reads it and offers to relocate it into `.introdus/` on the next launch.)
 
 Other subcommands, run from the project directory:
 
@@ -147,7 +149,7 @@ introdus reset              # drop the container AND wipe the volume
 introdus rebuild-base       # rebuild the shared base image
 introdus verify             # egress smoke test in a throwaway container
 introdus update             # in-container refresh (apt, mise, agents, LazyVim)
-introdus init               # (re)write .env via the wizard, without launching
+introdus init               # (re)write the config via the wizard, without launching
 introdus --disable-network-block   # launch with NO egress filtering (debug only)
 ```
 

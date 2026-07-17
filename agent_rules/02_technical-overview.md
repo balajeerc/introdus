@@ -36,8 +36,8 @@ Two crates (`resolver = "2"`, edition 2021, `rust-version` 1.80):
 1. **preflight** — Linux rootless podman only; check `podman` + `pasta` (+ tmux
    for the session model). Egress lives in the container, so the host needs
    nothing else.
-2. **config** — load/parse `.env` into a typed `Config` (or run the **wizard**
-   on first launch, writing `.env`).
+2. **config** — load/parse `.introdus/config.env` into a typed `Config` (or run
+   the **wizard** on first launch, writing it).
 3. **context** — resolve a `LaunchContext`: podman object names, a per-container
    assets dir (materialized bash core + build context), the generated proxy
    allowlist, and resolved cloudflared/paseo tunnel IPs.
@@ -76,11 +76,16 @@ See [05_security.md](05_security.md) for the full threat model.
 
 ## Config and persistence
 
-`.env` is the on-disk source of truth (typed `Config` ⇄ `.env` via `dotenvy`),
-kept hand-editable; the wizard/TUI is the primary editor and normalizes the file
-on save. Host-side generated artifacts (the bind-mounted proxy allowlist, the
-materialized bash core) live under `$XDG_STATE_HOME/introdus`. Per-project data
-(repo, toolchains, `node_modules`) persists in a podman volume across restarts.
+A per-project `.introdus/config.env` file is the on-disk source of truth (typed
+`Config` ⇄ env-format via `dotenvy`), kept hand-editable; the wizard/TUI is the
+primary editor and normalizes the file on save. It reads the canonical
+`.introdus/config.env`, falling back to a legacy top-level `./.env` (from before
+the move under `.introdus/`) and offering a one-time migration on the interactive
+entry points. The dev-machine `notify-listen` settings live separately at
+`$XDG_CONFIG_HOME/introdus/notify-listen.env`. Host-side generated artifacts (the
+bind-mounted proxy allowlist, the materialized bash core) live under
+`$XDG_STATE_HOME/introdus`. Per-project data (repo, toolchains, `node_modules`)
+persists in a podman volume across restarts.
 
 ## What stays bash, and why
 

@@ -12,7 +12,7 @@ notification listener) see [How to connect to container](How%20to%20connect%20to
 and [Running on a remote host](Running%20on%20a%20remote%20host.md).
 
 You run `introdus` **on the container host** (the first run in a project dir
-walks the setup wizard and writes `.env`; thereafter it launches straight into
+walks the setup wizard and writes `.introdus/config.env`; thereafter it launches straight into
 the tmux session + control TUI). You end up with:
 
 - A local base image (`introdus-base:latest`) built once from the
@@ -328,9 +328,12 @@ per-machine installer scripts):
   renders a desktop popup + sound locally, or — when `RC_FORWARD_ADDR` is set —
   forwards the event over the SSH reverse tunnel to the dev machine. Also fires
   the optional ntfy.sh push. See [Notifications](Notifications.md).
-- `introdus notify-listen` — run on the **dev machine** (laptop) with
-  `RC_LISTEN_TCP` set: accepts forwarded events over a loopback TCP port (fed by
-  your `ssh -R` reverse tunnel) and renders them locally.
+- `introdus notify-listen` — run on the **dev machine** (laptop). It owns both
+  the `ssh -R` reverse tunnel (via `autossh`, falling back to plain `ssh`) and
+  the loopback TCP listener, rendering forwarded events locally. Run it bare for
+  a one-time wizard (SSH alias + port + optional `systemd --user` service, saved
+  to `~/.config/introdus/notify-listen.env`), or pass `--via <alias> --port`.
+  `--install-service` installs a no-linger `default.target` user unit.
 - [setup.sh](../setup.sh) — runs inside the container as the **non-root `dev`
   user**, exec'd by `firewall-entrypoint.sh` after the egress filter and proxy
   are up (the entrypoint stages the deploy key while still root). Clones the

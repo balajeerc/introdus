@@ -102,30 +102,44 @@ stay at `AllowTcpForwarding no`. Two gotchas:
 
 ### On your laptop
 
-Two pieces, run yourself (the harness no longer installs systemd units for you):
+`introdus notify-listen` now owns both halves — the reverse tunnel *and* the
+listener. Run it bare the first time and a short wizard collects the SSH alias
+of the container host, the loopback port, and whether to install a `systemd
+--user` service:
 
-1. **The reverse tunnel** — forward the laptop's loopback port to the host's, so
-   the host's `notify-host` forward lands on the laptop. Keep it up with
-   `autossh` for self-healing reconnects:
+```bash
+introdus notify-listen
+```
 
-   ```bash
-   autossh -M 0 -N -R 8765:127.0.0.1:8765 <ssh-alias-for-the-host>
-   ```
+It saves your answers to `~/.config/introdus/notify-listen.env`, so later runs
+skip the wizard. You can also pass everything non-interactively:
 
-   (plain `ssh -N -R 8765:127.0.0.1:8765 <alias>` works for a one-off). The
-   alias must accept key-based SSH without a prompt.
+```bash
+introdus notify-listen --via <ssh-alias-for-the-host> --port 8765
+```
 
-2. **The listener** — render forwarded events locally:
+Under the hood it opens `autossh -M 0 -N -o ExitOnForwardFailure=yes -o
+ServerAliveInterval=30 -o ServerAliveCountMax=3 -R 8765:127.0.0.1:8765 <alias>`
+(falling back to plain `ssh` when `autossh` isn't installed), then binds the
+loopback port, forces local rendering, and never re-forwards. The port must
+match `RC_FORWARD_ADDR` on the host. The alias must accept key-based SSH without
+a prompt. `--dry-run` prints the resolved plan without opening anything;
+`--no-tunnel` runs only the listener (bring your own tunnel).
 
-   ```bash
-   RC_LISTEN_TCP=8765 introdus notify-listen
-   ```
+**Run it on every login** with the built-in `systemd --user` unit — answer *yes*
+to the wizard's service prompt, or:
 
-   `notify-listen` binds the loopback port, forces local rendering, and never
-   re-forwards. The port must match `RC_FORWARD_ADDR` on the host.
+```bash
+introdus notify-listen --via <alias> --install-service
+```
 
-For persistence across reboot/sleep, wrap those two in your own `systemd --user`
-units (or a launchd agent on macOS).
+This writes and enables `~/.config/systemd/user/introdus-notify-listen.service`
+(`WantedBy=default.target`, `Restart=on-failure`). It deliberately does **not**
+enable linger: the service starts with your graphical session so `notify-send` /
+`paplay` inherit its D-Bus and display — a boot-time lingering service would fire
+popups into a session that isn't there. Re-running with the same settings is a
+no-op; changing `--via`/`--port` rewrites and restarts the unit. On macOS,
+where there's no `systemd`, wrap the foreground command in a launchd agent.
 
 ## Which container fired it?
 

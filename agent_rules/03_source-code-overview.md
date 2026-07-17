@@ -15,7 +15,7 @@ or change what one owns, update the matching line (per
 | `agents.rs`   | The coding-agent registry (`AGENTS`) + install method / yolo-flag metadata; `paseo` orchestrator constants. Hand-mirrors `container/agents.sh`. |
 | `assets.rs`   | The embedded container-side bash core (`include_str!`) and `materialize` into the per-container assets/build-context dir. |
 | `names.rs`    | Podman object naming (base image, per-project image tag, container, volume); deterministic suffix fallback. |
-| `paths.rs`    | Host state dir (`$XDG_STATE_HOME/introdus`) + generated-artifact paths (allowlist, notify log, launch marker, assets dir). |
+| `paths.rs`    | Host state dir (`$XDG_STATE_HOME/introdus`) + generated-artifact paths (allowlist, notify log, launch marker, assets dir); config dir (`$XDG_CONFIG_HOME/introdus`) + the `notify-listen` config path. |
 | `ports.rs`    | Parse/validate `EXTRA_PORTS` entries. |
 | `session.rs`  | Whimsical deterministic tmux session-name generation. |
 | `notify.rs`   | The notification trust boundary: wire-format parse, event whitelist, label sanitization. |
@@ -30,7 +30,7 @@ or change what one owns, update the matching line (per
 | `main.rs`        | clap CLI: `Command` enum → subcommand dispatch. |
 | `wizard.rs`      | First-run setup wizard (inline ratatui modals) → writes `.env`. |
 | `preflight.rs`   | Host checks: rootless podman + pasta (+ tmux for the session). |
-| `context.rs`     | `LaunchContext` — everything the launch path derives from a `Config` (names, assets dir, allowlist, tunnel IPs). |
+| `context.rs`     | `LaunchContext` — everything the launch path derives from a `Config` (names, assets dir, allowlist, tunnel IPs); per-project config path resolution (`.introdus/config.env`, legacy `./.env` fallback + one-time migration offer). |
 | `launch.rs`      | Top-level launch orchestration (preflight → image → lifecycle → run); `verify`/`update`/`rebuild-base`. |
 | `image.rs`       | Base-image build/tag/prune; binary-newer-than-image staleness. |
 | `lifecycle.rs`   | Container/volume lifecycle: cleanup, `--recreate`, `--reset` (dirty-git guard + typed confirm). |
@@ -40,7 +40,8 @@ or change what one owns, update the matching line (per
 | `menu_actions.rs`| Implementations of each control-menu utility (tunnel URL, agents, allowlist, terminals, copy-in, ntfy, recreate/reset/stop/destroy, paseo). |
 | `panel.rs`       | The persistent two-pane control panel (status+menu / streaming output), popup prompts. |
 | `ui.rs`          | Shared ratatui primitives: status/row types, key reading, prompt state machines, the wizard's standalone inline modals. |
-| `notify.rs`      | Host notification service: `notify-host` (FIFO/socket → ntfy/forward/desktop) and `notify-listen` (laptop TCP side). |
+| `notify.rs`      | Host notification service: `notify-host` (FIFO/socket → ntfy/forward/desktop) and the laptop-side listen loop (`bind_listener` + `serve_listener`). |
+| `notify_listen.rs`| The dev-machine `notify-listen` orchestration: flag/env/saved-config/wizard resolution, ssh reverse-tunnel supervision (autossh-or-ssh), the `systemd --user` unit install (no-linger, `default.target`), idempotency, `--dry-run`. |
 | `install.rs`     | `introdus install` — put the binary on `PATH`. |
 | `util.rs`        | Small shared helpers (tilde expansion, shell quoting). |
 | `tests/`         | pty integration tests (`wizard_pty.rs`, `menu_pty.rs`) + `common/`. See [06_testing.md](06_testing.md). |

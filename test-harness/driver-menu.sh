@@ -98,8 +98,8 @@ mc_send "example.org" Enter
 # It offers to restart to apply; decline (default No -> Enter).
 mc_wait_prompt "Restart the container to apply" "restart offer"
 mc_send Enter
-harness_poll "example.org persisted" grep -q "example.org" "$proj/.env"
-echo "    ✓ example.org persisted to WHITELIST_HOSTS in .env"
+harness_poll "example.org persisted" grep -q "example.org" "$(harness_config_file "$proj")"
+echo "    ✓ example.org persisted to WHITELIST_HOSTS in .introdus/config.env"
 
 # ---- lifecycle: Stop then Restart, asserting status transitions ------------
 running() { podman container inspect -f '{{.State.Running}}' "$cname" 2>/dev/null | grep -qx "$1"; }

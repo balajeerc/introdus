@@ -222,8 +222,14 @@ impl Config {
         o
     }
 
-    /// Write the rendered config to `path`.
+    /// Write the rendered config to `path`, creating its parent directory (the
+    /// canonical location is `<project>/.introdus/config.env`, so the `.introdus`
+    /// dir may not exist yet on a first save).
     pub fn save(&self, path: &Path) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating config dir {}", parent.display()))?;
+        }
         std::fs::write(path, self.render())
             .with_context(|| format!("writing config to {}", path.display()))
     }

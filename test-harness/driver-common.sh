@@ -21,12 +21,19 @@ harness_dummy_key() {
         || ssh-keygen -t ed25519 -N "" -C harness -f "$HOME/.ssh/harness-key" >/dev/null
 }
 
-# Write a project .env. $1=project dir, $2=optional SESSION_NAME.
+# The canonical per-project config file. $1 = project dir.
+harness_config_file() {
+    echo "$1/.introdus/config.env"
+}
+
+# Write a project config. $1=project dir, $2=optional SESSION_NAME.
 # $3 = INSTALL_AGENTS value (space-separated ids). Defaults to "claude"; pass ""
 # to select NO agents (exercises the opt-out path — claude must then be absent).
 harness_write_env() {
     local proj="$1" session="${2:-}" agents="${3-claude}"
-    mkdir -p "$proj"
+    local cfg
+    cfg="$(harness_config_file "$proj")"
+    mkdir -p "$(dirname "$cfg")"
     {
         echo "PROJECT_NAME=harness"
         echo "REPO_URL=$HARNESS_REPO_URL"
@@ -34,12 +41,12 @@ harness_write_env() {
         echo "WEBAPP_PORT=3000"
         echo "INSTALL_AGENTS=\"$agents\""
         [[ -n "$session" ]] && echo "SESSION_NAME=$session"
-    } > "$proj/.env"
+    } > "$cfg"
 }
 
 # Ensure introdus-base:latest exists (cached across runs via the storage volume)
 # and carries the TEST-ONLY https_proxy overlay so a keyless public HTTPS clone
-# routes through the in-container allowlist proxy. $1 = a project dir with .env.
+# routes through the in-container allowlist proxy. $1 = a configured project dir.
 harness_ensure_base() {
     if podman image exists introdus-base:latest; then
         echo "==> base image already present (cached)"

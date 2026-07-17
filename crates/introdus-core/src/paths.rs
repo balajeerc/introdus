@@ -25,6 +25,27 @@ pub fn state_dir() -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// The host-side config directory: `$XDG_CONFIG_HOME/introdus`
+/// (falls back to `~/.config/introdus`). Created if missing. Distinct from the
+/// state dir: this holds hand-editable user config, not generated artifacts.
+pub fn config_dir() -> Result<PathBuf> {
+    let base = dirs::config_dir()
+        .or_else(|| dirs::home_dir().map(|h| h.join(".config")))
+        .context("cannot determine a config directory (no $XDG_CONFIG_HOME or $HOME)")?;
+    let dir = base.join(STATE_DIR_NAME);
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("creating config dir {}", dir.display()))?;
+    Ok(dir)
+}
+
+/// The dev-machine notification-listener config file
+/// (`$XDG_CONFIG_HOME/introdus/notify-listen.env`). Stores the SSH alias and
+/// port the `notify-listen` wizard collected, in the same `.env` format as the
+/// per-project config, so a bare `introdus notify-listen` skips the wizard.
+pub fn notify_listen_config() -> Result<PathBuf> {
+    Ok(config_dir()?.join("notify-listen.env"))
+}
+
 /// Per-session log for the detached `notify-host` service (which has no tmux
 /// window of its own). Viewable from the control menu on demand.
 pub fn notify_log(session_name: &str) -> Result<PathBuf> {
@@ -78,6 +99,13 @@ mod tests {
     fn ta20_notify_log_path_is_per_session() {
         let p = notify_log("swift-otter").unwrap();
         assert!(p.ends_with("notify-swift-otter.log"));
+        assert!(p.to_string_lossy().contains(STATE_DIR_NAME));
+    }
+
+    #[test]
+    fn ta131_notify_listen_config_under_config_dir() {
+        let p = notify_listen_config().unwrap();
+        assert!(p.ends_with("notify-listen.env"));
         assert!(p.to_string_lossy().contains(STATE_DIR_NAME));
     }
 }

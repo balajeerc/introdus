@@ -51,7 +51,7 @@ pub fn run(project_dir: &Path) -> Result<Config> {
     config.enable_notify_sh_alerts = enable_notify_sh_alerts;
     config.ntfy_sh_topic = ntfy_sh_topic;
 
-    let env = project_dir.join(".env");
+    let env = crate::context::config_write_path(project_dir);
     config
         .save(&env)
         .with_context(|| format!("writing {}", env.display()))?;
@@ -356,7 +356,9 @@ fn restrict_dir(dir: &Path) {
 #[cfg(not(unix))]
 fn restrict_dir(_dir: &Path) {}
 
-fn ask_nonempty(prompt: &str) -> Result<String> {
+/// Prompt until the user enters something non-blank; returns the trimmed value.
+/// Shared with the `notify-listen` wizard.
+pub(crate) fn ask_nonempty(prompt: &str) -> Result<String> {
     loop {
         let value = ui::text(prompt, None, false)?;
         let trimmed = value.trim();
@@ -373,8 +375,8 @@ fn ask_default(prompt: &str, default: &str) -> Result<String> {
 }
 
 /// Prompt for a `u16` port, pre-filled with `default`, re-asking on anything
-/// that doesn't parse.
-fn ask_port(prompt: &str, default: u16) -> Result<u16> {
+/// that doesn't parse. Shared with the `notify-listen` wizard.
+pub(crate) fn ask_port(prompt: &str, default: u16) -> Result<u16> {
     let default = default.to_string();
     loop {
         let value = ui::text(prompt, Some(&default), false)?;

@@ -101,21 +101,29 @@ pub fn run_host() -> Result<()> {
     }
 }
 
-/// `introdus notify-listen`: laptop side. Accept forwarded events over the
-/// loopback TCP port and render locally (never re-forward).
-pub fn run_listen() -> Result<()> {
-    let listen = non_empty_env("RC_LISTEN_TCP")
-        .context("RC_LISTEN_TCP must be set (host:port or port) for notify-listen")?;
-    let addr = if listen.contains(':') {
-        listen
-    } else {
-        format!("127.0.0.1:{listen}")
-    };
+/// Bind the laptop-side loopback listener, mapping "address already in use" to a
+/// friendly hint (the usual cause is a second listener — e.g. the `systemd
+/// --user` unit — already holding the port). Bind *before* opening the tunnel so
+/// a port clash fails fast, with nothing to clean up. The dev-machine
+/// orchestration lives in [`crate::notify_listen`].
+pub fn bind_listener(addr: &str) -> Result<TcpListener> {
+    match TcpListener::bind(addr) {
+        Ok(l) => Ok(l),
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => Err(anyhow::anyhow!(
+            "a notification listener is already running on {addr} \
+             (check `systemctl --user status introdus-notify-listen`)"
+        )),
+        Err(e) => Err(e).with_context(|| format!("binding {addr}")),
+    }
+}
+
+/// Serve the laptop-side listener: accept forwarded events and render locally,
+/// never re-forwarding (any `RC_FORWARD_ADDR` in the env is overridden). Loops
+/// forever; only returns `Err` if the accept loop itself dies.
+pub fn serve_listener(listener: TcpListener) -> Result<()> {
     // Force local rendering regardless of any RC_FORWARD_ADDR in the env.
     std::env::set_var("RC_NO_FORWARD", "1");
     let cfg = NotifyConfig::from_env();
-    let listener = TcpListener::bind(&addr).with_context(|| format!("binding {addr}"))?;
-    println!("rc-notify: listening on tcp://{addr}");
     for mut stream in listener.incoming().flatten() {
         let mut buf = vec![0u8; READ_LIMIT];
         if let Ok(n) = stream.read(&mut buf) {
@@ -235,7 +243,7 @@ fn play_sound_linux() {
         ("aplay", &["-q"]),
         ("ffplay", &["-nodisp", "-autoexit", "-loglevel", "quiet"]),
     ] {
-        if have(player) {
+        if crate::util::have(player) {
             let _ = Cmd::new(player).args(args).arg(&sound).ok();
             return;
         }
@@ -244,7 +252,7 @@ fn play_sound_linux() {
 }
 
 fn show_notification_linux(n: &Notification) -> Result<()> {
-    if !have("notify-send") {
+    if !crate::util::have("notify-send") {
         anyhow::bail!("notify-send not installed (try `apt install libnotify-bin`)");
     }
     // Collapse a follow-up onto the previous bubble via --replace-id.
@@ -278,12 +286,6 @@ fn runtime_dir() -> PathBuf {
     std::env::var("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::temp_dir())
-}
-
-fn have(cmd: &str) -> bool {
-    Cmd::new("sh")
-        .args(["-c", &format!("command -v {cmd} >/dev/null 2>&1")])
-        .ok()
 }
 
 fn uid() -> String {

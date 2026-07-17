@@ -144,6 +144,32 @@ fn ta127_wizard_paseo_opt_in_records_flag_and_relay_host() {
 }
 
 #[test]
+fn ta136_init_migrates_legacy_env_into_introdus_dir() {
+    let fx = Fixture::new("ship-tbc");
+    // A project still on the pre-`.introdus/` layout.
+    fx.write_env_at(&fx.legacy_env_file(), "ship-tbc");
+
+    let mut p = spawn_command(fx.cmd("init"), TIMEOUT_MS).unwrap();
+    // First: the migration offer (default Yes).
+    p.exp_string("Move this project's config").unwrap();
+    send(&mut p, "y");
+    // Then: since a config now exists, `init` asks whether to reconfigure it.
+    p.exp_string("reconfigure it").unwrap();
+    send(&mut p, "n"); // leave it as migrated
+    p.exp_string("left config unchanged").unwrap();
+    p.exp_eof().unwrap();
+
+    assert!(
+        fx.env_file().exists(),
+        "config should have moved to .introdus/config.env"
+    );
+    assert!(
+        !fx.legacy_env_file().exists(),
+        "legacy .env should be gone after migration"
+    );
+}
+
+#[test]
 fn ta75_wizard_reuses_a_matching_key_and_still_shows_registration() {
     let fx = Fixture::new("ship-tbc");
     // A pre-existing key whose name matches the project — the reuse flow should

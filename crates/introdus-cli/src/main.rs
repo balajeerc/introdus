@@ -10,6 +10,7 @@ mod lifecycle;
 mod menu;
 mod menu_actions;
 mod notify;
+mod notify_listen;
 mod panel;
 mod preflight;
 mod run;
@@ -52,6 +53,18 @@ impl From<LaunchArgs> for LaunchOpts {
     }
 }
 
+impl From<NotifyListenArgs> for notify_listen::Options {
+    fn from(a: NotifyListenArgs) -> Self {
+        Self {
+            via: a.via,
+            port: a.port,
+            install_service: a.install_service,
+            no_tunnel: a.no_tunnel,
+            dry_run: a.dry_run,
+        }
+    }
+}
+
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Ensure the tmux session, control TUI, and container are up (default).
@@ -76,9 +89,35 @@ enum Command {
     /// Host notification service: render / forward / ntfy push.
     NotifyHost,
     /// Dev-machine listener + ssh reverse tunnel for forwarded notifications.
-    NotifyListen,
+    NotifyListen(NotifyListenArgs),
     /// Put the binary on PATH and set up host services.
     Install,
+}
+
+/// Flags for `introdus notify-listen` (the dev-machine side). With no `--via`
+/// and no `--port` (and nothing saved from a prior run), an interactive wizard
+/// collects them.
+#[derive(Debug, Clone, Args)]
+struct NotifyListenArgs {
+    /// SSH alias/host to open the reverse tunnel to (the container host, as named
+    /// in your `~/.ssh/config`). Omit to be prompted / use the saved value.
+    #[arg(long)]
+    via: Option<String>,
+    /// Loopback port used on both ends of the tunnel and by the listener
+    /// (must match `RC_FORWARD_ADDR` on the host). Defaults to 8765.
+    #[arg(long)]
+    port: Option<u16>,
+    /// Install and enable a `systemd --user` unit that runs this on each login,
+    /// instead of running in the foreground now.
+    #[arg(long)]
+    install_service: bool,
+    /// Only run the listener; don't manage the ssh reverse tunnel (bring your own).
+    #[arg(long)]
+    no_tunnel: bool,
+    /// Resolve settings (running the wizard if needed) and print the plan without
+    /// binding the port, opening the tunnel, or touching systemd.
+    #[arg(long)]
+    dry_run: bool,
 }
 
 fn main() -> Result<()> {
@@ -99,23 +138,25 @@ fn main() -> Result<()> {
         Command::RebuildBase => launch::run_rebuild_base(),
         Command::Menu => menu::run(),
         Command::NotifyHost => notify::run_host(),
-        Command::NotifyListen => notify::run_listen(),
+        Command::NotifyListen(a) => notify_listen::run(a.into()),
         Command::Install => install::run(),
     }
 }
 
-/// Run the setup wizard for the current directory, standalone. If a `.env`
+/// Run the setup wizard for the current directory, standalone. If a config
 /// already exists, confirm before overwriting it.
 fn run_init() -> Result<()> {
     let dir = std::env::current_dir()?;
-    let env = dir.join(".env");
+    // Offer to relocate a legacy `./.env` before we decide what to reconfigure.
+    context::migrate_legacy_config(&dir)?;
+    let env = context::env_path(&dir);
     if env.exists()
         && !ui::confirm(
             &format!("{} exists — reconfigure it?", env.display()),
             false,
         )?
     {
-        println!("  left .env unchanged.");
+        println!("  left config unchanged.");
         return Ok(());
     }
     wizard::run(&dir)?;

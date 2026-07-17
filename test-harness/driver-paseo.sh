@@ -25,7 +25,7 @@ proj="$HOME/proj-paseo"
 
 harness_dummy_key
 harness_write_env "$proj" "$session" "claude"
-echo "INSTALL_PASEO=true" >> "$proj/.env"   # opt in the way the wizard would
+echo "INSTALL_PASEO=true" >> "$(harness_config_file "$proj")"   # opt in the way the wizard would
 harness_ensure_base "$proj"
 harness_clean
 cd "$proj"

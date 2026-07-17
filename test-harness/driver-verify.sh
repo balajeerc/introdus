@@ -21,7 +21,8 @@ mkdir -p "$HOME/.ssh"
 
 # REPO_URL host (github.com) is what the self-check probes through the proxy, so
 # it must be an allowlisted, real, reachable host.
-cat > "$proj/.env" <<EOF
+mkdir -p "$proj/.introdus"
+cat > "$proj/.introdus/config.env" <<EOF
 PROJECT_NAME=harness
 REPO_URL=git@github.com:octocat/Hello-World.git
 DEPLOY_KEY_PATH=$HOME/.ssh/harness-key
