@@ -61,25 +61,53 @@ pub fn fifo_path() -> Result<PathBuf> {
     Ok(runtime.join("rc-notify.fifo"))
 }
 
-/// Ensure `path` exists as a FIFO (created 0600). Idempotent: an existing FIFO
-/// is reused so a bind-mount into a running container isn't invalidated. The
-/// path is shared by every project on a host, so concurrent launches can race
-/// here — if `mkfifo` loses that race but the winner left a FIFO in place, that
-/// is success, not an error.
+/// Ensure `path` exists as a FIFO the container's non-root `dev` user can write.
+///
+/// Mode **0666, not 0600**: rootless podman maps the host user (the FIFO's owner)
+/// to container-*root*, while `rc-notify` runs as the `dev` uid — a *different*,
+/// subordinate uid that is "other" relative to the FIFO. A 0600 FIFO is therefore
+/// unwritable by the workload, so `rc-notify`'s write fails with `EACCES` (which
+/// it swallows) and no event is ever delivered. World-writable is safe here: the
+/// FIFO lives under `$XDG_RUNTIME_DIR` (0700, owner-only), so no other host user
+/// can reach it, and the event text is re-validated + sanitized at the
+/// [`Notification`] trust boundary regardless.
+///
+/// Idempotent: an existing FIFO is reused (and re-relaxed to 0666, so an older
+/// 0600 FIFO already bind-mounted into a running container is fixed in place —
+/// the `chmod` propagates through the mount). The path is shared by every project
+/// on a host, so concurrent launches can race — if `mkfifo` loses that race but
+/// the winner left a FIFO in place, that is success, not an error.
 pub fn ensure_fifo(path: &std::path::Path) -> Result<()> {
     if is_fifo(path) {
+        relax_fifo_mode(path);
         return Ok(());
     }
     let _ = std::fs::remove_file(path);
-    match Cmd::new("mkfifo").args(["-m", "600"]).arg(path).run() {
-        Ok(()) => Ok(()),
+    match Cmd::new("mkfifo").args(["-m", "666"]).arg(path).run() {
+        Ok(()) => {
+            relax_fifo_mode(path); // umask may have masked -m 666; force it
+            Ok(())
+        }
         Err(e) if is_fifo(path) => {
             let _ = e; // a concurrent launch created it first — reuse it
+            relax_fifo_mode(path);
             Ok(())
         }
         Err(e) => Err(e).context("mkfifo failed"),
     }
 }
+
+/// Force the notify FIFO to 0666 regardless of the process umask (which would
+/// otherwise mask `mkfifo -m 666` down and re-lock out the `dev` writer). See
+/// [`ensure_fifo`] for why the container's non-root writer needs other-write.
+#[cfg(unix)]
+fn relax_fifo_mode(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666));
+}
+
+#[cfg(not(unix))]
+fn relax_fifo_mode(_path: &std::path::Path) {}
 
 /// `introdus notify-host`: serve the local endpoint and render events.
 pub fn run_host() -> Result<()> {
@@ -323,4 +351,35 @@ fn is_fifo(path: &std::path::Path) -> bool {
 #[cfg(not(unix))]
 fn is_fifo(_path: &std::path::Path) -> bool {
     false
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn mode_of(path: &std::path::Path) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    #[test]
+    fn ta141_ensure_fifo_is_other_writable() {
+        let path = std::env::temp_dir().join(format!("introdus-fifo-ta141-{}", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+
+        // Fresh create: must land at 0666 so the container's non-root `dev` writer
+        // (rootless userns maps it to "other") can deliver events.
+        ensure_fifo(&path).unwrap();
+        assert!(is_fifo(&path));
+        assert_eq!(mode_of(&path), 0o666, "fresh FIFO must be other-writable");
+
+        // An older, too-strict 0600 FIFO left in place is re-relaxed on reuse
+        // (the chmod propagates through a live bind-mount, fixing running
+        // containers without a recreate).
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        ensure_fifo(&path).unwrap();
+        assert_eq!(mode_of(&path), 0o666, "reuse must re-relax a 0600 FIFO");
+
+        std::fs::remove_file(&path).ok();
+    }
 }

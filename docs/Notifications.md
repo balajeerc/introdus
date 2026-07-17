@@ -24,7 +24,12 @@ per-machine installer script. `introdus notify-host` runs on the container host;
   hooks call [`rc-notify`](../container/bin/rc-notify), which writes
   `event<TAB>project` to the host endpoint mounted at `/run/notify` (a Linux
   FIFO under `XDG_RUNTIME_DIR` on the host). It never blocks a hook for more
-  than a few seconds and never fails it, even if no listener is present.
+  than a few seconds and never fails it, even if no listener is present. The
+  FIFO is created **world-writable (0666)** on purpose: rootless podman maps the
+  FIFO's host owner to container-*root*, while `rc-notify` runs as the non-root
+  `dev` uid, so a 0600 FIFO would be unwritable by the workload and drop every
+  event silently. It's safe — the FIFO sits in `$XDG_RUNTIME_DIR` (0700,
+  owner-only), unreachable by other host users.
 - **Container host:** `introdus notify-host` reads the endpoint. The event is
   validated against a fixed whitelist (`done` / `waiting`) and the project label
   is stripped to `[A-Za-z0-9._-]` (≤40 chars) at this trust boundary, so a

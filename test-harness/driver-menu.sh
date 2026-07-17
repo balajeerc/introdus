@@ -37,6 +37,15 @@ tmux list-windows -t "$session" -F '#{window_name}' | grep -qx notify \
 harness_poll "notify-host running detached" pgrep -f 'notify-host'
 echo "    ✓ notify-host running detached, no window in the session"
 
+# The workload (and rc-notify) runs as non-root `dev`; rootless podman maps the
+# FIFO's host owner to container-root, so a 0600 FIFO would be unwritable by dev
+# and every notification would silently no-op. Assert dev CAN write /run/notify
+# (notify-host is reading, so the write returns instead of blocking).
+echo "==> dev (non-root) can write the notify FIFO"
+harness_poll "dev writes /run/notify" \
+    podman exec -u dev "$cname" timeout 5 sh -lc 'printf "done\tharness\n" > /run/notify'
+echo "    ✓ rc-notify's dev writer can deliver to the host FIFO"
+
 # ---- menu renders, grouped, with live status ------------------------------
 mc_ready
 mc_vis | grep -qF "Container lifecycle" || { echo "FATAL: grouped sections missing"; exit 1; }
