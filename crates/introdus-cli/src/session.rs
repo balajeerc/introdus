@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result};
+use introdus_core::process::Cmd;
 use introdus_core::{paths, session as names, tmux, Config};
 
 use crate::context::env_path;
@@ -109,6 +110,24 @@ fn spawn_notify_host(bin: &Path, config: &Config, session: &str) -> Result<()> {
     }
     cmd.spawn().context("spawning the notify-host service")?;
     Ok(())
+}
+
+/// Restart the detached `notify-host` for `session`: SIGTERM the running service
+/// (found via the PID file it wrote on startup) and spawn a fresh one, so it
+/// re-reads the project config's notification env — `RC_FORWARD_ADDR`, ntfy — that
+/// it otherwise froze at session-creation time. No container recreate or session
+/// bounce required.
+pub(crate) fn restart_notify_host(config: &Config, session: &str) -> Result<()> {
+    if let Ok(pid_path) = paths::notify_pid(session) {
+        if let Ok(pid) = std::fs::read_to_string(&pid_path) {
+            let pid = pid.trim();
+            if !pid.is_empty() {
+                let _ = Cmd::new("kill").arg(pid).ok(); // best-effort SIGTERM
+            }
+        }
+    }
+    let bin = current_exe()?;
+    spawn_notify_host(&bin, config, session)
 }
 
 /// Attach the terminal to `session` (never returns on success).

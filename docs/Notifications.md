@@ -69,8 +69,11 @@ instead of rendering. The whitelist + label sanitization run here **and** again
 on the laptop.
 
 > `notify-host` reads `RC_FORWARD_ADDR` **once, when the tmux session starts**. If
-> you add or change it on an already-running session, restart the session (Quit
-> introdus → `introdus`) so the detached service picks up the new value.
+> you add or change it on an already-running session, use the control menu's
+> **"Restart the notification service"** — it respawns `notify-host` so it picks
+> up the new value, no container recreate or session bounce needed. (The
+> **"Send a test host notification"** action also prints whether the config
+> forwards or renders locally, to help you spot a mismatch.)
 
 ### Host SSH-forwarding requirement
 

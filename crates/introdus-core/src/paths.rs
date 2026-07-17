@@ -52,6 +52,13 @@ pub fn notify_log(session_name: &str) -> Result<PathBuf> {
     Ok(state_dir()?.join(format!("notify-{session_name}.log")))
 }
 
+/// Per-session PID file the detached `notify-host` service writes on startup,
+/// so the control menu can find and restart it (to pick up a changed
+/// `RC_FORWARD_ADDR` / ntfy setting) without bouncing the tmux session.
+pub fn notify_pid(session_name: &str) -> Result<PathBuf> {
+    Ok(state_dir()?.join(format!("notify-{session_name}.pid")))
+}
+
 /// Per-container proxy allowlist file, bind-mounted read-only at
 /// `/etc/tinyproxy/egress-allowlist.txt`. Regenerated on every launch.
 pub fn allowlist_file(container_name: &str) -> Result<PathBuf> {
@@ -99,6 +106,13 @@ mod tests {
     fn ta20_notify_log_path_is_per_session() {
         let p = notify_log("swift-otter").unwrap();
         assert!(p.ends_with("notify-swift-otter.log"));
+        assert!(p.to_string_lossy().contains(STATE_DIR_NAME));
+    }
+
+    #[test]
+    fn ta139_notify_pid_path_is_per_session() {
+        let p = notify_pid("swift-otter").unwrap();
+        assert!(p.ends_with("notify-swift-otter.pid"));
         assert!(p.to_string_lossy().contains(STATE_DIR_NAME));
     }
 

@@ -60,6 +60,22 @@ mc_select "Show the notification log"
 mc_wait_prompt "reading FIFO" "notify log contents"
 echo "    ✓ notification log shown on demand in the output pane"
 
+# ---- restart the detached notify service (apply config without a bounce) ----
+# "Restart the notification service" SIGTERMs the running notify-host (found via
+# the PID file it wrote) and respawns it, so a changed RC_FORWARD_ADDR/ntfy takes
+# effect without recreating the container. Assert a notify-host is still up
+# afterwards but with a NEW pid.
+echo "==> menu: Restart the notification service"
+OLD_NOTIFY_PID="$(pgrep -f 'notify-host' | head -1)"
+notify_pid_changed() {
+    local new
+    new="$(pgrep -f 'notify-host' | head -1)"
+    [[ -n "$new" && "$new" != "$OLD_NOTIFY_PID" ]]
+}
+mc_select "Restart the notification service"
+harness_poll "notify-host respawned with a new pid" notify_pid_changed
+echo "    ✓ notify-host restarted (was pid $OLD_NOTIFY_PID, now $(pgrep -f 'notify-host' | head -1))"
+
 # ---- open a dev terminal (dispatch into the container as dev) --------------
 echo "==> menu: Open a dev terminal"
 mc_select "dev terminal"

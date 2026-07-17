@@ -301,6 +301,8 @@ it. Heavy + opt-in (needs a rootless-podman host with `/dev/fuse` +
 | TA136 | `introdus init` on a legacy `./.env` project offers to migrate it into `.introdus/config.env`, moves it on accept, then treats the project as configured (offers reconfigure, not first-run wizard) | ✅ pty `wizard_pty` | 1 | ta136_init_migrates_legacy_env_into_introdus_dir |
 | TA137 | Bare `introdus notify-listen` (no flags / env / saved config) runs a wizard collecting SSH alias + port + systemd choice; `--dry-run` then prints the resolved listener + tunnel plan without side effects | ✅ pty `notify_listen_pty` | 1 | ta137_notify_listen_wizard_then_dry_run_plan |
 | TA138 | The setup wizard asks whether to forward notifications to a separate dev machine over an SSH reverse tunnel; opting in (with a port) writes `RC_FORWARD_ADDR=127.0.0.1:<port>` so a headless remote host forwards to the laptop from the first launch | ✅ pty `wizard_pty` | 1 | ta138_wizard_forward_opt_in_sets_rc_forward_addr |
+| TA139 | The detached `notify-host` writes a per-session PID file (`notify-<session>.pid` under the state dir) so the control menu can find and signal it | ✅ unit `introdus-core` | 0 | ta139_notify_pid_path_is_per_session |
+| TA140 | "Restart the notification service" SIGTERMs the running `notify-host` (via its PID file) and respawns it — so a changed `RC_FORWARD_ADDR`/ntfy applies without a container recreate or session bounce; a notify-host stays up afterward with a new pid | harness `menu` | 1 | driver-menu.sh: capture notify-host pid → select "Restart the notification service" → poll for a notify-host with a different pid |
 
 ---
 

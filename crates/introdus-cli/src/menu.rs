@@ -40,6 +40,7 @@ enum Action {
     EnableNtfy,
     TestNotify,
     NotifyLog,
+    RestartNotify,
     Restart,
     Stop,
     Recreate,
@@ -67,6 +68,9 @@ impl std::fmt::Display for Action {
             Action::EnableNtfy => "Enable ntfy.sh mobile notifications",
             Action::TestNotify => "Send a test host notification",
             Action::NotifyLog => "Show the notification log",
+            Action::RestartNotify => {
+                "Restart the notification service (apply forward/ntfy changes)"
+            }
             Action::Restart => "Restart the container",
             Action::Stop => "Stop the container",
             Action::Recreate => "Recreate the container (apply .env changes)",
@@ -99,6 +103,7 @@ const MENU: &[Row] = &[
     Row::Item(Action::EnableNtfy),
     Row::Item(Action::TestNotify),
     Row::Item(Action::NotifyLog),
+    Row::Item(Action::RestartNotify),
     Row::Header("Container lifecycle"),
     Row::Item(Action::Restart),
     Row::Item(Action::Stop),
@@ -203,6 +208,7 @@ fn dispatch(action: Action, ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
         Action::DevTerminal => act::open_terminal(ctx, ui, Some("dev")),
         Action::TestNotify => act::test_notify(ctx, ui),
         Action::NotifyLog => act::notify_log(ctx, ui),
+        Action::RestartNotify => act::restart_notify(ctx, ui),
         Action::Restart => act::restart(ctx, ui),
         Action::Stop => act::stop(ctx, ui),
         Action::Recreate => act::recreate(ctx, ui),

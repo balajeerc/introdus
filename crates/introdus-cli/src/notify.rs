@@ -86,6 +86,9 @@ pub fn run_host() -> Result<()> {
     let cfg = NotifyConfig::from_env();
     let path = fifo_path()?;
     ensure_fifo(&path)?;
+    // Record our own PID so the control menu can restart us (to pick up a changed
+    // RC_FORWARD_ADDR / ntfy setting) without bouncing the whole tmux session.
+    write_pid_file();
     // Launched detached (no tmux window of its own), so bind its lifetime to the
     // owning tmux session — exit once that session is gone.
     spawn_session_watcher();
@@ -131,6 +134,20 @@ pub fn serve_listener(listener: TcpListener) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Write our PID to the per-session file so the control menu's "Restart the
+/// notification service" can find and signal us. Only meaningful for the
+/// detached service (which sets `RC_SESSION`); a no-op otherwise. Authoritative
+/// because it's written by the notify-host process itself — sidestepping the
+/// `setsid` fork/exec PID ambiguity a spawner would face.
+fn write_pid_file() {
+    let Some(session) = non_empty_env("RC_SESSION") else {
+        return;
+    };
+    if let Ok(p) = introdus_core::paths::notify_pid(&session) {
+        let _ = std::fs::write(p, std::process::id().to_string());
+    }
 }
 
 /// When `RC_SESSION` is set (the detached-service case), poll for that tmux

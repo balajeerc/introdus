@@ -38,7 +38,32 @@ pub fn test_notify(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     require_running(ctx)?;
     ui.log("  sending a test 'done' notification via rc-notify…");
     let _ = exec(ctx, Some("dev")).args(["rc-notify", "done"]).run();
+    // Surface where the config says the event should land — the usual "no popup"
+    // cause is a forward mismatch, so name it here.
+    match &ctx.config.rc_forward_addr {
+        Some(addr) => {
+            ui.log(format!(
+                "  config: forwarding to {addr} (a remote dev machine over the ssh reverse tunnel)"
+            ));
+            ui.log("  if you changed this recently, use 'Restart the notification service' so");
+            ui.log("  the running notify-host picks it up (its env froze at session start).");
+        }
+        None => ui.log("  config: rendering locally on this host (RC_FORWARD_ADDR unset)"),
+    }
     ui.log("  (delivery is handled by the detached notify service — see its log below)");
+    Ok(())
+}
+
+/// Restart the detached `notify-host` so it re-reads the project's notification
+/// config (e.g. a just-added `RC_FORWARD_ADDR`) without recreating the container
+/// or bouncing the tmux session.
+pub fn restart_notify(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
+    ui.log("  restarting the notification service (notify-host)…");
+    crate::session::restart_notify_host(&ctx.config, &session_of(ctx))?;
+    match &ctx.config.rc_forward_addr {
+        Some(addr) => ui.log(format!("  restarted — now forwarding to {addr}.")),
+        None => ui.log("  restarted — now rendering locally on this host."),
+    }
     Ok(())
 }
 

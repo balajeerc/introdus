@@ -35,9 +35,9 @@ or change what one owns, update the matching line (per
 | `image.rs`       | Base-image build/tag/prune; binary-newer-than-image staleness. |
 | `lifecycle.rs`   | Container/volume lifecycle: cleanup, `--recreate`, `--reset` (dirty-git guard + typed confirm). |
 | `run.rs`         | The full `podman run` flag/env/mount set; `--verify` self-check; `--update` in-container refresh. |
-| `session.rs`     | The tmux session model — puts each container in one session with its windows. |
+| `session.rs`     | The tmux session model — puts each container in one session with its windows; spawns/respawns the detached `notify-host` service. |
 | `menu.rs`        | The control TUI (`introdus menu`): menu layout, dispatch to `menu_actions`. |
-| `menu_actions.rs`| Implementations of each control-menu utility (tunnel URL, agents, allowlist, terminals, copy-in, ntfy, recreate/reset/stop/destroy, paseo). |
+| `menu_actions.rs`| Implementations of each control-menu utility (tunnel URL, agents, allowlist, terminals, copy-in, ntfy, test/restart the notify service, recreate/reset/stop/destroy, paseo). |
 | `panel.rs`       | The persistent two-pane control panel (status+menu / streaming output), popup prompts. |
 | `ui.rs`          | Shared ratatui primitives: status/row types, key reading, prompt state machines, the wizard's standalone inline modals. |
 | `notify.rs`      | Host notification service: `notify-host` (FIFO/socket → ntfy/forward/desktop) and the laptop-side listen loop (`bind_listener` + `serve_listener`). |
