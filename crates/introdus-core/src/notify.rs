@@ -3,7 +3,7 @@
 //!
 //! The wire format a container sends is `event` or `event<TAB>label`. The event
 //! must match a fixed whitelist and the label — the only attacker-influenceable
-//! text that reaches a desktop notification under the "Claude Code" brand — is
+//! text that reaches a desktop notification under the "Remote dev" brand — is
 //! stripped to a safe charset and length-capped. This mirrors the sanitization
 //! that lived in both `host_listener.py` and `host_notify.sh`.
 
@@ -13,8 +13,10 @@ pub const READ_LIMIT: usize = 128;
 /// Max length of a sanitized label.
 pub const LABEL_MAX: usize = 40;
 
-/// The notification brand title.
-pub const BRAND: &str = "Claude Code";
+/// The notification brand prefix. Agent-agnostic: introdus runs whatever agent
+/// you install, so the popup is branded by the harness, not by Claude Code (its
+/// first and once-only supported agent).
+pub const BRAND: &str = "Remote dev";
 
 /// A validated notification event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,12 +80,13 @@ impl Notification {
         })
     }
 
-    /// The notification title: the brand, plus the label when present.
+    /// The notification title: the brand, plus the label when present
+    /// (`Remote dev: <label>`).
     pub fn title(&self) -> String {
         if self.label.is_empty() {
             BRAND.to_owned()
         } else {
-            format!("{BRAND} — {}", self.label)
+            format!("{BRAND}: {}", self.label)
         }
     }
 }
@@ -121,9 +124,9 @@ mod tests {
     fn ta98_title_uses_label_when_present() {
         let n = Notification::parse("done\tmyproj").unwrap();
         assert_eq!(n.event, Event::Done);
-        assert_eq!(n.title(), "Claude Code — myproj");
+        assert_eq!(n.title(), "Remote dev: myproj");
         let n = Notification::parse("waiting").unwrap();
-        assert_eq!(n.title(), "Claude Code");
+        assert_eq!(n.title(), "Remote dev");
         assert_eq!(n.event.body(), "Awaiting your input");
     }
 }

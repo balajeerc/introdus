@@ -34,7 +34,7 @@ per-machine installer script. `introdus notify-host` runs on the container host;
   validated against a fixed whitelist (`done` / `waiting`) and the project label
   is stripped to `[A-Za-z0-9._-]` (≤40 chars) at this trust boundary, so a
   compromised container can't spoof arbitrary text or inject control characters
-  under the "Claude Code" brand. It then renders locally, or — when
+  under the "Remote dev" brand. It then renders locally, or — when
   `RC_FORWARD_ADDR` is set — forwards over the reverse tunnel.
 
 `introdus` starts `notify-host` **automatically** as a detached service for each
@@ -158,8 +158,8 @@ where there's no `systemd`, wrap the foreground command in a launchd agent.
 
 ## Which container fired it?
 
-Each notification's title is suffixed with the container's project name — e.g.
-*"Claude Code — myproject"* — so when you run many containers on one host you
+Each notification's title carries the container's project name — e.g.
+*"Remote dev: myproject"* — so when you run many containers on one host you
 can tell them apart at a glance. Derived from `PROJECT_NAME` (a runtime env
 `introdus` passes into the container), override per-container with `RC_LABEL`.
 A label change takes effect the next time the container is (re)created

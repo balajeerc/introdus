@@ -301,7 +301,7 @@ fn show_notification_linux(n: &Notification) -> Result<()> {
         anyhow::bail!("notify-send not installed (try `apt install libnotify-bin`)");
     }
     // Collapse a follow-up onto the previous bubble via --replace-id.
-    let id_file = runtime_dir().join("claude-code-notify.id");
+    let id_file = runtime_dir().join("remote-dev-notify.id");
     let prev_id = std::fs::read_to_string(&id_file)
         .ok()
         .and_then(|s| s.trim().parse::<u32>().ok())
@@ -309,7 +309,7 @@ fn show_notification_linux(n: &Notification) -> Result<()> {
     let new_id = Cmd::new("notify-send")
         .args(["--print-id", "--replace-id", &prev_id.to_string()])
         .args(["--urgency=critical", "--expire-time=0"])
-        .args(["--app-name=claude-code", "--icon=dialog-information"])
+        .args(["--app-name=remote-dev", "--icon=dialog-information"])
         .args([n.title().as_str(), n.event.body()])
         .stdout()?;
     if let Ok(id) = new_id.trim().parse::<u32>() {

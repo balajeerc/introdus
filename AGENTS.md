@@ -583,7 +583,7 @@ The only attacker-influenceable text that crosses into a host-side desktop
 notification is the **label** a container sends. `crates/introdus-core/src/notify.rs`
 is the trust boundary: the wire format is `event` or `event<TAB>label`; the event
 must match a fixed whitelist, and the label is stripped to a safe charset and
-length-capped (`LABEL_MAX`) before it renders under the "Claude Code" brand.
+length-capped (`LABEL_MAX`) before it renders under the "Remote dev" brand.
 Read input is bounded (`READ_LIMIT`). This mirrors the sanitization that lived in
 the old `host_listener.py` / `host_notify.sh`.
 
