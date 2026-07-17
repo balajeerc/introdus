@@ -24,6 +24,7 @@ RUN chmod 0755 /usr/local/bin/introdus
 COPY test-harness/driver-common.sh /usr/local/bin/driver-common.sh
 COPY test-harness/driver-verify.sh /usr/local/bin/driver-verify.sh
 COPY test-harness/driver-launch.sh /usr/local/bin/driver-launch.sh
+COPY test-harness/driver-reattach.sh /usr/local/bin/driver-reattach.sh
 COPY test-harness/driver-menu.sh /usr/local/bin/driver-menu.sh
 COPY test-harness/driver-egress.sh /usr/local/bin/driver-egress.sh
 COPY test-harness/driver-lifecycle.sh /usr/local/bin/driver-lifecycle.sh
@@ -34,7 +35,8 @@ COPY test-harness/driver-agent-missing.sh /usr/local/bin/driver-agent-missing.sh
 COPY test-harness/driver-quit-stop.sh /usr/local/bin/driver-quit-stop.sh
 COPY test-harness/driver-paseo.sh /usr/local/bin/driver-paseo.sh
 RUN chmod 0755 /usr/local/bin/driver-common.sh /usr/local/bin/driver-verify.sh \
-    /usr/local/bin/driver-launch.sh /usr/local/bin/driver-menu.sh \
+    /usr/local/bin/driver-launch.sh /usr/local/bin/driver-reattach.sh \
+    /usr/local/bin/driver-menu.sh \
     /usr/local/bin/driver-egress.sh /usr/local/bin/driver-lifecycle.sh \
     /usr/local/bin/driver-install.sh /usr/local/bin/driver-agents.sh \
     /usr/local/bin/driver-agent-launch.sh /usr/local/bin/driver-agent-missing.sh \

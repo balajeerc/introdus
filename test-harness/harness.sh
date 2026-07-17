@@ -7,6 +7,7 @@
 #   test-harness/harness.sh [target]
 #     verify     egress spike: nested base build + egress firewall self-check
 #     launch     full dev container up + public-repo clone through the proxy
+#     reattach   repeat launch from the same dir reattaches (dir tag > name hash)
 #     menu       drive the live control TUI over tmux (terminals/copy/allowlist/
 #                stop/restart)
 #     egress     workload default-deny enforcement + blocked-egress menu utility
@@ -65,6 +66,10 @@ case "$target" in
         echo "==> launch: full dev container up + clone through the proxy"
         run_driver driver-launch.sh
         ;;
+    reattach)
+        echo "==> reattach: repeat launch from the same dir reattaches to one session"
+        run_driver driver-reattach.sh
+        ;;
     menu)
         echo "==> menu: drive the live control TUI over tmux"
         run_driver driver-menu.sh
@@ -104,6 +109,8 @@ case "$target" in
     all)
         echo "==> verify: nested base build + egress self-check"
         run_driver driver-verify.sh
+        echo "==> reattach: repeat launch from the same dir reattaches to one session"
+        run_driver driver-reattach.sh
         echo "==> menu: full launch + drive the live control TUI over tmux"
         run_driver driver-menu.sh
         echo "==> egress: workload default-deny enforcement + blocked-egress menu"
@@ -124,7 +131,7 @@ case "$target" in
         run_driver driver-lifecycle.sh
         ;;
     *)
-        echo "unknown target: $target (want: verify | launch | menu | egress | lifecycle | install | agents | agent-launch | agent-missing | quit-stop | paseo | all)" >&2
+        echo "unknown target: $target (want: verify | launch | reattach | menu | egress | lifecycle | install | agents | agent-launch | agent-missing | quit-stop | paseo | all)" >&2
         exit 2
         ;;
 esac

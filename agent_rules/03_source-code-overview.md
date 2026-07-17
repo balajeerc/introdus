@@ -20,7 +20,7 @@ or change what one owns, update the matching line (per
 | `session.rs`  | Whimsical deterministic tmux session-name generation. |
 | `notify.rs`   | The notification trust boundary: wire-format parse, event whitelist, label sanitization. |
 | `podman.rs`   | Thin `podman` command constructors + existence/state probes. |
-| `tmux.rs`     | Thin `tmux` helpers (sessions, windows, attach). |
+| `tmux.rs`     | Thin `tmux` helpers (sessions, windows, attach); per-session project-dir tagging (`@introdus_project_dir`) + lookup for attach-or-create. |
 | `process.rs`  | `Cmd` — the logged wrapper over `std::process::Command` all external tools go through; stdout capture guard for the TUI output pane. |
 
 ## `crates/introdus-cli/` — the `introdus` binary

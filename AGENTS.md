@@ -237,7 +237,7 @@ or change what one owns, update the matching line (per
 | `session.rs`  | Whimsical deterministic tmux session-name generation. |
 | `notify.rs`   | The notification trust boundary: wire-format parse, event whitelist, label sanitization. |
 | `podman.rs`   | Thin `podman` command constructors + existence/state probes. |
-| `tmux.rs`     | Thin `tmux` helpers (sessions, windows, attach). |
+| `tmux.rs`     | Thin `tmux` helpers (sessions, windows, attach); per-session project-dir tagging (`@introdus_project_dir`) + lookup for attach-or-create. |
 | `process.rs`  | `Cmd` — the logged wrapper over `std::process::Command` all external tools go through; stdout capture guard for the TUI output pane. |
 
 ## `crates/introdus-cli/` — the `introdus` binary
@@ -648,6 +648,7 @@ rootless-podman host with `/dev/fuse` and `/dev/net/tun`.
 test-harness/harness.sh            # all (default): the full end-to-end sweep
 test-harness/harness.sh verify     # egress firewall self-check only (fast-ish)
 test-harness/harness.sh launch     # container up + clone through the proxy
+test-harness/harness.sh reattach   # repeat launch from a dir reattaches to one session
 test-harness/harness.sh menu       # drive the live control TUI over tmux
 test-harness/harness.sh egress     # workload default-deny enforcement
 test-harness/harness.sh lifecycle  # recreate persistence + destroy teardown

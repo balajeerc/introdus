@@ -19,6 +19,53 @@ pub fn has_session(name: &str) -> bool {
     tmux().args(["has-session", "-t", name]).ok()
 }
 
+/// The tmux user option each introdus session is tagged with: its canonical
+/// project directory. Lets a later `introdus launch` from the same directory
+/// find and reattach to the running session regardless of the session's
+/// (name-hashed) name.
+const PROJECT_OPTION: &str = "@introdus_project_dir";
+
+/// Tag `session` with its canonical project directory (`dir`) so future
+/// launches from the same directory can find it via [`find_session_by_project`].
+pub fn set_session_project(session: &str, dir: &Path) -> Result<()> {
+    tmux()
+        .args(["set-option", "-t", session, PROJECT_OPTION])
+        .arg(dir)
+        .run()
+}
+
+/// The name of a live introdus session tagged with `dir` (its canonical project
+/// directory), or `None`. Reads each session's [`PROJECT_OPTION`] with
+/// `show-options -v` and returns the first exact match. Silent when no tmux
+/// server is running.
+///
+/// Each option is read with a separate `show-options` call rather than a single
+/// tab-delimited `list-sessions -F` line: some tmux builds (seen on Fedora's
+/// 3.7b) mangle a literal tab embedded in the `-F` format, which would break a
+/// delimiter-based parse. `show-options -v` returns the bare value, so there is
+/// nothing to delimit.
+pub fn find_session_by_project(dir: &Path) -> Option<String> {
+    let target = dir.to_string_lossy();
+    let names = tmux()
+        .args(["list-sessions", "-F", "#{session_name}"])
+        .stdout_quiet()
+        .ok()?;
+    names
+        .lines()
+        .find(|name| session_project(name).as_deref() == Some(&*target))
+        .map(str::to_owned)
+}
+
+/// The value of [`PROJECT_OPTION`] on `session`, or `None` when the option is
+/// unset (empty) or the session is gone.
+fn session_project(session: &str) -> Option<String> {
+    let value = tmux()
+        .args(["show-options", "-t", session, "-v", PROJECT_OPTION])
+        .stdout_quiet()
+        .ok()?;
+    (!value.is_empty()).then_some(value)
+}
+
 /// Create a detached session whose first window `window` runs `command`, with
 /// `cwd` as the window's start directory.
 pub fn new_detached_session(session: &str, window: &str, command: &str, cwd: &Path) -> Result<()> {

@@ -51,6 +51,7 @@ rootless-podman host with `/dev/fuse` and `/dev/net/tun`.
 test-harness/harness.sh            # all (default): the full end-to-end sweep
 test-harness/harness.sh verify     # egress firewall self-check only (fast-ish)
 test-harness/harness.sh launch     # container up + clone through the proxy
+test-harness/harness.sh reattach   # repeat launch from a dir reattaches to one session
 test-harness/harness.sh menu       # drive the live control TUI over tmux
 test-harness/harness.sh egress     # workload default-deny enforcement
 test-harness/harness.sh lifecycle  # recreate persistence + destroy teardown

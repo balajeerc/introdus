@@ -34,9 +34,21 @@ pub fn launch(_opts: LaunchOpts) -> Result<()> {
     }
 
     let mut config = Config::load(&env)?;
-    let session = ensure_session_name(&mut config, &env)?;
 
+    // Primary key: a live session tagged with THIS project directory. Robust
+    // against session-name hash collisions (two projects sharing a basename) and
+    // a hand-edited SESSION_NAME. The name-hash check below is the fallback.
+    let canonical = dir.canonicalize().unwrap_or_else(|_| dir.clone());
+    if let Some(existing) = tmux::find_session_by_project(&canonical) {
+        println!("==> attaching to existing session {existing}");
+        return attach(&existing).map(|_| ());
+    }
+
+    let session = ensure_session_name(&mut config, &env)?;
     if tmux::has_session(&session) {
+        // A session created before project-dir tagging existed: tag it now so the
+        // next launch finds it by directory, then attach.
+        let _ = tmux::set_session_project(&session, &canonical);
         println!("==> attaching to existing session {session}");
         return attach(&session).map(|_| ());
     }
@@ -44,6 +56,7 @@ pub fn launch(_opts: LaunchOpts) -> Result<()> {
     let bin = current_exe()?;
     println!("==> creating tmux session {session}");
     tmux::new_detached_session(&session, MAIN_WINDOW, &window_cmd(&bin, "menu"), &dir)?;
+    tmux::set_session_project(&session, &canonical)?;
     // Start the notification service first, so the FIFO exists before the
     // container mounts it. It runs DETACHED (no tmux window) with its output in a
     // per-session log; the control menu shows that log on demand.

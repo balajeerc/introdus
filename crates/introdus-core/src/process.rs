@@ -170,9 +170,22 @@ impl Cmd {
     /// Run capturing stdout; error on a non-zero exit. Returns trimmed stdout.
     /// stderr is inherited normally, or piped into the capture buffer while a
     /// [`capture_stdio`] guard is active (so it can't corrupt a TUI screen).
-    pub fn stdout(mut self) -> Result<String> {
+    pub fn stdout(self) -> Result<String> {
+        self.stdout_inner(false)
+    }
+
+    /// Like [`stdout`](Self::stdout) but discards the child's stderr entirely —
+    /// for probes whose failure diagnostics are noise, e.g. `tmux list-sessions`
+    /// when no server is running.
+    pub fn stdout_quiet(self) -> Result<String> {
+        self.stdout_inner(true)
+    }
+
+    fn stdout_inner(mut self, quiet: bool) -> Result<String> {
         let capture = capture_target();
-        let stderr = if capture.is_some() {
+        let stderr = if quiet {
+            Stdio::null()
+        } else if capture.is_some() {
             Stdio::piped()
         } else {
             Stdio::inherit()

@@ -40,7 +40,9 @@ harness_write_env() {
         echo "DEPLOY_KEY_PATH=$HOME/.ssh/harness-key"
         echo "WEBAPP_PORT=3000"
         echo "INSTALL_AGENTS=\"$agents\""
-        [[ -n "$session" ]] && echo "SESSION_NAME=$session"
+        # `if` (not `[[ … ]] &&`): a bare && list returns 1 when no session is
+        # given, which under `set -e` would exit the calling driver.
+        if [[ -n "$session" ]]; then echo "SESSION_NAME=$session"; fi
     } > "$cfg"
 }
 
