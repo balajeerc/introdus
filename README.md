@@ -1,8 +1,8 @@
-# remote-code-harness
+# introdus
 
 ## Overview
 
-`remote-control-harness` runs your dev environment — including Claude Code —
+`introdus` runs your dev environment — including Claude Code —
 inside a network-hardened, rootless **podman** container. Your real machine
 stays insulated from supply-chain attacks (increasingly common), and even a
 full compromise is confined to the container's blast radius.
@@ -23,30 +23,65 @@ from your laptop over SSH, and "task done / awaiting input" alerts tunnel back t
 a popup + sound on your laptop (see
 [Running on a remote host](docs/Running%20on%20a%20remote%20host.md)).
 
-![remote-control-harness architecture: dev machine to remote container host to hardened dev container](docs/architecture.svg)
+![introdus architecture: dev machine to remote container host to hardened dev container](docs/architecture.svg)
+
+## introdus — the single-binary control plane
+
+`introdus` is one self-contained Rust binary that runs on the container host and
+drives everything: podman, the tmux session, the control TUI, and the
+notification service. The **container-side security core stays bash** —
+`introdus` embeds `firewall-entrypoint.sh`, `tinyproxy.conf`, `setup.sh`, and
+`container/bin/*` and bind-mounts them at launch, so the egress guarantee rests
+on audited shell + nft + tinyproxy.
+
+```bash
+cargo build --release            # produces target/release/introdus (one binary)
+./target/release/introdus install  # copies it onto ~/.local/bin (PATH)
+
+mkdir ~/myproject && cd ~/myproject
+introdus                         # first run: setup wizard writes .introdus/config.env, then launches
+```
+
+`introdus` puts each container inside one **tmux session** with a persistent
+**control TUI** (`main-control` window) beside the container logs
+(`dev-container` window); the notification service runs detached in the
+background. From the control menu you show the tunnel URL, install/launch
+agents, list and add egress-allowlist hosts, open root/dev terminals, copy files
+in, toggle the webapp tunnel / ntfy, and recreate/reset — persisting to `.env`
+where it matters.
+
+Subcommands: `introdus [launch]`, `up`, `menu`, `verify`, `recreate`, `reset`,
+`update`, `rebuild-base`, `notify-host`, `notify-listen`, `install`.
 
 ## Highlights
 
-Each item is tagged with **where** it runs — *dev machine* (your laptop),
-*container host* (the box running podman; can be the same laptop), or *dev
-container* (the hardened container itself). See the diagram above.
+### Container host
 
-- **[Container host]** Runs your dev containers in rootless mode using podman, cloning your code into each one.
-- **[Container host]** Linux rootless podman — no host firewall changes, no sudo; egress filtering runs entirely inside each container.
-- **[Dev container]** Enforces egress rules that block the workload from reaching any non-whitelisted host: an in-container hostname-allowlist proxy backed by a default-deny nft filter, with a startup self-check that the filter is actually active.
-- **[Dev container]** Persists container data (repo, `node_modules`, toolchains) across restarts on a per-project volume.
-- **[Dev machine]** Attach VS Code to the running container ("Attach to Running Container") — directly when the host is local, or via Remote-SSH first when it's remote.
-- **[Dev container]** Claude Code pre-installed (with the NodeJS + pnpm it needs), remote-control on by default so you can drive it from your phone.
-- **[Dev container]** Optionally install additional coding agents — Codex, Antigravity, Opencode, Pi, Kilocode — chosen from a checklist in the setup wizard (`INSTALL_AGENTS` in `.env`). npm-published agents install with `pnpm add -g --ignore-scripts` to minimize supply-chain exposure; the registry lives in [container/agents.sh](container/agents.sh).
-- **[Dev container]** LazyVim built in for a fully capable terminal editor (handy inside `podman exec -it --user dev <container> /bin/bash`).
-- **[Dev container]** `mise` installed to set up any other toolchains you need.
-- **[Container host → dev container]** Optionally mounts a host directory read-only into the container (`SHARED_DATA_PATH` in `.env`).
-- **[Dev container]** Optional per-project launch hook on every container start — bring up your dev server, run migrations, warm caches, etc. (`ON_LAUNCH_SCRIPT` in `.env`).
-- **[Container host]** Optionally publishes extra container ports to `127.0.0.1` for local tools (DBeaver against an in-container ClickHouse, a debugger attaching, `redis-cli`, etc.) via `EXTRA_PORTS` in `.env`.
-- **[Container host]** Optionally exposes the webapp to the public internet via a Cloudflare quick tunnel (opt-in via `EXPOSE_WEBAPP` in `.env`).
-- **[Container host]** On teardown, checks every repo for uncommitted / un-pushed work before taking the container down.
-- **[Dev container → host → dev machine]** Built-in task-completion notifications: the container signals the host over a FIFO; when the host is remote, the host forwards to your laptop over an SSH reverse tunnel as a native popup + sound, each tagged with the project name so you can tell many containers apart.
-- **[Container host → phone]** Optional mobile push via [ntfy.sh](https://ntfy.sh) alongside the desktop alert whenever Claude Code is awaiting input or finishes a task (opt-in via `ENABLE_NOTIFY_SH_ALERTS` + `NTFY_SH_TOPIC` in `.env`).
+- Runs your dev containers in rootless mode using podman, cloning your code into each one.
+- Linux rootless podman — no host firewall changes, no sudo; egress filtering runs entirely inside each container.
+- Optionally mounts a host directory read-only into the container (`SHARED_DATA_PATH` in `.env`).
+- Optionally publishes extra container ports to `127.0.0.1` for local tools (DBeaver against an in-container ClickHouse, a debugger attaching, `redis-cli`, etc.) via `EXTRA_PORTS` in `.env`.
+- Optionally exposes the webapp to the public internet via a Cloudflare quick tunnel (opt-in via `EXPOSE_WEBAPP` in `.env`).
+- On teardown, checks every repo for uncommitted / un-pushed work before taking the container down.
+
+### Dev container
+
+- Enforces egress rules that block the workload from reaching any non-whitelisted host: an in-container hostname-allowlist proxy backed by a default-deny nft filter, with a startup self-check that the filter is actually active.
+- Persists container data (repo, `node_modules`, toolchains) across restarts on a per-project volume.
+- Choose which coding agents to install — Claude, Codex, Antigravity, Opencode, Pi, Kilocode — from a checklist in the setup wizard (`INSTALL_AGENTS` in `.env`). Nothing is baked into the base image, so an agent you don't pick isn't installed. npm-published agents install with `pnpm add -g --ignore-scripts` to minimize supply-chain exposure (claude uses `--allow-build` so its postinstall can place its native binary, shipped as an npm optionalDependency); the registry lives in [container/agents.sh](container/agents.sh).
+- Claude Code, when picked, has remote-control on by default so you can drive it from your phone.
+- Optional per-project launch hook on every container start — bring up your dev server, run migrations, warm caches, etc. (`ON_LAUNCH_SCRIPT` in `.env`).
+- LazyVim built in for a fully capable terminal editor (handy inside `podman exec -it --user dev <container> /bin/bash`).
+- `mise` installed to set up any other toolchains you need.
+
+### Dev machine
+
+- Attach VS Code to the running container ("Attach to Running Container") — directly when the host is local, or via Remote-SSH first when it's remote.
+
+### Notifications
+
+- Built-in task-completion notifications: the container signals the host over a FIFO; when the host is remote, the host forwards to your laptop over an SSH reverse tunnel as a native popup + sound, each tagged with the project name so you can tell many containers apart.
+- Optional mobile push via [ntfy.sh](https://ntfy.sh) alongside the desktop alert whenever an agent is awaiting input or finishes a task (opt-in via `ENABLE_NOTIFY_SH_ALERTS` + `NTFY_SH_TOPIC` in `.env`).
 
 ## Prerequisites
 
@@ -70,9 +105,10 @@ container* (the hardened container itself). See the diagram above.
   `systemd --user` session — the tunnel runs with `BatchMode=yes`.
 - VS Code with the **Remote-SSH** and **Dev Containers** extensions, to edit
   inside the container.
-- `autossh` — required only if you want desktop notifications forwarded from a
-  *remote* container host (`install_dev_machine_listener.sh` errors out without
-  it). See [Notifications](docs/Notifications.md).
+- `autossh` (recommended) — for a self-healing `ssh -R` reverse tunnel when you
+  want desktop notifications forwarded from a *remote* container host to your
+  laptop, alongside `introdus notify-listen`. See
+  [Notifications](docs/Notifications.md).
 
 > If your laptop **is** the container host, you only need the host
 > prerequisites above — everything renders and runs locally.
@@ -85,79 +121,70 @@ container* (the hardened container itself). See the diagram above.
 
 ## Usage
 
-### Recommended: per-project flow
-
-**On the container host** (the box that runs podman — a remote machine or your
-laptop), run the host installer once after cloning, then bootstrap each project
-in its own directory:
+Build the binary once and put it on `PATH` (do this **on the container host** —
+the box that runs podman, a remote machine or your laptop), then work
+per-project:
 
 ```bash
-./host_install.sh                  # one-time per host: puts create-dev-container.sh
-                                   # on PATH, sets up notifications + the listener
+cargo build --release              # -> target/release/introdus
+./target/release/introdus install  # copies it onto ~/.local/bin (PATH)
+
 mkdir ~/myproject && cd ~/myproject
-create-dev-container.sh            # walks through repo + deploy key, writes .env,
-                                   # and launches the container
+introdus                           # first run: setup wizard writes .introdus/config.env, then launches
 ```
 
-`host_install.sh` also asks whether this host should forward task-completion
-notifications to another machine (e.g. a remote box reporting back to your
-laptop). If so, run `install_dev_machine_listener.sh` once **on your dev
-machine (laptop)** to receive them — see [Notifications](docs/Notifications.md).
+The first `introdus` in a project directory runs the **setup wizard** (repo +
+deploy key + agent picks), writes the project's `.introdus/config.env`, and
+launches. Later runs attach straight to that project's tmux session + control
+TUI. You can also write the config by hand from [sample.env](sample.env) and skip
+the wizard. (Projects from before this move keep a top-level `.env`; introdus
+reads it and offers to relocate it into `.introdus/` on the next launch.)
 
-### Direct: single project in place
+Other subcommands, run from the project directory:
 
 ```bash
-cp sample.env .env
-$EDITOR .env      # set PROJECT_NAME, REPO_URL, DEPLOY_KEY_PATH, etc.
-./launch_dev_container.sh                    # rootless; egress filter runs inside the container
-./launch_dev_container.sh path/to/other.env  # use a different env file
-./launch_dev_container.sh --rebuild-base     # rebuild the base image
-./launch_dev_container.sh --reset            # wipe the persistent volume
-./launch_dev_container.sh --verify           # run an egress smoke test
-./launch_dev_container.sh --update           # in-container refresh (see Updates below)
+introdus                    # launch (or re-attach to) the session + control TUI
+introdus recreate           # drop the container, keep the /home/dev volume
+introdus reset              # drop the container AND wipe the volume
+introdus rebuild-base       # rebuild the shared base image
+introdus verify             # egress smoke test in a throwaway container
+introdus update             # in-container refresh (apt, mise, agents, LazyVim)
+introdus init               # (re)write the config via the wizard, without launching
+introdus --disable-network-block   # launch with NO egress filtering (debug only)
 ```
 
-(`./launch.sh` still works — it's a back-compat symlink to
-`launch_dev_container.sh`. The per-project flow above generates a `launch.sh`
-wrapper in each project dir that calls the same engine.)
+Most of these are also on the persistent control menu, so day-to-day you drive
+them from the TUI rather than the CLI. When the container host is remote and you
+want task-completion alerts on your laptop, set `RC_FORWARD_ADDR` in `.env` and
+run `introdus notify-listen` on the laptop — see
+[Notifications](docs/Notifications.md) and
+[Running on a remote host](docs/Running%20on%20a%20remote%20host.md).
 
 The egress filter lives inside the container, so there is nothing to tear down
-on the host when you exit `claude` (or the container otherwise stops);
-`launch_dev_container.sh` removes only the podman network / warmup slice it
-installed.
+on the host when the container stops; `introdus` removes only the podman
+network / warmup slice it installed.
 
-## How egress hardening works
+## Egress hardening
 
-Egress filtering runs *inside* the container, not on the host. PID 1 is
-`firewall-entrypoint.sh`, which starts as root with `CAP_NET_ADMIN`. It:
+Egress filtering runs *inside* the container, not on the host. PID 1
+(`firewall-entrypoint.sh`) installs an nft **default-deny** filter plus a
+loopback hostname-allowlist proxy, self-checks that the filter is actually
+enforcing, then drops `CAP_NET_ADMIN` and runs the workload as the non-root
+`dev` user. That workload has **no direct internet egress** — its only way out is
+the proxy, which permits only the hostnames in `WHITELIST_HOSTS`, and it can't
+disable the filter (non-root, no `NET_ADMIN`, `no-new-privileges`).
 
-1. Installs an nft **default-deny** egress filter — only the proxy's uid may
-   reach the internet.
-2. Starts a loopback hostname-allowlist forward proxy (tinyproxy).
-3. Runs an egress self-check to confirm the filter is actually active.
-4. Drops `CAP_NET_ADMIN` and `exec`s the workload as the non-root **`dev`**
-   user.
-
-The workload — Claude Code and your code — therefore runs as non-root `dev`
-with **no direct internet egress**. Its only way out is the proxy, which
-permits only hostnames listed in `WHITELIST_HOSTS` (subdomain matches count;
-the git host and `api.trycloudflare.com` are auto-added). A direct dial to a
-raw IP is dropped, so a whitelisted host that shares a CDN IP with something
-else is not a bypass. `INTERNAL_ALLOW_CIDRS` permits direct-IP access to fixed
-internal targets. DNS stays open, which leaves DNS tunnelling as the residual
-exfiltration channel. The workload cannot disable the firewall: it is non-root,
-has no `NET_ADMIN`, and runs with `no-new-privileges`.
-
-Concretely: git-over-SSH clones tunnel through the proxy (via an `ssh`
-`ProxyCommand`), `apt` and HTTP(S) tools are proxy-configured, and
-cloudflared's edge IPs are allowed directly by IP (they can't be proxied).
+Full mechanics — the uid-segregated nft rules, IP-bypass protection, the
+DNS-tunnelling residual, and how git/apt/cloudflared reach the network — are in
+[Technical details → Egress filtering](docs/Technical%20details.md#egress-filtering).
 
 ## More docs
 
 ### [Technical details](docs/Technical%20details.md)
 
-- [Overview](docs/Technical%20details.md#overview) — the end-state that `./launch_dev_container.sh` produces (base image, volume, ports, egress allowlist, container posture).
+- [Overview](docs/Technical%20details.md#overview) — the end-state that `introdus` produces (base image, volume, ports, egress allowlist, container posture).
 - [Container capabilities](docs/Technical%20details.md#container-capabilities) — which caps are added back, why, and why it's safe.
+- [Egress filtering](docs/Technical%20details.md#egress-filtering) — the in-container default-deny nft filter + hostname-allowlist proxy, the startup self-check, and IP-bypass protection.
 - [Persistence](docs/Technical%20details.md#persistence) — what survives restarts, how config edits propagate, `--reset` semantics.
 - [Updates](docs/Technical%20details.md#updates) — what `--update` refreshes and what it deliberately won't touch.
 - [Sharing host data (read-only)](docs/Technical%20details.md#sharing-host-data-read-only) — `SHARED_DATA_PATH`.

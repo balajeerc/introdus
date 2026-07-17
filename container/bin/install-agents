@@ -15,8 +15,10 @@
 #     lifecycle scripts run. If an agent needs a native postinstall to be fully
 #     functional, that step is deliberately skipped; re-run by hand with the
 #     build allowed if you trust it.
-#   - claude is baked into the base image at build time (with its install.cjs
-#     native step) and marked prebaked, so it is never touched here.
+#   - claude (method=pnpm-build) is installed with --allow-build so its
+#     postinstall (install.cjs) can copy the native binary — shipped as an npm
+#     optionalDependency, so still fetched only from the registry — into place.
+#     --ignore-scripts would leave a broken stub, so that one script is allowed.
 #   - script-method agents (e.g. antigravity) are NOT on npm; they run a vendor
 #     installer, which is not contained by --ignore-scripts. The wizard flags
 #     this when the agent is picked.
@@ -35,14 +37,20 @@ fi
 source "$REGISTRY"
 
 # Non-interactive bash does not source .bashrc; put mise/pnpm on PATH.
-export PATH="${HOME}/.local/bin:${HOME}/.local/share/pnpm/bin:$PATH"
-eval "$(${HOME}/.local/bin/mise activate bash)" 2>/dev/null || true
+# pnpm's global bin directory IS $PNPM_HOME itself (not $PNPM_HOME/bin) — pnpm
+# refuses to `add -g` unless that exact dir is on PATH. Include the /bin form too
+# so this stays correct if a future pnpm reverts to the older layout.
 export PNPM_HOME="${HOME}/.local/share/pnpm"
+export PATH="${HOME}/.local/bin:${PNPM_HOME}:${PNPM_HOME}/bin:$PATH"
+eval "$(${HOME}/.local/bin/mise activate bash)" 2>/dev/null || true
 
 log()  { printf '    %s\n' "$*"; }
 warn() { printf '    warning: %s\n' "$*" >&2; }
 
-SELECTED="${INSTALL_AGENTS:-claude}"
+# No colon: an UNSET var (a bare manual run, or a legacy .env with no
+# INSTALL_AGENTS line) defaults to claude, but an explicitly EMPTY var (the user
+# unticked every agent in the wizard) stays empty — install nothing.
+SELECTED="${INSTALL_AGENTS-claude}"
 
 # True if a globally-installed pnpm package is already present.
 pnpm_has() { pnpm ls -g 2>/dev/null | grep -Fq -- "$1"; }
@@ -58,6 +66,42 @@ install_pnpm_agent() {
         log "$id: installed"
     else
         warn "$id: pnpm install of $spec failed (continuing)"
+        return 1
+    fi
+}
+
+install_pnpm_build_agent() {
+    local id="$1" spec="${AGENT_SPEC[$1]}"
+    if pnpm_has "$spec" || command -v "${AGENT_CMD[$1]:-$id}" >/dev/null 2>&1; then
+        log "$id ($spec): already installed — skipping"
+        return 0
+    fi
+    # --allow-build lets THIS package's postinstall run (claude-code's install.cjs
+    # copies its native binary, an npm optionalDependency, into place). Every
+    # other package still has its lifecycle scripts blocked.
+    log "$id: installing $spec (pnpm add -g --allow-build)"
+    if pnpm add -g --allow-build="$spec" "$spec"; then
+        log "$id: installed"
+    else
+        warn "$id: pnpm install of $spec failed (continuing)"
+        return 1
+    fi
+}
+
+# Paseo — the optional orchestrator. Not a coding agent, so it is NOT in
+# $INSTALL_AGENTS; it is installed on its own opt-in ($INSTALL_PASEO=true) via
+# the same pnpm path (idempotent, never fatal). $PASEO_SPEC/$PASEO_CMD come from
+# the registry (rc-agents.sh).
+install_paseo() {
+    if command -v "$PASEO_CMD" >/dev/null 2>&1; then
+        log "paseo ($PASEO_SPEC): already installed — skipping"
+        return 0
+    fi
+    log "paseo: installing $PASEO_SPEC (pnpm add -g --ignore-scripts)"
+    if pnpm add -g --ignore-scripts "$PASEO_SPEC"; then
+        log "paseo: installed"
+    else
+        warn "paseo: pnpm install of $PASEO_SPEC failed (continuing) — see egress-log"
         return 1
     fi
 }
@@ -93,16 +137,25 @@ for id in $SELECTED; do
         continue
     fi
     if [[ "${AGENT_PREBAKED[$id]:-false}" == "true" ]]; then
-        # Baked into the base image already (claude). Nothing to do at runtime.
+        # Baked into the base image at build time — nothing to do at runtime.
+        # (Currently no agent is prebaked; kept as an extension point.)
         continue
     fi
     any=true
     case "${AGENT_METHOD[$id]}" in
-        pnpm)   install_pnpm_agent   "$id" ;;
-        script) install_script_agent "$id" ;;
-        *)      warn "agent '$id' has unknown install method '${AGENT_METHOD[$id]}'" ;;
+        pnpm)       install_pnpm_agent       "$id" ;;
+        pnpm-build) install_pnpm_build_agent "$id" ;;
+        script)     install_script_agent     "$id" ;;
+        *)          warn "agent '$id' has unknown install method '${AGENT_METHOD[$id]}'" ;;
     esac
 done
 
-$any || log "no additional agents to install (only prebaked/none selected)"
+# Paseo is opted into separately from the agent checklist. An unset var (a bare
+# manual run) leaves it off; only an explicit INSTALL_PASEO=true installs it.
+if [[ "${INSTALL_PASEO:-false}" == "true" ]]; then
+    any=true
+    install_paseo
+fi
+
+$any || log "no agents selected — nothing to install"
 exit 0

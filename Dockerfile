@@ -106,7 +106,7 @@ RUN userdel --remove ubuntu 2>/dev/null || true \
 # ---- egress proxy: runtime dirs --------------------------------------------
 # The proxy config + firewall entrypoint themselves are COPY'd at the END of
 # this file (after the heavy toolchain layers) so iterating on them doesn't
-# invalidate the nvim/mise/claude cache. Here we just prep the dirs.
+# invalidate the nvim/mise cache. Here we just prep the dirs.
 RUN mkdir -p /etc/tinyproxy /var/log/tinyproxy /run/tinyproxy \
  && : > /etc/tinyproxy/egress-allowlist.txt \
  && chown rcproxy:rcproxy /etc/tinyproxy/egress-allowlist.txt /var/log/tinyproxy /run/tinyproxy
@@ -150,24 +150,31 @@ RUN install -d -m 700 -o dev -g dev /home/dev/.ssh \
 # `podman exec` sessions default to root, so keep the opt-in for those.
 ENV IS_SANDBOX=1
 
-# ---- dev-user toolchain (mise / node / pnpm / claude / nvim) ---------------
+# ---- dev-user toolchain (mise / node / pnpm / nvim) ------------------------
 # Installed under /home/dev so it lands in the project's persistent volume on
 # first launch. These steps run with DIRECT build-time egress; the HTTP_PROXY
 # env is set further down, AFTER all network build steps, so it only affects
 # runtime (a build-time proxy var would point at a proxy that isn't running).
+#
+# No coding agent is baked in here — every agent (claude included) is installed
+# at container setup from $INSTALL_AGENTS via install-agents, so an agent the
+# user didn't pick is genuinely absent. That runtime install goes through the
+# egress proxy; claude's native binary ships as an npm optionalDependency, so
+# the already-whitelisted registry.npmjs.org is all it needs.
+# pnpm's global bin directory IS $PNPM_HOME itself (not $PNPM_HOME/bin): that is
+# where `pnpm add -g` links agent binaries, and pnpm refuses to install unless
+# that exact dir is on PATH. Keep the /bin form too so a pnpm version that uses
+# the older layout still resolves.
 ENV PNPM_HOME="/home/dev/.local/share/pnpm"
-ENV PATH="/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/home/dev/.local/share/pnpm/bin:${PATH}"
+ENV PATH="/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/home/dev/.local/share/pnpm:/home/dev/.local/share/pnpm/bin:${PATH}"
 
 USER dev
 WORKDIR /home/dev
 
 RUN curl -fsSL https://mise.jdx.dev/install.sh | sh
 
-# pnpm v10+ blocks postinstall scripts; claude-code's install.cjs downloads the
-# native binary, so whitelist it via --allow-build.
 RUN mkdir -p "$PNPM_HOME" \
- && mise use -g node@lts pnpm@latest \
- && mise exec -- pnpm add -g --allow-build=@anthropic-ai/claude-code @anthropic-ai/claude-code
+ && mise use -g node@lts pnpm@latest
 
 # Seed LazyVim and pre-install plugins + treesitter parsers so the first
 # interactive nvim doesn't race async installers.
@@ -181,13 +188,13 @@ RUN git clone --depth 1 https://github.com/LazyVim/starter /home/dev/.config/nvi
 
 # Interactive shells get mise + pnpm on PATH and bash-completion sourced.
 RUN printf '%s\n' \
-    '# --- remote-code-harness ---' \
+    '# --- introdus ---' \
     'export PATH="/home/dev/.local/bin:$PATH"' \
     'export PNPM_HOME="/home/dev/.local/share/pnpm"' \
-    'export PATH="$PNPM_HOME/bin:$PATH"' \
+    'export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"' \
     'eval "$(/home/dev/.local/bin/mise activate bash)"' \
     '[ -f /usr/share/bash-completion/bash_completion ] && . /usr/share/bash-completion/bash_completion' \
-    '# --- end remote-code-harness ---' \
+    '# --- end introdus ---' \
     >> /home/dev/.bashrc
 
 # ---- back to root: runtime proxy env, completions, copies ------------------
@@ -196,7 +203,7 @@ USER root
 # Runtime egress proxy for proxy-aware tools (mise, pnpm, claude, curl, git over
 # https, ...). Set HERE — after every network build step — so the build itself
 # never tries to use a proxy that isn't listening yet. NO_PROXY keeps loopback
-# and link-local direct; launch.sh/setup.sh extend it with INTERNAL_ALLOW_CIDRS.
+# and link-local direct; introdus/setup.sh extend it with INTERNAL_ALLOW_CIDRS.
 ENV HTTP_PROXY="http://127.0.0.1:8888" \
     HTTPS_PROXY="http://127.0.0.1:8888" \
     http_proxy="http://127.0.0.1:8888" \
@@ -227,17 +234,20 @@ RUN chmod +x /usr/local/bin/run-claude
 COPY container/bin/egress-log /usr/local/bin/egress-log
 RUN chmod +x /usr/local/bin/egress-log
 
-# Agent registry + installer. The registry is the single source of truth shared
-# with the host wizard (create-dev-container.sh); install-agents reads it and
-# the $INSTALL_AGENTS env var to install the picked agents at container setup
-# (claude is already baked above and is marked prebaked, so it's never touched).
+# Agent registry + installer. This is the container-side registry; the host
+# wizard (introdus) keeps a hand-synced mirror in crates/introdus-core/src/agents.rs.
+# install-agents reads this file and
+# the $INSTALL_AGENTS env var to install the picked agents at container setup.
+# Nothing is baked into the image, so an unpicked agent (claude included) stays
+# absent; claude installs via pnpm --allow-build (its native binary is an npm
+# optionalDependency), the others via pnpm --ignore-scripts or a vendor script.
 COPY container/agents.sh /usr/local/lib/rc-agents.sh
 COPY container/bin/install-agents /usr/local/bin/install-agents
 RUN chmod +x /usr/local/bin/install-agents
 
 # Egress firewall entrypoint + proxy config — COPY'd LAST so iterating on them
 # doesn't invalidate the heavy nvim/mise/claude layers above. Both are also
-# bind-mounted by launch.sh at runtime (so edits apply with no rebuild); the
+# bind-mounted by introdus at runtime (so edits apply with no rebuild); the
 # baked copies are a fallback for running the image directly.
 COPY container/egress/tinyproxy.conf /etc/tinyproxy/tinyproxy.conf
 COPY container/egress/firewall-entrypoint.sh /usr/local/bin/firewall-entrypoint.sh
@@ -249,7 +259,7 @@ RUN chmod +x /usr/local/bin/firewall-entrypoint.sh
 # no view of dev's tmux sessions or /home/dev ownership.
 LABEL devcontainer.metadata='[{"remoteUser":"dev"}]'
 
-# Default command. launch.sh overrides it with the same path explicitly; the
+# Default command. introdus overrides it with the same path explicitly; the
 # entrypoint must run as root (the image's default user) to install nft, then
 # it drops to dev.
 CMD ["/usr/local/bin/firewall-entrypoint.sh"]

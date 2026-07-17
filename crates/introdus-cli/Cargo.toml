@@ -1,0 +1,27 @@
+[package]
+name = "introdus-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "The `introdus` binary: control-plane CLI, tmux orchestration, TUI, and notification services."
+
+[[bin]]
+name = "introdus"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+introdus-core = { path = "../introdus-core" }
+anyhow.workspace = true
+clap.workspace = true
+dirs.workspace = true
+ratatui.workspace = true
+
+[dev-dependencies]
+# Drives the interactive ratatui TUI through a real pty in the integration
+# tests under tests/. Test-only; never in the shipped binary.
+rexpect = "0.6"

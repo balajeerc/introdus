@@ -1,19 +1,21 @@
 # shellcheck shell=bash
 # Single source of truth for the selectable coding agents.
 #
-# Sourced (never executed) by BOTH sides of the harness:
-#   - create-dev-container.sh  (host wizard) — renders the checklist and appends
-#                               each selected agent's egress hosts to WHITELIST.
-#   - install-agents           (in-container) — installs the selected agents.
+# Sourced (never executed) in-container by `install-agents`, which installs the
+# selected agents. The host side does NOT source this file: the introdus binary
+# carries a hand-kept mirror in crates/introdus-core/src/agents.rs (the wizard's
+# checklist + egress-host wiring) — keep the two in lock-step.
 #
-# Keep it a pure data file: only array definitions, no side effects, so both a
-# host bash and the container bash can source it safely. Requires bash 4+
+# Keep it a pure data file: only array definitions, no side effects, so the
+# container bash can source it safely. Requires bash 4+
 # (associative arrays) — the harness already relies on bash 4 elsewhere.
 #
-# Supply-chain posture: every npm-published agent is installed with
-# `pnpm add -g --ignore-scripts` (no lifecycle scripts run). Agents that are NOT
-# on npm (method=script) run a vendor installer instead — those are inherently
-# less contained and are flagged as such in the wizard.
+# Supply-chain posture: npm-published agents are installed with
+# `pnpm add -g --ignore-scripts` (no lifecycle scripts run). The lone exception
+# is claude (method=pnpm-build): its postinstall is allowed to run so it can copy
+# its native binary — shipped as an npm optionalDependency, so still registry-only
+# — into place. Agents NOT on npm (method=script) run a vendor installer instead;
+# those are inherently less contained and are flagged as such in the wizard.
 
 # Display / selection order.
 AGENT_IDS=(claude codex antigravity opencode pi kilocode)
@@ -28,11 +30,15 @@ declare -A AGENT_LABEL=(
 )
 
 # How each agent is installed:
-#   pnpm    -> pnpm add -g --ignore-scripts <spec>   (spec = npm package)
-#   script  -> curl <spec> | bash   (spec = installer URL) — NOT contained by
-#              --ignore-scripts; runs vendor code at container setup.
+#   pnpm        -> pnpm add -g --ignore-scripts <spec>   (spec = npm package)
+#   pnpm-build  -> pnpm add -g --allow-build=<spec> <spec> — like pnpm but the
+#                  package's own postinstall IS allowed to run (claude-code's
+#                  install.cjs copies its native binary, shipped as an npm
+#                  optionalDependency, into place). Still registry-only.
+#   script      -> curl <spec> | bash   (spec = installer URL) — NOT contained by
+#                  --ignore-scripts; runs vendor code at container setup.
 declare -A AGENT_METHOD=(
-    [claude]=pnpm
+    [claude]=pnpm-build
     [codex]=pnpm
     [antigravity]=script
     [opencode]=pnpm
@@ -73,9 +79,11 @@ declare -A AGENT_HOSTS=(
     [codex]="api.openai.com auth.openai.com chatgpt.com"
     # antigravity (Gemini-backed): install/update hosts + Google OAuth + the
     # Cloud Code (Gemini Code Assist) model API. Derived from the installed `agy`
-    # binary. Optional telemetry (safebrowsing/play/statsig) is left out to keep
-    # egress tight — add via egress-log if you actually need it.
-    [antigravity]="antigravity.google antigravity-cli-auto-updater-974169037036.us-central1.run.app accounts.google.com oauth2.googleapis.com www.googleapis.com cloudcode-pa.googleapis.com iamcredentials.googleapis.com"
+    # binary. storage.googleapis.com is where the vendor installer downloads the
+    # CLI tarball from (without it the install 403s). Optional telemetry
+    # (safebrowsing/play/statsig) is left out to keep egress tight — add via
+    # egress-log if you actually need it.
+    [antigravity]="antigravity.google antigravity-cli-auto-updater-974169037036.us-central1.run.app storage.googleapis.com accounts.google.com oauth2.googleapis.com www.googleapis.com cloudcode-pa.googleapis.com iamcredentials.googleapis.com"
     # opencode: its own infra — opencode.ai (auth/zen; suffix-covers
     # api./app./console./dev.opencode.ai) and models.dev (the model registry it
     # loads at startup). opencode is BYO-provider; the one custom provider we
@@ -89,9 +97,19 @@ declare -A AGENT_HOSTS=(
     [kilocode]="kilo.ai api.kilo.ai"
 )
 
-# Agents already baked into the base image (installed at build time with direct
-# egress). The in-container installer skips these — it never has to reinstall
-# them, and it must not clobber claude's build-time native-binary step.
-declare -A AGENT_PREBAKED=(
-    [claude]=true
-)
+# ---- Paseo: optional agent orchestrator -------------------------------------
+# Paseo is NOT a coding agent — it's a daemon that supervises the installed
+# agents and lets you drive them from a phone/desktop/web/CLI client through the
+# paseo relay (end-to-end encrypted; the daemon dials OUT to the relay, so no
+# inbound port is exposed). Installed via the same pnpm path as the pnpm agents,
+# but gated on its own opt-in ($INSTALL_PASEO) rather than the agent checklist.
+# Mirrors the `paseo` module in crates/introdus-core/src/agents.rs.
+PASEO_SPEC="@getpaseo/cli"
+PASEO_CMD="paseo"
+PASEO_HOSTS="paseo.sh"   # suffix-covers app.paseo.sh (pairing) + the relay
+
+# Agents baked into the base image at build time. Currently none: every agent
+# (claude included) is installed at container setup from $INSTALL_AGENTS, so an
+# unselected agent is genuinely absent. Kept as an (empty) extension point — an
+# entry set to `true` here makes the in-container installer skip that agent.
+declare -A AGENT_PREBAKED=()

@@ -1,0 +1,48 @@
+# introdus — Rust control plane for the network-hardened dev-container harness.
+# One binary (`introdus`) on the container host; the container-side security
+# core stays bash (embedded and bind-mounted at launch). See PLAN.md.
+[workspace]
+resolver = "2"
+members = [
+    "crates/introdus-core",
+    "crates/introdus-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT"
+
+# Lints applied to every crate via `[lints] workspace = true`. The clippy
+# `cognitive_complexity` lint lives in the nursery group and is not enabled by
+# `-D warnings` alone — listing it here is what makes it fire. Its threshold is
+# configured in the root `clippy.toml`.
+[workspace.lints.clippy]
+cognitive_complexity = "warn"
+
+[workspace.dependencies]
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# Serialization (config, notify protocol)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# All interactive UI — the launch/init wizard and the persistent control menu —
+# is built on ratatui: a full-screen chooser plus inline modal prompts
+# (confirm/text/select/multiselect). It rides the crossterm backend re-exported
+# as `ratatui::crossterm`, so we take no separate crossterm dependency of our own.
+ratatui = "0.29"
+
+# Paths / dirs
+dirs = "6"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

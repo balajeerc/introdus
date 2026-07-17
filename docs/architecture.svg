@@ -12,7 +12,7 @@
   </defs>
 
   <rect x="0" y="0" width="960" height="606" fill="#ffffff"/>
-  <text x="480" y="34" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">remote-control-harness — architecture</text>
+  <text x="480" y="34" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">introdus — architecture</text>
   <text x="480" y="56" text-anchor="middle" font-size="13" fill="#64748b">dev machine  →  remote container host  →  hardened dev container</text>
 
   <!-- ===== Tier 1: dev machine ===== -->
@@ -24,14 +24,14 @@
   <text x="159" y="176" text-anchor="middle" font-size="11.5" fill="#64748b">attach to running container</text>
 
   <rect x="48" y="204" width="222" height="58" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
-  <text x="159" y="228" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">host_listener.py</text>
+  <text x="159" y="228" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">introdus notify-listen</text>
   <text x="159" y="248" text-anchor="middle" font-size="11.5" fill="#64748b">renders popup + sound</text>
 
   <rect x="48" y="276" width="222" height="44" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
   <text x="159" y="303" text-anchor="middle" font-size="12.5" fill="#0f172a">ssh -R reverse tunnel</text>
 
-  <text x="159" y="358" text-anchor="middle" font-size="11.5" fill="#94a3b8">install_dev_machine_listener.sh</text>
-  <text x="159" y="376" text-anchor="middle" font-size="11.5" fill="#94a3b8">(systemd --user: listener + tunnel)</text>
+  <text x="159" y="358" text-anchor="middle" font-size="11.5" fill="#94a3b8">set up manually</text>
+  <text x="159" y="376" text-anchor="middle" font-size="11.5" fill="#94a3b8">(autossh for self-healing)</text>
 
   <!-- ===== Tier 2: remote host ===== -->
   <rect x="345" y="84" width="270" height="380" rx="12" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>
@@ -42,14 +42,14 @@
   <text x="480" y="173" text-anchor="middle" font-size="12.5" fill="#0f172a">podman (rootless) + egress filter</text>
 
   <rect x="369" y="204" width="222" height="58" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
-  <text x="480" y="228" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">rc-notify.service</text>
-  <text x="480" y="248" text-anchor="middle" font-size="11.5" fill="#64748b">listener → host_notify.sh</text>
+  <text x="480" y="228" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">introdus notify-host</text>
+  <text x="480" y="248" text-anchor="middle" font-size="11.5" fill="#64748b">reads FIFO, renders or forwards</text>
 
   <rect x="369" y="276" width="222" height="44" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
-  <text x="480" y="303" text-anchor="middle" font-size="12.5" fill="#0f172a">host_notify.sh (forwards)</text>
+  <text x="480" y="303" text-anchor="middle" font-size="12.5" fill="#0f172a">forward → ssh -R tunnel</text>
 
-  <text x="480" y="358" text-anchor="middle" font-size="11.5" fill="#94a3b8">host_install.sh (one-time)</text>
-  <text x="480" y="376" text-anchor="middle" font-size="11.5" fill="#94a3b8">launch_dev_container.sh (per project)</text>
+  <text x="480" y="358" text-anchor="middle" font-size="11.5" fill="#94a3b8">introdus install (one-time)</text>
+  <text x="480" y="376" text-anchor="middle" font-size="11.5" fill="#94a3b8">introdus (per project)</text>
 
   <!-- ===== Tier 3: container ===== -->
   <rect x="666" y="84" width="270" height="380" rx="12" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5"/>

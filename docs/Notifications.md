@@ -2,41 +2,53 @@
 
 Back to the [project README](../README.md).
 
-Claude Code signals "task complete" / "awaiting input" from inside the **dev
+A coding agent signals "task complete" / "awaiting input" from inside the **dev
 container**; the harness turns that into a native desktop popup + sound on your
 **dev machine** (and, optionally, a phone push). How the signal gets to you
 depends on whether the container host is your laptop or a separate remote box.
 
+The whole path is folded into the `introdus` binary — there is no Python and no
+per-machine installer script. `introdus notify-host` runs on the container host;
+`introdus notify-listen` runs on the laptop.
+
 ## The path
 
 ```
-[dev container] rc-notify --FIFO--> [container host] host_listener.py
-    --> host_notify.sh
+[dev container] rc-notify --FIFO--> [container host] introdus notify-host
           ├── host IS your laptop  -> render popup + sound here
           └── host is remote       -> forward over the SSH reverse (-R) tunnel
-                                        --> [laptop] host_listener.py -> popup + sound
+                                        --> [laptop] introdus notify-listen -> popup + sound
 ```
 
-- **Dev container:** Claude's `Stop` / `Notification` / `PermissionRequest`
+- **Dev container:** an agent's `Stop` / `Notification` / `PermissionRequest`
   hooks call [`rc-notify`](../container/bin/rc-notify), which writes
   `event<TAB>project` to the host endpoint mounted at `/run/notify` (a Linux
   FIFO under `XDG_RUNTIME_DIR` on the host). It never blocks a hook for more
-  than a few seconds and never fails it, even if no listener is present.
-- **Container host:** a single [`host_listener.py`](../host_listener.py) service
-  reads the endpoint and runs [`host_notify.sh`](../host_notify.sh). The event
-  is validated against a fixed whitelist (`done` / `waiting`) and the project
-  label is stripped to `[A-Za-z0-9._-]` (≤40 chars) at this trust boundary, so a
+  than a few seconds and never fails it, even if no listener is present. The
+  FIFO is created **world-writable (0666)** on purpose: rootless podman maps the
+  FIFO's host owner to container-*root*, while `rc-notify` runs as the non-root
+  `dev` uid, so a 0600 FIFO would be unwritable by the workload and drop every
+  event silently. It's safe — the FIFO sits in `$XDG_RUNTIME_DIR` (0700,
+  owner-only), unreachable by other host users.
+- **Container host:** `introdus notify-host` reads the endpoint. The event is
+  validated against a fixed whitelist (`done` / `waiting`) and the project label
+  is stripped to `[A-Za-z0-9._-]` (≤40 chars) at this trust boundary, so a
   compromised container can't spoof arbitrary text or inject control characters
-  under the "Claude Code" brand.
+  under the "Remote dev" brand. It then renders locally, or — when
+  `RC_FORWARD_ADDR` is set — forwards over the reverse tunnel.
 
-One listener relays **every** container on the host, so this is a host-level
-setup, not per-project.
+`introdus` starts `notify-host` **automatically** as a detached service for each
+launched tmux session (it self-exits when that session ends). One service relays
+**every** event from that session's container; nothing extra to install for the
+local case.
 
 ## Local host (host = laptop)
 
-Nothing to configure. `./host_install.sh` installs the listener as a persistent
-`systemd --user` service, and `host_notify.sh` renders the popup + plays
-`notification_sound.wav` on the same machine.
+Nothing to configure. `introdus` starts `notify-host` on launch, and it renders
+the popup + plays `notification_sound.wav` on the same machine (Linux:
+`notify-send` + `paplay`/`pw-play`/`aplay`/`ffplay`; macOS: `osascript` +
+`afplay`). Install `libnotify-bin` and a PulseAudio/PipeWire player if they're
+missing.
 
 ## Remote host → laptop (two hops)
 
@@ -48,24 +60,32 @@ behind NAT.
 
 ### On the container host
 
-`./host_install.sh` asks "forward to another machine?"; answer yes and it
-records this in the **harness** `.env` (read by `host_notify.sh`):
+The first-run setup wizard asks *"Forward notifications to a separate dev machine
+over an SSH reverse tunnel?"* — answer **yes** on a remote/headless host and it
+writes the forward target for you. To set it by hand instead, put it in the
+project's `.introdus/config.env`:
 
 ```bash
 RC_FORWARD_ADDR=127.0.0.1:8765
 ```
 
-`host_notify.sh` then forwards each validated event to that loopback port
+`introdus notify-host` then forwards each validated event to that loopback port
 instead of rendering. The whitelist + label sanitization run here **and** again
 on the laptop.
+
+> `notify-host` reads `RC_FORWARD_ADDR` **once, when the tmux session starts**. If
+> you add or change it on an already-running session, use the control menu's
+> **"Restart the notification service"** — it respawns `notify-host` so it picks
+> up the new value, no container recreate or session bounce needed. (The
+> **"Send a test host notification"** action also prints whether the config
+> forwards or renders locally, to help you spot a mismatch.)
 
 ### Host SSH-forwarding requirement
 
 The laptop reaches that loopback port via the reverse tunnel, so the host's
 `sshd` must permit forwarding for your user. Hardened hosts commonly ship
-`AllowTcpForwarding no`, which silently blocks it (the laptop installer's
-preflight will tell you). Grant the minimum for your user only, in a drop-in
-such as `/etc/ssh/sshd_config.d/zz-notify-tunnel.conf`.
+`AllowTcpForwarding no`, which silently blocks it. Grant the minimum for your
+user only, in a drop-in such as `/etc/ssh/sshd_config.d/zz-notify-tunnel.conf`.
 
 For notifications **only** (reverse `-R` forward):
 
@@ -97,43 +117,58 @@ stay at `AllowTcpForwarding no`. Two gotchas:
 
 ### On your laptop
 
-From your checkout of this repo, install the always-on services (they survive
-reboot and sleep):
+`introdus notify-listen` now owns both halves — the reverse tunnel *and* the
+listener. Run it bare the first time and a short wizard collects the SSH alias
+of the container host, the loopback port, and whether to install a `systemd
+--user` service:
 
 ```bash
-./install_dev_machine_listener.sh <ssh-alias-for-the-host> 8765
+introdus notify-listen
 ```
 
-It installs two `systemd --user` units:
+It saves your answers to `~/.config/introdus/notify-listen.env`, so later runs
+skip the wizard. You can also pass everything non-interactively:
 
-- `rc-notify-listener.service` — `host_listener.py` in TCP mode; renders the
-  popup + plays `notification_sound.wav`.
-- `rc-notify-tunnel.service` — the `ssh -R` reverse tunnel to your alias
-  (requires `autossh` for self-healing reconnects; the installer errors out
-  without it — `sudo apt install autossh`, etc.).
+```bash
+introdus notify-listen --via <ssh-alias-for-the-host> --port 8765
+```
 
-The port must match `RC_FORWARD_ADDR`. The alias must accept key-based SSH
-without a prompt (passphrase-less key, or an agent reachable from your
-`systemd --user` session) since the tunnel runs with `BatchMode=yes`. Manage
-with `systemctl --user status rc-notify-tunnel.service`; remove with
-`./install_dev_machine_listener.sh --uninstall`.
+Under the hood it opens `autossh -M 0 -N -o ExitOnForwardFailure=yes -o
+ServerAliveInterval=30 -o ServerAliveCountMax=3 -R 8765:127.0.0.1:8765 <alias>`
+(falling back to plain `ssh` when `autossh` isn't installed), then binds the
+loopback port, forces local rendering, and never re-forwards. The port must
+match `RC_FORWARD_ADDR` on the host. The alias must accept key-based SSH without
+a prompt. `--dry-run` prints the resolved plan without opening anything;
+`--no-tunnel` runs only the listener (bring your own tunnel).
 
-For a quick foreground tunnel without systemd (a one-off), use
-`./laptop_notify_tunnel.sh <ssh-alias> 8765` instead.
+**Run it on every login** with the built-in `systemd --user` unit — answer *yes*
+to the wizard's service prompt, or:
+
+```bash
+introdus notify-listen --via <alias> --install-service
+```
+
+This writes and enables `~/.config/systemd/user/introdus-notify-listen.service`
+(`WantedBy=default.target`, `Restart=on-failure`). It deliberately does **not**
+enable linger: the service starts with your graphical session so `notify-send` /
+`paplay` inherit its D-Bus and display — a boot-time lingering service would fire
+popups into a session that isn't there. Re-running with the same settings is a
+no-op; changing `--via`/`--port` rewrites and restarts the unit. On macOS,
+where there's no `systemd`, wrap the foreground command in a launchd agent.
 
 ## Which container fired it?
 
-Each notification's title is suffixed with the container's project name — e.g.
-*"Claude Code — myproject"* — so when you run many containers on one host you
-can tell them apart at a glance. Derived from `PROJECT_NAME`; override
-per-container with the `RC_LABEL` env var. (The label is baked into the image,
-so an existing container picks it up only after `./launch.sh --rebuild-base
---recreate`; until then it shows a bare "Claude Code".)
+Each notification's title carries the container's project name — e.g.
+*"Remote dev: myproject"* — so when you run many containers on one host you
+can tell them apart at a glance. Derived from `PROJECT_NAME` (a runtime env
+`introdus` passes into the container), override per-container with `RC_LABEL`.
+A label change takes effect the next time the container is (re)created
+(`introdus recreate`), since the value is set at container-create time.
 
 ## Phone push (ntfy.sh)
 
 Independently of the desktop path, set `ENABLE_NOTIFY_SH_ALERTS=true` and
-`NTFY_SH_TOPIC=<your-private-topic>` in the harness `.env` to also push each
+`NTFY_SH_TOPIC=<your-private-topic>` in the project `.introdus/config.env` to also push each
 alert to your phone via [ntfy.sh](https://ntfy.sh) (install the app, subscribe
 to the topic). Sent from the container host over outbound HTTPS, so it needs no
 forwarding. Treat the topic name like a password — anyone who knows it can
@@ -144,7 +179,7 @@ publish and read.
 The desktop path is **best-effort, fire-and-forget**: if the laptop is offline
 or the tunnel is mid-reconnect when an event fires, that notification is dropped
 (no queue, no retry). The forward never blocks — it fails fast on a refused
-connection and is capped at 5s otherwise, so a down tunnel never wedges a Claude
+connection and is capped at 5s otherwise, so a down tunnel never wedges an agent
 hook or queues one container's event behind another's. For a durable record that
 doesn't depend on the laptop being up, pair it with the ntfy.sh push; the two
 are independent and can run together.

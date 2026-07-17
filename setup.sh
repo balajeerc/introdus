@@ -18,7 +18,7 @@ set -euo pipefail
 : "${REPO_URL:?}"
 : "${WEBAPP_PORT:?}"
 
-# HOST_OS is set by launch.sh and only controls which host-side instructions are
+# HOST_OS is set by introdus and only controls which host-side instructions are
 # printed at the end (the container is always Linux).
 HOST_OS="${HOST_OS:-linux}"
 EXPOSE_WEBAPP="${EXPOSE_WEBAPP:-false}"
@@ -26,11 +26,11 @@ EXPOSE_WEBAPP="${EXPOSE_WEBAPP:-false}"
 HOME="${HOME:-/home/dev}"
 WORKDIR="${HOME}/work/${PROJECT_NAME}"
 
-# Container name as created by launch.sh (carries the per-project suffix). Used
+# Container name as created by introdus (carries the per-project suffix). Used
 # only to print correct host-side exec/stop commands. Note: exec hints below use
 # `--user dev` because the workload, its tmux sessions, and its files all belong
 # to dev — a default (root) exec would miss dev's per-uid tmux socket.
-CNAME="${CONTAINER_NAME:-remote-code-$PROJECT_NAME}"
+CNAME="${CONTAINER_NAME:-introdus-$PROJECT_NAME}"
 
 log() { printf '\n==> %s\n' "$*"; }
 
@@ -57,7 +57,7 @@ do_prepare() {
     fi
     cd "$WORKDIR"
 
-    # One-shot --pull sentinel dropped by launch.sh. Always consume it (rm first)
+    # One-shot --pull sentinel dropped by introdus. Always consume it (rm first)
     # so a failed pull doesn't keep retrying on every relaunch.
     if [[ -f "${HOME}/.pull-on-next-start" ]]; then
         rm -f "${HOME}/.pull-on-next-start"
@@ -71,12 +71,13 @@ do_prepare() {
         fi
     fi
 
-    # Install the coding agents picked in the wizard (idempotent; claude is
-    # baked into the image and skipped). Never fatal — the container comes up
-    # even if an agent fails to install.
+    # Install the coding agents picked in the wizard (idempotent; every agent,
+    # claude included, is installed here — nothing is baked into the image).
+    # No colon in the default: unset -> claude, explicitly empty -> nothing.
+    # Never fatal — the container comes up even if an agent fails to install.
     if [[ -x /usr/local/bin/install-agents ]]; then
-        log "installing selected agents: ${INSTALL_AGENTS:-claude}"
-        INSTALL_AGENTS="${INSTALL_AGENTS:-claude}" /usr/local/bin/install-agents \
+        log "installing selected agents: ${INSTALL_AGENTS-claude}"
+        INSTALL_AGENTS="${INSTALL_AGENTS-claude}" /usr/local/bin/install-agents \
             || echo "  warning: install-agents reported a problem (continuing)"
     fi
 }
@@ -90,14 +91,7 @@ print_banner() {
 
 Shell into the container (as the dev user):
   podman exec -it --user dev $CNAME bash
-
-Start Claude Code (remote control is on by default — pair from
-claude.ai/code or the mobile app to drive it from your phone):
-  podman exec -it --user dev $CNAME run-claude
-  (cds into the repo, opens the 'claude' tmux session, and runs
-   claude --dangerously-skip-permissions; re-running re-attaches.
-   Ctrl-a d detaches without killing it.)
-${AGENTS_BANNER:-}
+${CLAUDE_BANNER:-}${AGENTS_BANNER:-}
 Connect with VSCode (Dev Containers):
 
 ${VSCODE_SETUP_INSTRUCTIONS:-}
@@ -127,7 +121,7 @@ do_serve() {
         rm -f "${HOME}/.logs/tunnel-url.txt"
         # Pin edge IPs and force HTTP/2 so cloudflared skips SRV-based edge
         # discovery and avoids QUIC/UDP. Edge IPs come from TUNNEL_EDGE_IPS, set
-        # by launch.sh and allowed (by IP, on 7844) in the nft egress filter —
+        # by introdus and allowed (by IP, on 7844) in the nft egress filter —
         # cloudflared's edge protocol can't go through the HTTP proxy.
         EDGE_ARGS=""
         for ip in ${TUNNEL_EDGE_IPS:-}; do
@@ -196,7 +190,7 @@ print(d[0]['ConnectionInfo']['PodmanSocket']['Path'])
   $TUNNEL_URL
 
   Anyone with this URL can reach your webapp; the URL is the
-  only access control. Stable until the next ./launch.sh.
+  only access control. Stable until the next introdus launch.
   Cached at ~/.logs/tunnel-url.txt inside the container.
 
   attach: podman exec -it --user dev $CNAME tmux attach -t tunnel
@@ -222,6 +216,24 @@ TBEOF
         fi
     fi
 
+    # Claude gets its own section (with the remote-control pairing note) — but
+    # only when it was actually selected, since it's now opt-out-able.
+    CLAUDE_BANNER=""
+    case " ${INSTALL_AGENTS-claude} " in
+        *" claude "*)
+            CLAUDE_BANNER=$(cat <<CBEOF
+
+Start Claude Code (remote control is on by default — pair from
+claude.ai/code or the mobile app to drive it from your phone):
+  podman exec -it --user dev $CNAME run-claude
+  (cds into the repo, opens the 'claude' tmux session, and runs
+   claude --dangerously-skip-permissions; re-running re-attaches.
+   Ctrl-a d detaches without killing it.)
+CBEOF
+)
+            ;;
+    esac
+
     # List the other agents the user picked (claude has its own section above)
     # and the bare command each one installs, so they know how to launch them.
     AGENTS_BANNER=""
@@ -229,7 +241,7 @@ TBEOF
         # shellcheck source=/dev/null
         source /usr/local/lib/rc-agents.sh
         _lines=""
-        for _id in ${INSTALL_AGENTS:-claude}; do
+        for _id in ${INSTALL_AGENTS-}; do
             [[ "$_id" == "claude" ]] && continue
             [[ -n "${AGENT_LABEL[$_id]:-}" ]] || continue
             _lines+=$(printf '\n    %-24s run: %s' "${AGENT_LABEL[$_id]}" "${AGENT_CMD[$_id]:-$_id}")
