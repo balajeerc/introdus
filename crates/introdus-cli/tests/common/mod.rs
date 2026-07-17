@@ -39,7 +39,12 @@ impl Fixture {
         c.arg(sub)
             .current_dir(&self.proj)
             .env("HOME", &self.home)
-            .env("TERM", "xterm-256color");
+            .env("TERM", "xterm-256color")
+            // Hermetic w.r.t. tmux: if `cargo test` itself runs inside tmux, an
+            // inherited `$TMUX` would make `introdus menu` try to detach (and hang
+            // waiting for input) instead of exiting on Esc. The menu never runs
+            // under tmux in these pty tests.
+            .env_remove("TMUX");
         c
     }
 

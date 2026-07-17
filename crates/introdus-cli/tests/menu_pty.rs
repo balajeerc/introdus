@@ -8,7 +8,9 @@
 //! cursor-addressed frame we don't scrape byte-for-byte here (the tmux harness
 //! in `test-harness/driver-menu.sh` covers the on-screen layout). What we *can*
 //! assert from the raw pty stream is that no `podman inspect` error leaks as
-//! plain stderr, and that Esc quits the app with a clean EOF.
+//! plain stderr, and that Esc quits the app with a clean EOF. (Run bare — the
+//! fixture strips `$TMUX` — Esc exits the process; inside tmux it would instead
+//! detach the session, which the tmux harness covers.)
 
 mod common;
 

@@ -33,7 +33,7 @@ COPY test-harness/driver-agents.sh /usr/local/bin/driver-agents.sh
 COPY test-harness/driver-agent-launch.sh /usr/local/bin/driver-agent-launch.sh
 COPY test-harness/driver-agent-missing.sh /usr/local/bin/driver-agent-missing.sh
 COPY test-harness/driver-quit-stop.sh /usr/local/bin/driver-quit-stop.sh
-COPY test-harness/driver-quit-session.sh /usr/local/bin/driver-quit-session.sh
+COPY test-harness/driver-detach.sh /usr/local/bin/driver-detach.sh
 COPY test-harness/driver-paseo.sh /usr/local/bin/driver-paseo.sh
 RUN chmod 0755 /usr/local/bin/driver-common.sh /usr/local/bin/driver-verify.sh \
     /usr/local/bin/driver-launch.sh /usr/local/bin/driver-reattach.sh \
@@ -41,7 +41,7 @@ RUN chmod 0755 /usr/local/bin/driver-common.sh /usr/local/bin/driver-verify.sh \
     /usr/local/bin/driver-egress.sh /usr/local/bin/driver-lifecycle.sh \
     /usr/local/bin/driver-install.sh /usr/local/bin/driver-agents.sh \
     /usr/local/bin/driver-agent-launch.sh /usr/local/bin/driver-agent-missing.sh \
-    /usr/local/bin/driver-quit-stop.sh /usr/local/bin/driver-quit-session.sh \
+    /usr/local/bin/driver-quit-stop.sh /usr/local/bin/driver-detach.sh \
     /usr/local/bin/driver-paseo.sh
 
 # Run as the preconfigured rootless user — introdus refuses to run as root.

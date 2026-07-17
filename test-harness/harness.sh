@@ -17,10 +17,10 @@
 #     agent-launch  launch an agent with its skip-permissions flag from the menu
 #     agent-missing a selected-but-uninstalled agent is caught before launch
 #     quit-stop  "Quit introdus (stop the container)" stops it + kills the session
-#     quit-session "Quit this tmux session" kills the session, container survives
+#     detach     "Detach tmux session" detaches the client; session + container survive
 #     paseo      install paseo, launch an agent directly, show the pairing QR
 #     all        verify + menu + egress + lifecycle + install + agents +
-#                agent-launch + agent-missing + quit-stop + quit-session +
+#                agent-launch + agent-missing + quit-stop + detach +
 #                paseo (default)
 #
 # This is a heavy, opt-in tier — it is NOT part of `cargo test`. It needs a
@@ -104,9 +104,9 @@ case "$target" in
         echo "==> quit-stop: Quit introdus stops the container + kills the session"
         run_driver driver-quit-stop.sh
         ;;
-    quit-session)
-        echo "==> quit-session: Quit this tmux session kills the session, container survives"
-        run_driver driver-quit-session.sh
+    detach)
+        echo "==> detach: Detach tmux session detaches the client; session + container survive"
+        run_driver driver-detach.sh
         ;;
     paseo)
         echo "==> paseo: install paseo, launch an agent directly, show the pairing QR"
@@ -131,15 +131,15 @@ case "$target" in
         run_driver driver-agent-missing.sh
         echo "==> quit-stop: Quit introdus stops the container + kills the session"
         run_driver driver-quit-stop.sh
-        echo "==> quit-session: Quit this tmux session kills the session, container survives"
-        run_driver driver-quit-session.sh
+        echo "==> detach: Detach tmux session detaches the client; session + container survive"
+        run_driver driver-detach.sh
         echo "==> paseo: install paseo, launch an agent directly, show the pairing QR"
         run_driver driver-paseo.sh
         echo "==> lifecycle: recreate persistence + destroy teardown"
         run_driver driver-lifecycle.sh
         ;;
     *)
-        echo "unknown target: $target (want: verify | launch | reattach | menu | egress | lifecycle | install | agents | agent-launch | agent-missing | quit-stop | quit-session | paseo | all)" >&2
+        echo "unknown target: $target (want: verify | launch | reattach | menu | egress | lifecycle | install | agents | agent-launch | agent-missing | quit-stop | detach | paseo | all)" >&2
         exit 2
         ;;
 esac

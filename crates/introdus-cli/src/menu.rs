@@ -47,7 +47,7 @@ enum Action {
     Reset,
     Destroy,
     Refresh,
-    Quit,
+    Detach,
     QuitStop,
 }
 
@@ -77,7 +77,7 @@ impl std::fmt::Display for Action {
             Action::Reset => "Reset the container (wipe the volume)",
             Action::Destroy => "Destroy the container (remove volume + key)",
             Action::Refresh => "Refresh status",
-            Action::Quit => "Quit this tmux session (leave the container running)",
+            Action::Detach => "Detach tmux session (Keep container running)",
             Action::QuitStop => "Quit introdus (stop the container)",
         };
         f.write_str(s)
@@ -112,7 +112,7 @@ const MENU: &[Row] = &[
     Row::Item(Action::Destroy),
     Row::Header("Menu"),
     Row::Item(Action::Refresh),
-    Row::Item(Action::Quit),
+    Row::Item(Action::Detach),
     Row::Item(Action::QuitStop),
 ];
 
@@ -123,10 +123,10 @@ pub fn run() -> Result<()> {
     let dir = std::env::current_dir()?;
     let env = env_path(&dir);
     // The tmux session to kill once the Ui is torn down (closing every window),
-    // or `None` to leave it up. The loop breaks with this value; the enclosing
-    // block then drops the Ui before we act on it. Set by "Quit this tmux
-    // session" / Esc (container left running) and by "Quit introdus" (container
-    // stopped first).
+    // or `None` to leave it up. Only "Quit introdus" sets it (it stops the
+    // container, then breaks the loop with this value; the enclosing block drops
+    // the Ui before we act on it). Detach / Esc do NOT end the loop — the menu
+    // process must stay alive in its window so a reattach lands back on it.
     let kill_session: Option<String> = {
         let mut ui = Ui::new()?;
         loop {
@@ -151,14 +151,21 @@ pub fn run() -> Result<()> {
                 },
                 // A poll tick: re-snapshot the status (loop top does it) + redraw.
                 Selection::Tick => continue,
-                // Esc / Ctrl-C: same as the "Quit this tmux session" item — end the
-                // session (leaving the container running), not just this window.
-                Selection::Quit => break Some(act::session_of(&ctx)),
+                // Esc / Ctrl-C: same as the "Detach tmux session" item.
+                Selection::Quit => match detach(&ctx) {
+                    Detach::Continue => continue,
+                    Detach::Exit => break None,
+                },
             };
             match action {
-                // Kill this tmux session (closing every window); the container keeps
-                // running and is reattachable on the next `introdus` launch.
-                Action::Quit => break Some(act::session_of(&ctx)),
+                // Detach every client and return to the shell; the session, its
+                // windows, and the container keep running, so a later `introdus`
+                // reattaches. The menu keeps running (we do NOT end the loop).
+                // Run bare (no tmux to detach from) it just exits.
+                Action::Detach => match detach(&ctx) {
+                    Detach::Continue => continue,
+                    Detach::Exit => break None,
+                },
                 // Refresh just falls through to the next loop, which re-snapshots.
                 Action::Refresh => continue,
                 // Stop the container, then break out and (below, after the Ui is
@@ -195,6 +202,31 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
+/// Whether the menu loop should keep running after a detach request.
+enum Detach {
+    /// Stay in the loop — the menu process lives on in its (now-unattached) window.
+    Continue,
+    /// End the loop and exit the process.
+    Exit,
+}
+
+/// Handle a "Detach tmux session" / Esc request. Inside tmux (the normal case:
+/// the menu is the `main-control` window's command), detach every client from
+/// this session — each returns to the shell that ran `introdus` — while the
+/// session, its windows, and the container keep running, so a later `introdus`
+/// reattaches to the same session; the menu process stays alive, so we
+/// [`Detach::Continue`]. Run bare (no `$TMUX`, e.g. a direct `introdus menu`),
+/// there is nothing to detach from, so Esc simply [`Detach::Exit`]s. Detach
+/// errors are swallowed: detaching when no client is attached (e.g. under the
+/// test harness) is a harmless no-op.
+fn detach(ctx: &LaunchContext) -> Detach {
+    if std::env::var_os("TMUX").is_none() {
+        return Detach::Exit;
+    }
+    let _ = introdus_core::tmux::detach_client(&act::session_of(ctx));
+    Detach::Continue
+}
+
 fn dispatch(action: Action, ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     match action {
         Action::TunnelUrl => act::tunnel_url(ctx, ui),
@@ -217,8 +249,9 @@ fn dispatch(action: Action, ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
         Action::Recreate => act::recreate(ctx, ui),
         Action::Reset => act::reset(ctx, ui),
         Action::Destroy => act::destroy(ctx, ui),
-        // Handled directly in `run()` (they end the loop), never dispatched.
-        Action::Refresh | Action::Quit | Action::QuitStop => Ok(()),
+        // Handled directly in `run()` (detach / refresh / end the loop), never
+        // dispatched.
+        Action::Refresh | Action::Detach | Action::QuitStop => Ok(()),
     }
 }
 

@@ -106,6 +106,14 @@ pub fn kill_window(session: &str, window: &str) -> Result<()> {
     Ok(())
 }
 
+/// Detach every client attached to `session` (each returns to the shell that
+/// ran `introdus`). The session, its windows, and the container keep running.
+/// A no-op — reported by tmux as an error we let the caller ignore — when no
+/// client is attached.
+pub fn detach_client(session: &str) -> Result<()> {
+    tmux().args(["detach-client", "-s", session]).run()
+}
+
 /// Kill a session if it exists.
 pub fn kill_session(session: &str) -> Result<()> {
     if has_session(session) {
