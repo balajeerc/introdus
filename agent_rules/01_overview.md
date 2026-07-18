@@ -60,7 +60,9 @@ introdus containers running on this laptop plus the remote hosts in your
 `~/.ssh/config`, and — once you pick a container (local or remote) — opens a
 two-pane file browser (laptop on the left, the container's filesystem on the
 right) to send a file/folder into a chosen container directory (via `podman cp`
-locally, a tar-stream over ssh for a remote host).
+locally, a tar-stream over ssh for a remote host). Each pane can be re-sorted
+(`o` cycles name / modified / created) and fuzzy-filtered on the current folder
+(`/`).
 
 ## Highlights
 

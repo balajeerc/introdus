@@ -5,7 +5,7 @@
 # directory -> assert it landed in the container, dev-owned. Covers the local
 # transfer path end to end (the remote/ssh path is covered by unit tests —
 # there's no second ssh host in the nested harness).
-# Covers TEST_PLAN: TA149 (harness send-files)
+# Covers TEST_PLAN: TA149 (harness send-files), TA151 (sort key), TA152 (filter)
 set -euo pipefail
 source /usr/local/bin/driver-common.sh
 
@@ -26,6 +26,8 @@ cname="$HARNESS_CNAME"
 outbox="$HOME/outbox"
 rm -rf "$outbox"; mkdir -p "$outbox"
 echo "introdus-send-files-payload" > "$outbox/payload.txt"
+# Decoys so the fuzzy filter has something to hide (and sort has >1 file).
+: > "$outbox/aaa.dat"; : > "$outbox/zzz.dat"
 
 # send-files is its own full-screen app (not a menu action): run it in a new
 # tmux window, started IN the source dir so the left pane opens there.
@@ -57,7 +59,19 @@ sf_wait "CONTAINER" "dual-pane browser"
 sf_wait "payload.txt" "left pane shows the source file"
 echo "    ✓ dual-pane browser up; left pane shows payload.txt"
 
-# Left pane is active; cursor starts on `..`. Down -> payload.txt, Space picks
+# ---- sort: `o` cycles the active (LEFT) pane's order (name -> modified) ------
+sf_send o
+sf_wait "modified" "left pane sort cycled to modified"
+echo "    ✓ 'o' cycles the pane sort key"
+
+# ---- filter: `/` fuzzy-filters the current folder to just the payload -------
+sf_send /; sf_send payload
+sf_wait "/payload" "filter shown in the pane title"
+sf_vis | grep -qF "aaa.dat" && { echo "FATAL: filter didn't hide decoys"; sf_vis | sed 's/^/      /'; exit 1; }
+echo "    ✓ '/' fuzzy-filters the folder (decoys hidden)"
+sf_send Enter   # keep the filter, leave the editor
+
+# Filtered entries are `..` then payload.txt. Down -> payload.txt, Space picks
 # it as the source, then `s` sends it into the right pane's dir (/home/dev).
 sf_send Down
 sf_send Space
