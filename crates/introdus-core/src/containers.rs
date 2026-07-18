@@ -176,6 +176,14 @@ fn cmp_within(a: &DirEntry, b: &DirEntry, mode: SortMode) -> Ordering {
     }
 }
 
+/// Whether a directory entry should be shown given the pane's visibility toggle
+/// and fuzzy filter. Dotfiles are hidden unless `show_hidden`; `..` is handled
+/// by the caller (always shown so you can go up). Combines the hidden rule with
+/// [`fuzzy_match`].
+pub fn entry_visible(name: &str, show_hidden: bool, query: &str) -> bool {
+    (show_hidden || !name.starts_with('.')) && fuzzy_match(name, query)
+}
+
 /// Fuzzy match: are all of `query`'s characters present in `name`, in order
 /// (not necessarily adjacent), case-insensitively? An empty query matches
 /// everything. Backs the browser's current-folder filter.
@@ -334,6 +342,19 @@ mod tests {
         assert_eq!(SortMode::Name.next(), SortMode::ModifiedNewest);
         assert_eq!(SortMode::CreatedOldest.next(), SortMode::Name);
         assert_eq!(SortMode::Name.label(), "name");
+    }
+
+    #[test]
+    fn ta153_entry_visible_hides_dotfiles_unless_toggled() {
+        // Hidden by default…
+        assert!(!entry_visible(".bashrc", false, ""));
+        assert!(entry_visible("Cargo.toml", false, ""));
+        // …shown when the toggle is on.
+        assert!(entry_visible(".bashrc", true, ""));
+        // Combines with the fuzzy filter (hidden rule applies first).
+        assert!(!entry_visible(".config", false, "cfg"));
+        assert!(entry_visible(".config", true, "cfg"));
+        assert!(!entry_visible("readme", true, "xyz"));
     }
 
     #[test]

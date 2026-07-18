@@ -58,6 +58,8 @@ Subcommands: `introdus [launch]`, `up`, `menu`, `verify`, `recreate`, `reset`,
 a container running on this machine or on a host from your `~/.ssh/config`, then
 browse the laptop filesystem beside the container's and send a file/folder into a
 chosen directory (`podman cp` locally, a tar-stream over ssh for a remote host).
+Each pane sorts by name/modified/created (`o`), fuzzy-filters the current folder
+(`/`), and toggles hidden files (`.`).
 
 ## Highlights
 

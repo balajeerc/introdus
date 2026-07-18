@@ -101,8 +101,8 @@ introdus containers running on this laptop plus the remote hosts in your
 two-pane file browser (laptop on the left, the container's filesystem on the
 right) to send a file/folder into a chosen container directory (via `podman cp`
 locally, a tar-stream over ssh for a remote host). Each pane can be re-sorted
-(`o` cycles name / modified / created) and fuzzy-filtered on the current folder
-(`/`).
+(`o` cycles name / modified / created), fuzzy-filtered on the current folder
+(`/`), and toggled to show/hide dotfiles (`.`, hidden by default).
 
 ## Highlights
 
@@ -273,7 +273,7 @@ or change what one owns, update the matching line (per
 | `notify.rs`      | Host notification service: `notify-host` (FIFO/socket → ntfy/forward/desktop) and the laptop-side listen loop (`bind_listener` + `serve_listener`). |
 | `notify_listen.rs`| The dev-machine `notify-listen` orchestration: flag/env/saved-config/wizard resolution, ssh reverse-tunnel supervision (autossh-or-ssh), the `systemd --user` unit install (no-linger, `default.target`), idempotency, `--dry-run`. |
 | `install.rs`     | `introdus install` — put the binary on `PATH`. |
-| `send_files/`    | `introdus send-files`: standalone alternate-screen app (`mod.rs` host/container pickers + spinner), the dual-pane file browser (`browser.rs`, laptop FS ⇆ container FS, per-pane sort `o` + fuzzy filter `/`, persisted `ListState` scroll), and the tar-stream/`podman cp` transfer (`transfer.rs`). Local or ssh-remote via `core::remote::Location`. |
+| `send_files/`    | `introdus send-files`: standalone alternate-screen app (`mod.rs` host/container pickers + spinner), the dual-pane file browser (`browser.rs`, laptop FS ⇆ container FS, per-pane sort `o` + fuzzy filter `/` + hidden-file toggle `.`, persisted `ListState` scroll), and the tar-stream/`podman cp` transfer (`transfer.rs`). Local or ssh-remote via `core::remote::Location`. |
 | `util.rs`        | Small shared helpers (tilde expansion, shell quoting). |
 | `tests/`         | pty integration tests (`wizard_pty.rs`, `menu_pty.rs`, `send_files_pty.rs`) + `common/`. See [06_testing.md](06_testing.md). |
 

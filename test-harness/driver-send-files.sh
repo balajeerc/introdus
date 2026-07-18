@@ -5,7 +5,7 @@
 # directory -> assert it landed in the container, dev-owned. Covers the local
 # transfer path end to end (the remote/ssh path is covered by unit tests —
 # there's no second ssh host in the nested harness).
-# Covers TEST_PLAN: TA149 (harness send-files), TA151 (sort key), TA152 (filter)
+# Covers TEST_PLAN: TA149 (send-files flow), TA151 (sort), TA152 (filter), TA153 (hidden)
 set -euo pipefail
 source /usr/local/bin/driver-common.sh
 
@@ -26,8 +26,9 @@ cname="$HARNESS_CNAME"
 outbox="$HOME/outbox"
 rm -rf "$outbox"; mkdir -p "$outbox"
 echo "introdus-send-files-payload" > "$outbox/payload.txt"
-# Decoys so the fuzzy filter has something to hide (and sort has >1 file).
-: > "$outbox/aaa.dat"; : > "$outbox/zzz.dat"
+# Decoys so the fuzzy filter has something to hide (and sort has >1 file);
+# a dotfile so the hidden-files toggle has something to reveal.
+: > "$outbox/aaa.dat"; : > "$outbox/zzz.dat"; : > "$outbox/.secret"
 
 # send-files is its own full-screen app (not a menu action): run it in a new
 # tmux window, started IN the source dir so the left pane opens there.
@@ -58,6 +59,13 @@ sf_send Enter
 sf_wait "CONTAINER" "dual-pane browser"
 sf_wait "payload.txt" "left pane shows the source file"
 echo "    ✓ dual-pane browser up; left pane shows payload.txt"
+
+# ---- hidden: dotfiles hidden by default; `.` reveals, `.` re-hides ----------
+sf_vis | grep -qF ".secret" && { echo "FATAL: dotfile shown by default"; exit 1; }
+sf_send .
+sf_wait ".secret" "hidden files shown after '.'"
+echo "    ✓ '.' toggles hidden files (.secret revealed)"
+sf_send .   # back to hidden (keep the rest of the flow deterministic)
 
 # ---- sort: `o` cycles the active (LEFT) pane's order (name -> modified) ------
 sf_send o

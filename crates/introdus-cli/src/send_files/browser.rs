@@ -1,8 +1,9 @@
 //! The dual-pane file manager: the laptop filesystem on the left, the chosen
 //! container's filesystem on the right. Navigate both, `Space`-pick a
 //! file/folder on the left, and `s`-send it into the right pane's current
-//! directory. Each pane can be re-sorted (`o` cycles name / modified / created)
-//! and fuzzy-filtered on the current folder (`/`). The container side is listed
+//! directory. Each pane can be re-sorted (`o` cycles name / modified / created),
+//! fuzzy-filtered on the current folder (`/`), and toggled to show/hide dotfiles
+//! (`.`, hidden by default). The container side is listed
 //! live via `podman exec … find` (falling back to `ls`), wrapped in ssh for a
 //! remote host; the transfer itself is [`super::transfer::send`], run behind a
 //! spinner so a large copy doesn't freeze the UI.
@@ -18,7 +19,7 @@ use ratatui::widgets::{Block, BorderType, Borders, List, ListItem, ListState, Pa
 use ratatui::Frame;
 
 use introdus_core::containers::{
-    fuzzy_match, parse_find, parse_ls, sort_entries, DirEntry, SortMode, FIND_PRINTF, LS_FLAGS,
+    entry_visible, parse_find, parse_ls, sort_entries, DirEntry, SortMode, FIND_PRINTF, LS_FLAGS,
 };
 use introdus_core::remote::Location;
 
@@ -47,6 +48,7 @@ struct Pane {
     cursor: usize,
     sort: SortMode,
     filter: String,
+    show_hidden: bool,
 }
 
 impl Pane {
@@ -61,6 +63,7 @@ impl Pane {
             cursor: 0,
             sort: SortMode::Name,
             filter: String::new(),
+            show_hidden: false,
         }
     }
 
@@ -123,20 +126,31 @@ impl Pane {
         Ok(())
     }
 
-    /// Recompute `view` from `all` under the current filter (`..` always shows,
-    /// so you can always go up), clamp the cursor, and re-point the selection.
+    /// Recompute `view` from `all` under the hidden toggle + fuzzy filter (`..`
+    /// always shows, so you can always go up), clamp the cursor, and re-point the
+    /// selection.
     fn rebuild_view(&mut self) {
         self.view = self
             .all
             .iter()
             .enumerate()
-            .filter(|(_, e)| e.name == ".." || fuzzy_match(&e.name, &self.filter))
+            .filter(|(_, e)| {
+                e.name == ".." || entry_visible(&e.name, self.show_hidden, &self.filter)
+            })
             .map(|(i, _)| i)
             .collect();
         if self.cursor >= self.view.len() {
             self.cursor = self.view.len().saturating_sub(1);
         }
         self.sync_selection();
+    }
+
+    /// Toggle showing dotfiles/dot-directories in this pane.
+    fn toggle_hidden(&mut self) {
+        self.show_hidden = !self.show_hidden;
+        self.cursor = 0;
+        *self.state.offset_mut() = 0;
+        self.rebuild_view();
     }
 
     /// Re-sort in place with the next sort mode, keeping `..` pinned at the top.
@@ -329,6 +343,7 @@ pub fn browse(app: &mut App, loc: &Location, container: &str) -> Result<()> {
             Down => cur_pane(&mut left, &mut right, active_left).move_cursor(1),
             Char('/') => filtering = true,
             Char('o') => cur_pane(&mut left, &mut right, active_left).cycle_sort(),
+            Char('.') => cur_pane(&mut left, &mut right, active_left).toggle_hidden(),
             Enter => {
                 if let Err(e) = cur_pane(&mut left, &mut right, active_left).enter() {
                     status = format!("can't open: {e}");
@@ -520,6 +535,9 @@ fn status_line<'a>(
 fn render_pane(f: &mut Frame, area: Rect, pane: &mut Pane, active: bool) {
     let color = if active { ACCENT } else { DIM };
     let mut title = format!(" {}  {}  ·{}", pane.title, pane.cwd, pane.sort.label());
+    if pane.show_hidden {
+        title.push_str("  ·hidden");
+    }
     if !pane.filter.is_empty() {
         title.push_str(&format!("  /{}", pane.filter));
     }
@@ -561,7 +579,7 @@ fn render_pane(f: &mut Frame, area: Rect, pane: &mut Pane, active: bool) {
 
 fn footer(status: &str) -> Paragraph<'static> {
     let hint =
-        "Tab switch · ↑↓ move · Enter open · Space pick · s send · / filter · o sort · Esc back";
+        "Tab · ↑↓ · Enter open · Space pick · s send · / filter · o sort · . hidden · Esc back";
     let line = if status.is_empty() {
         Line::from(Span::styled(hint, Style::default().fg(DIM)))
     } else {
