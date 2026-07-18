@@ -29,12 +29,19 @@ enum PaneSource {
 
 /// One side of the browser: a current directory, its (sorted) entries, and the
 /// cursor. A synthetic `..` leads the list except at the filesystem root.
+///
+/// `state` is the ratatui [`ListState`] and is **persisted across frames** (not
+/// rebuilt per draw): the widget maintains its own scroll offset from it, so the
+/// selection moves within the viewport and only scrolls at the edges. Rebuilding
+/// it each frame (offset 0) would re-derive the offset from scratch and pin the
+/// selection to the bottom on the way down and back up.
 struct Pane {
     title: &'static str,
     cwd: String,
     entries: Vec<DirEntry>,
     cursor: usize,
     source: PaneSource,
+    state: ListState,
 }
 
 impl Pane {
@@ -45,7 +52,15 @@ impl Pane {
             entries: Vec::new(),
             cursor: 0,
             source,
+            state: ListState::default(),
         }
+    }
+
+    /// Point the persisted `ListState` at the current cursor without disturbing
+    /// the scroll offset — for cursor moves within the same listing.
+    fn sync_selection(&mut self) {
+        self.state
+            .select((!self.entries.is_empty()).then_some(self.cursor));
     }
 
     /// List the current directory from the backing source (no `..` synthesis).
@@ -81,6 +96,10 @@ impl Pane {
         if self.cursor >= self.entries.len() {
             self.cursor = self.entries.len().saturating_sub(1);
         }
+        // A fresh listing starts scrolled to the top; drop any offset carried
+        // over from the previous directory, then re-point the selection.
+        *self.state.offset_mut() = 0;
+        self.sync_selection();
         Ok(())
     }
 
@@ -128,6 +147,10 @@ impl Pane {
         }
         let cur = self.cursor as isize + delta;
         self.cursor = cur.clamp(0, len as isize - 1) as usize;
+        // Keep the persisted ListState in step; its offset is preserved, so
+        // ratatui moves the highlight within the viewport and only scrolls once
+        // the selection would leave it.
+        self.sync_selection();
     }
 }
 
@@ -206,8 +229,8 @@ pub fn browse(app: &mut App, loc: &Location, container: &str) -> Result<()> {
             render(
                 f,
                 &header,
-                &left,
-                &right,
+                &mut left,
+                &mut right,
                 active_left,
                 source.as_deref(),
                 &status,
@@ -305,8 +328,8 @@ fn send(
 fn render(
     f: &mut Frame,
     header: &str,
-    left: &Pane,
-    right: &Pane,
+    left: &mut Pane,
+    right: &mut Pane,
     active_left: bool,
     source: Option<&str>,
     status: &str,
@@ -349,20 +372,9 @@ fn render(
     f.render_widget(footer(status), rows[3]);
 }
 
-fn footer(status: &str) -> Paragraph<'static> {
-    let hint = "Tab switch · ↑↓ move · Enter open · Space pick(left) · s send · Esc back";
-    let line = if status.is_empty() {
-        Line::from(Span::styled(hint, Style::default().fg(DIM)))
-    } else {
-        Line::from(vec![
-            Span::styled(status.to_owned(), Style::default().fg(ACCENT)),
-            Span::styled(format!("   {hint}"), Style::default().fg(DIM)),
-        ])
-    };
-    Paragraph::new(line)
-}
-
-fn render_pane(f: &mut Frame, area: Rect, pane: &Pane, active: bool) {
+/// Draw one pane's bordered list, driving the pane's **persisted** `ListState`
+/// (so scrolling is stable across frames).
+fn render_pane(f: &mut Frame, area: Rect, pane: &mut Pane, active: bool) {
     let border = if active { ACCENT } else { DIM };
     let title = format!(" {}  {} ", pane.title, pane.cwd);
     let block = Block::default()
@@ -397,13 +409,24 @@ fn render_pane(f: &mut Frame, area: Rect, pane: &Pane, active: bool) {
     } else {
         Style::default().add_modifier(Modifier::REVERSED)
     };
-    let mut state = ListState::default();
-    state.select((!pane.entries.is_empty()).then_some(pane.cursor));
     f.render_stateful_widget(
         List::new(items).block(block).highlight_style(hl),
         area,
-        &mut state,
+        &mut pane.state,
     );
+}
+
+fn footer(status: &str) -> Paragraph<'static> {
+    let hint = "Tab switch · ↑↓ move · Enter open · Space pick(left) · s send · Esc back";
+    let line = if status.is_empty() {
+        Line::from(Span::styled(hint, Style::default().fg(DIM)))
+    } else {
+        Line::from(vec![
+            Span::styled(status.to_owned(), Style::default().fg(ACCENT)),
+            Span::styled(format!("   {hint}"), Style::default().fg(DIM)),
+        ])
+    };
+    Paragraph::new(line)
 }
 
 #[cfg(test)]
