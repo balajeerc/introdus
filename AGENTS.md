@@ -92,7 +92,15 @@ terminals, copy files in, toggle the webapp tunnel / ntfy, recreate/reset —
 persisting to `.env` where it matters.
 
 Subcommands: `introdus [launch]`, `up`, `menu`, `verify`, `recreate`, `reset`,
-`update`, `rebuild-base`, `notify-host`, `notify-listen`, `install`.
+`update`, `rebuild-base`, `notify-host`, `notify-listen`, `send-files`,
+`install`.
+
+`introdus send-files` is the dev-machine file-transfer tool: it lists the
+introdus containers running on this laptop plus the remote hosts in your
+`~/.ssh/config`, and — once you pick a container (local or remote) — opens a
+two-pane file browser (laptop on the left, the container's filesystem on the
+right) to send a file/folder into a chosen container directory (via `podman cp`
+locally, a tar-stream over ssh for a remote host).
 
 ## Highlights
 
@@ -237,8 +245,11 @@ or change what one owns, update the matching line (per
 | `session.rs`  | Whimsical deterministic tmux session-name generation. |
 | `notify.rs`   | The notification trust boundary: wire-format parse, event whitelist, label sanitization. |
 | `podman.rs`   | Thin `podman` command constructors + existence/state probes. |
+| `remote.rs`   | `Location` (`Local`/`Remote(ssh-alias)`): build a `podman` argv/`Cmd` here or ssh-wrapped (one shell-quoted command); non-interactive ssh opts. Used by `send-files`. |
+| `containers.rs` | Pure parsing for `send-files`: `podman ps` → introdus-only `Container`s, and `ls -1Ap` → sorted `DirEntry`s (dir vs file). |
+| `sshconfig.rs` | Literal `Host` aliases from `~/.ssh/config` (pattern/negation entries dropped) — the `send-files` remote-host list. |
 | `tmux.rs`     | Thin `tmux` helpers (sessions, windows, attach); per-session project-dir tagging (`@introdus_project_dir`) + lookup for attach-or-create. |
-| `process.rs`  | `Cmd` — the logged wrapper over `std::process::Command` all external tools go through; stdout capture guard for the TUI output pane. |
+| `process.rs`  | `Cmd` — the logged wrapper over `std::process::Command` all external tools go through; stdout capture guard for the TUI output pane; shared `sh_quote`. |
 
 ## `crates/introdus-cli/` — the `introdus` binary
 
@@ -260,8 +271,9 @@ or change what one owns, update the matching line (per
 | `notify.rs`      | Host notification service: `notify-host` (FIFO/socket → ntfy/forward/desktop) and the laptop-side listen loop (`bind_listener` + `serve_listener`). |
 | `notify_listen.rs`| The dev-machine `notify-listen` orchestration: flag/env/saved-config/wizard resolution, ssh reverse-tunnel supervision (autossh-or-ssh), the `systemd --user` unit install (no-linger, `default.target`), idempotency, `--dry-run`. |
 | `install.rs`     | `introdus install` — put the binary on `PATH`. |
+| `send_files/`    | `introdus send-files`: standalone alternate-screen app (`mod.rs` host/container pickers + spinner), the dual-pane file browser (`browser.rs`, laptop FS ⇆ container FS), and the tar-stream/`podman cp` transfer (`transfer.rs`). Local or ssh-remote via `core::remote::Location`. |
 | `util.rs`        | Small shared helpers (tilde expansion, shell quoting). |
-| `tests/`         | pty integration tests (`wizard_pty.rs`, `menu_pty.rs`) + `common/`. See [06_testing.md](06_testing.md). |
+| `tests/`         | pty integration tests (`wizard_pty.rs`, `menu_pty.rs`, `send_files_pty.rs`) + `common/`. See [06_testing.md](06_testing.md). |
 
 ## Embedded container-side bash (`container/`, `setup.sh`, `Dockerfile`)
 
@@ -655,6 +667,7 @@ test-harness/harness.sh lifecycle  # recreate persistence + destroy teardown
 test-harness/harness.sh install    # binary onto PATH
 test-harness/harness.sh agents     # claude opt-out absent + opt-in menu install
 test-harness/harness.sh agent-launch / agent-missing / quit-stop / detach / paseo
+test-harness/harness.sh send-files # send a host file into a container via the dual-pane TUI
 ```
 
 Each target is a scripted `driver-*.sh` that drives the real UI over tmux and

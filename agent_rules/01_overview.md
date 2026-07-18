@@ -52,7 +52,15 @@ terminals, copy files in, toggle the webapp tunnel / ntfy, recreate/reset —
 persisting to `.env` where it matters.
 
 Subcommands: `introdus [launch]`, `up`, `menu`, `verify`, `recreate`, `reset`,
-`update`, `rebuild-base`, `notify-host`, `notify-listen`, `install`.
+`update`, `rebuild-base`, `notify-host`, `notify-listen`, `send-files`,
+`install`.
+
+`introdus send-files` is the dev-machine file-transfer tool: it lists the
+introdus containers running on this laptop plus the remote hosts in your
+`~/.ssh/config`, and — once you pick a container (local or remote) — opens a
+two-pane file browser (laptop on the left, the container's filesystem on the
+right) to send a file/folder into a chosen container directory (via `podman cp`
+locally, a tar-stream over ssh for a remote host).
 
 ## Highlights
 

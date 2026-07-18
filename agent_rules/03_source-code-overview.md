@@ -20,8 +20,11 @@ or change what one owns, update the matching line (per
 | `session.rs`  | Whimsical deterministic tmux session-name generation. |
 | `notify.rs`   | The notification trust boundary: wire-format parse, event whitelist, label sanitization. |
 | `podman.rs`   | Thin `podman` command constructors + existence/state probes. |
+| `remote.rs`   | `Location` (`Local`/`Remote(ssh-alias)`): build a `podman` argv/`Cmd` here or ssh-wrapped (one shell-quoted command); non-interactive ssh opts. Used by `send-files`. |
+| `containers.rs` | Pure parsing for `send-files`: `podman ps` → introdus-only `Container`s, and `ls -1Ap` → sorted `DirEntry`s (dir vs file). |
+| `sshconfig.rs` | Literal `Host` aliases from `~/.ssh/config` (pattern/negation entries dropped) — the `send-files` remote-host list. |
 | `tmux.rs`     | Thin `tmux` helpers (sessions, windows, attach); per-session project-dir tagging (`@introdus_project_dir`) + lookup for attach-or-create. |
-| `process.rs`  | `Cmd` — the logged wrapper over `std::process::Command` all external tools go through; stdout capture guard for the TUI output pane. |
+| `process.rs`  | `Cmd` — the logged wrapper over `std::process::Command` all external tools go through; stdout capture guard for the TUI output pane; shared `sh_quote`. |
 
 ## `crates/introdus-cli/` — the `introdus` binary
 
@@ -43,8 +46,9 @@ or change what one owns, update the matching line (per
 | `notify.rs`      | Host notification service: `notify-host` (FIFO/socket → ntfy/forward/desktop) and the laptop-side listen loop (`bind_listener` + `serve_listener`). |
 | `notify_listen.rs`| The dev-machine `notify-listen` orchestration: flag/env/saved-config/wizard resolution, ssh reverse-tunnel supervision (autossh-or-ssh), the `systemd --user` unit install (no-linger, `default.target`), idempotency, `--dry-run`. |
 | `install.rs`     | `introdus install` — put the binary on `PATH`. |
+| `send_files/`    | `introdus send-files`: standalone alternate-screen app (`mod.rs` host/container pickers + spinner), the dual-pane file browser (`browser.rs`, laptop FS ⇆ container FS), and the tar-stream/`podman cp` transfer (`transfer.rs`). Local or ssh-remote via `core::remote::Location`. |
 | `util.rs`        | Small shared helpers (tilde expansion, shell quoting). |
-| `tests/`         | pty integration tests (`wizard_pty.rs`, `menu_pty.rs`) + `common/`. See [06_testing.md](06_testing.md). |
+| `tests/`         | pty integration tests (`wizard_pty.rs`, `menu_pty.rs`, `send_files_pty.rs`) + `common/`. See [06_testing.md](06_testing.md). |
 
 ## Embedded container-side bash (`container/`, `setup.sh`, `Dockerfile`)
 

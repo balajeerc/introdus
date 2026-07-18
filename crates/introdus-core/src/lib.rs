@@ -9,6 +9,7 @@
 pub mod agents;
 pub mod assets;
 pub mod config;
+pub mod containers;
 pub mod egress;
 pub mod env_file;
 pub mod names;
@@ -17,7 +18,9 @@ pub mod paths;
 pub mod podman;
 pub mod ports;
 pub mod process;
+pub mod remote;
 pub mod session;
+pub mod sshconfig;
 pub mod tmux;
 
 pub use config::Config;

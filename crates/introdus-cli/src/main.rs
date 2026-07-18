@@ -14,6 +14,7 @@ mod notify_listen;
 mod panel;
 mod preflight;
 mod run;
+mod send_files;
 mod session;
 mod ui;
 mod util;
@@ -90,6 +91,9 @@ enum Command {
     NotifyHost,
     /// Dev-machine listener + ssh reverse tunnel for forwarded notifications.
     NotifyListen(NotifyListenArgs),
+    /// Dual-pane file browser to send files/folders into a running introdus
+    /// container — on this machine or an ssh-reachable host.
+    SendFiles,
     /// Put the binary on PATH and set up host services.
     Install,
 }
@@ -139,6 +143,7 @@ fn main() -> Result<()> {
         Command::Menu => menu::run(),
         Command::NotifyHost => notify::run_host(),
         Command::NotifyListen(a) => notify_listen::run(a.into()),
+        Command::SendFiles => send_files::run(),
         Command::Install => install::run(),
     }
 }

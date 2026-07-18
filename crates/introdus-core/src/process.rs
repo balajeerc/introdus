@@ -59,8 +59,10 @@ fn push_lines(buf: &OutputBuffer, bytes: &[u8]) {
 }
 
 /// Single-quote one token so it survives re-parsing by `sh -c` intact
-/// (spaces, `;`, `|`, `>`, `&` and friends become literal).
-fn sh_quote(s: &str) -> String {
+/// (spaces, `;`, `|`, `>`, `&` and friends become literal). Shared with
+/// [`crate::remote`], which quotes each token of a command it hands to a remote
+/// shell over `ssh`.
+pub(crate) fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 

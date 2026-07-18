@@ -51,7 +51,13 @@ in, toggle the webapp tunnel / ntfy, and recreate/reset — persisting to `.env`
 where it matters.
 
 Subcommands: `introdus [launch]`, `up`, `menu`, `verify`, `recreate`, `reset`,
-`update`, `rebuild-base`, `notify-host`, `notify-listen`, `install`.
+`update`, `rebuild-base`, `notify-host`, `notify-listen`, `send-files`,
+`install`.
+
+`introdus send-files` (run on your laptop) is a two-pane file transfer TUI: pick
+a container running on this machine or on a host from your `~/.ssh/config`, then
+browse the laptop filesystem beside the container's and send a file/folder into a
+chosen directory (`podman cp` locally, a tar-stream over ssh for a remote host).
 
 ## Highlights
 
