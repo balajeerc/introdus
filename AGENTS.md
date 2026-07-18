@@ -247,7 +247,7 @@ or change what one owns, update the matching line (per
 | `podman.rs`   | Thin `podman` command constructors + existence/state probes. |
 | `remote.rs`   | `Location` (`Local`/`Remote(ssh-alias)`): build a `podman` argv/`Cmd` here or ssh-wrapped (one shell-quoted command); non-interactive ssh opts. Used by `send-files`. |
 | `containers.rs` | Pure parsing for `send-files`: `podman ps` → introdus-only `Container`s, and `ls -1Ap` → sorted `DirEntry`s (dir vs file). |
-| `sshconfig.rs` | Literal `Host` aliases from `~/.ssh/config` (pattern/negation entries dropped) — the `send-files` remote-host list. |
+| `sshconfig.rs` | Container-capable `Host` aliases from `~/.ssh/config` (patterns/negations + git-forge remotes — `User git` / a forge `HostName` — dropped) for the `send-files` remote-host list. |
 | `tmux.rs`     | Thin `tmux` helpers (sessions, windows, attach); per-session project-dir tagging (`@introdus_project_dir`) + lookup for attach-or-create. |
 | `process.rs`  | `Cmd` — the logged wrapper over `std::process::Command` all external tools go through; stdout capture guard for the TUI output pane; shared `sh_quote`. |
 
