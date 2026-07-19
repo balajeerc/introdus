@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="776" height="202" viewBox="0 0 776 202" font-family="'DejaVu Sans Mono','JetBrains Mono',Menlo,Consolas,'Liberation Mono',monospace">
+<rect x="0" y="0" width="776" height="202" rx="10" fill="#181825"/>
+<path d="M0 10 Q0 0 10 0 H766 Q776 0 776 10 V30 H0 Z" fill="#313244"/>
+<circle cx="18" cy="15" r="5.5" fill="#f38ba8"/>
+<circle cx="38" cy="15" r="5.5" fill="#f9e2af"/>
+<circle cx="58" cy="15" r="5.5" fill="#a6e3a1"/>
+<text x="388" y="20" fill="#9399b2" font-size="13" text-anchor="middle">introdus setup wizard — pick coding agents</text>
+<g transform="translate(14,44)">
+<rect x="0.0" y="54.0" width="748.0" height="18.0" fill="#89dceb"/>
+<text xml:space="preserve" x="0.0" y="14.0" fill="#89dceb" font-size="14" textLength="17.0" lengthAdjust="spacingAndGlyphs" font-weight="bold">? </text>
+<text xml:space="preserve" x="17.0" y="14.0" fill="#cdd6f4" font-size="14" textLength="374.0" lengthAdjust="spacingAndGlyphs" font-weight="bold">Which coding agents should introdus install?</text>
+<text xml:space="preserve" x="0.0" y="32.0" fill="#cdd6f4" font-size="14" textLength="748.0" lengthAdjust="spacingAndGlyphs">  [x] Claude (Anthropic)  [runs its own npm postinstall]                                </text>
+<text xml:space="preserve" x="0.0" y="50.0" fill="#cdd6f4" font-size="14" textLength="748.0" lengthAdjust="spacingAndGlyphs">  [x] Codex (OpenAI)                                                                    </text>
+<text xml:space="preserve" x="0.0" y="68.0" fill="#11111b" font-size="14" textLength="748.0" lengthAdjust="spacingAndGlyphs" font-weight="bold">  [ ] Antigravity (Google)  [vendor installer — runs remote code]                       </text>
+<text xml:space="preserve" x="0.0" y="86.0" fill="#cdd6f4" font-size="14" textLength="748.0" lengthAdjust="spacingAndGlyphs">  [ ] Opencode (Open source)                                                            </text>
+<text xml:space="preserve" x="0.0" y="104.0" fill="#cdd6f4" font-size="14" textLength="748.0" lengthAdjust="spacingAndGlyphs">  [ ] Pi agent (Open source)                                                            </text>
+<text xml:space="preserve" x="0.0" y="122.0" fill="#cdd6f4" font-size="14" textLength="748.0" lengthAdjust="spacingAndGlyphs">  [ ] Kilocode CLI (kilo.sh)                                                            </text>
+</g>
+</svg>

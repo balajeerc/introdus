@@ -167,7 +167,7 @@ print(d[0]['ConnectionInfo']['PodmanSocket']['Path'])
        (it installs into the remote, not your laptop).
     3. F1 -> 'Dev Containers: Attach to Running Container...' ->
        pick '$CNAME'.
-    See docs/'Running on a remote host.md' for the full walkthrough."
+    See docs/remote-host.md for the full walkthrough."
     fi
 
     TUNNEL_BANNER=""

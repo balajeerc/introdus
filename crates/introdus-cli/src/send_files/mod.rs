@@ -10,7 +10,7 @@
 //! (see [`transfer`]); nothing here needs the project's `.introdus/config.env`
 //! or a shared mount — a running container is enough.
 
-mod browser;
+pub(crate) mod browser;
 mod transfer;
 
 use std::io::{self, Stdout};
@@ -76,7 +76,7 @@ enum Stage {
 }
 
 /// Owns the alternate screen for a `send-files` session; restored on drop.
-struct App {
+pub(crate) struct App {
     term: Terminal<Backend>,
 }
 

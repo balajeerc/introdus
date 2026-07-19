@@ -50,7 +50,7 @@ pub enum Selection {
 }
 
 /// A centered popup prompt drawn over the two-pane frame.
-enum Popup<'a> {
+pub(crate) enum Popup<'a> {
     Confirm {
         prompt: &'a str,
         answer: bool,
@@ -391,7 +391,7 @@ fn blank_status() -> Status {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn draw_frame(
+pub(crate) fn draw_frame(
     f: &mut Frame,
     status: &Status,
     rows: &[Row],

@@ -28,7 +28,7 @@ use crate::ui::{ACCENT, DIM};
 use super::{transfer, App};
 
 /// Where a pane's entries come from — the local FS or a container's FS.
-enum PaneSource {
+pub(crate) enum PaneSource {
     Local,
     Container { loc: Location, container: String },
 }
@@ -38,17 +38,17 @@ enum PaneSource {
 /// `filter`, and `cursor` indexes `view`. `state` is the ratatui [`ListState`],
 /// **persisted across frames** so the widget keeps its own scroll offset — the
 /// highlight moves within the viewport and only scrolls at the edges.
-struct Pane {
-    title: &'static str,
-    cwd: String,
-    source: PaneSource,
-    state: ListState,
-    all: Vec<DirEntry>,
-    view: Vec<usize>,
-    cursor: usize,
-    sort: SortMode,
-    filter: String,
-    show_hidden: bool,
+pub(crate) struct Pane {
+    pub(crate) title: &'static str,
+    pub(crate) cwd: String,
+    pub(crate) source: PaneSource,
+    pub(crate) state: ListState,
+    pub(crate) all: Vec<DirEntry>,
+    pub(crate) view: Vec<usize>,
+    pub(crate) cursor: usize,
+    pub(crate) sort: SortMode,
+    pub(crate) filter: String,
+    pub(crate) show_hidden: bool,
 }
 
 impl Pane {
@@ -274,7 +274,7 @@ fn basename(path: &str) -> String {
 
 /// Run the browser for one container. Returns when the user quits (Esc/q),
 /// which the caller treats as "back to the container picker".
-pub fn browse(app: &mut App, loc: &Location, container: &str) -> Result<()> {
+pub(crate) fn browse(app: &mut App, loc: &Location, container: &str) -> Result<()> {
     let start = std::env::current_dir()
         .ok()
         .and_then(|p| p.to_str().map(str::to_owned))
@@ -451,7 +451,7 @@ fn send(
 /// Draw the two-pane browser into `f`. Kept here (not in `mod.rs`) so all
 /// browser layout lives beside its state.
 #[allow(clippy::too_many_arguments)]
-fn render(
+pub(crate) fn render(
     f: &mut Frame,
     header: &str,
     left: &mut Pane,

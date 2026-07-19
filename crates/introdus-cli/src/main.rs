@@ -14,6 +14,8 @@ mod notify_listen;
 mod panel;
 mod preflight;
 mod run;
+#[cfg(test)]
+mod screenshot;
 mod send_files;
 mod session;
 mod ui;

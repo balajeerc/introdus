@@ -48,6 +48,7 @@ or change what one owns, update the matching line (per
 | `install.rs`     | `introdus install` — put the binary on `PATH`. |
 | `send_files/`    | `introdus send-files`: standalone alternate-screen app (`mod.rs` host/container pickers + spinner), the dual-pane file browser (`browser.rs`, laptop FS ⇆ container FS, per-pane sort `o` + fuzzy filter `/` + hidden-file toggle `.`, persisted `ListState` scroll), and the tar-stream/`podman cp` transfer (`transfer.rs`). Local or ssh-remote via `core::remote::Location`. |
 | `util.rs`        | Small shared helpers (tilde expansion, shell quoting). |
+| `screenshot.rs`  | Test-only (`#[cfg(test)]`): render a real frame into a `TestBackend` buffer and serialize it to a colour SVG. Driven by the `#[ignore]`d `shot_*` generators in `panel`/`ui`/`send_files::browser` that write the docs' `docs/img/*.svg`. |
 | `tests/`         | pty integration tests (`wizard_pty.rs`, `menu_pty.rs`, `send_files_pty.rs`) + `common/`. See [06_testing.md](06_testing.md). |
 
 ## Embedded container-side bash (`container/`, `setup.sh`, `Dockerfile`)

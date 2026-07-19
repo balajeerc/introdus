@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1031" height="490" viewBox="0 0 1031 490" font-family="'DejaVu Sans Mono','JetBrains Mono',Menlo,Consolas,'Liberation Mono',monospace">
+<rect x="0" y="0" width="1031" height="490" rx="10" fill="#181825"/>
+<path d="M0 10 Q0 0 10 0 H1021 Q1031 0 1031 10 V30 H0 Z" fill="#313244"/>
+<circle cx="18" cy="15" r="5.5" fill="#f38ba8"/>
+<circle cx="38" cy="15" r="5.5" fill="#f9e2af"/>
+<circle cx="58" cy="15" r="5.5" fill="#a6e3a1"/>
+<text x="516" y="20" fill="#9399b2" font-size="13" text-anchor="middle">introdus send-files — dual-pane transfer</text>
+<g transform="translate(14,44)">
+<rect x="510.0" y="72.0" width="42.5" height="18.0" fill="#89dceb"/>
+<rect x="552.5" y="72.0" width="442.0" height="18.0" fill="#cdd6f4"/>
+<rect x="8.5" y="108.0" width="484.5" height="18.0" fill="#89dceb"/>
+<text xml:space="preserve" x="0.0" y="14.0" fill="#89dceb" font-size="14" textLength="93.5" lengthAdjust="spacingAndGlyphs" font-weight="bold">send-files </text>
+<text xml:space="preserve" x="93.5" y="14.0" fill="#cdd6f4" font-size="14" textLength="909.5" lengthAdjust="spacingAndGlyphs">acme-web  (introdus-brave-swift-otter · local)                                                             </text>
+<text xml:space="preserve" x="0.0" y="32.0" fill="#6c7086" font-size="14" textLength="68.0" lengthAdjust="spacingAndGlyphs">source: </text>
+<text xml:space="preserve" x="68.0" y="32.0" fill="#89dceb" font-size="14" textLength="238.0" lengthAdjust="spacingAndGlyphs">/home/you/datasets/train.csv</text>
+<text xml:space="preserve" x="0.0" y="50.0" fill="#89dceb" font-size="14" textLength="501.5" lengthAdjust="spacingAndGlyphs">╭ laptop  /home/you/datasets  ·name ──────────────────────╮</text>
+<text xml:space="preserve" x="501.5" y="50.0" fill="#6c7086" font-size="14" textLength="501.5" lengthAdjust="spacingAndGlyphs">╭ container  /home/dev/work/acme-web  ·name ──────────────╮</text>
+<text xml:space="preserve" x="0.0" y="68.0" fill="#89dceb" font-size="14" textLength="42.5" lengthAdjust="spacingAndGlyphs">│ ../</text>
+<text xml:space="preserve" x="493.0" y="68.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="68.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="510.0" y="68.0" fill="#89dceb" font-size="14" textLength="34.0" lengthAdjust="spacingAndGlyphs"> ../</text>
+<text xml:space="preserve" x="994.5" y="68.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="86.0" fill="#89dceb" font-size="14" textLength="136.0" lengthAdjust="spacingAndGlyphs">│ imagenet-mini/</text>
+<text xml:space="preserve" x="493.0" y="86.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="86.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="510.0" y="86.0" fill="#181825" font-size="14" textLength="484.5" lengthAdjust="spacingAndGlyphs"> src/                                                    </text>
+<text xml:space="preserve" x="994.5" y="86.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="104.0" fill="#89dceb" font-size="14" textLength="51.0" lengthAdjust="spacingAndGlyphs">│ raw/</text>
+<text xml:space="preserve" x="493.0" y="104.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="104.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="510.0" y="104.0" fill="#89dceb" font-size="14" textLength="119.0" lengthAdjust="spacingAndGlyphs"> node_modules/</text>
+<text xml:space="preserve" x="994.5" y="104.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="122.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="8.5" y="122.0" fill="#11111b" font-size="14" textLength="484.5" lengthAdjust="spacingAndGlyphs" font-weight="bold"> train.csv                                               </text>
+<text xml:space="preserve" x="493.0" y="122.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="122.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="510.0" y="122.0" fill="#cdd6f4" font-size="14" textLength="484.5" lengthAdjust="spacingAndGlyphs"> package.json                                            </text>
+<text xml:space="preserve" x="994.5" y="122.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="140.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="8.5" y="140.0" fill="#cdd6f4" font-size="14" textLength="484.5" lengthAdjust="spacingAndGlyphs"> labels.parquet                                          </text>
+<text xml:space="preserve" x="493.0" y="140.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="140.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="510.0" y="140.0" fill="#cdd6f4" font-size="14" textLength="484.5" lengthAdjust="spacingAndGlyphs"> pnpm-lock.yaml                                          </text>
+<text xml:space="preserve" x="994.5" y="140.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="158.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="8.5" y="158.0" fill="#cdd6f4" font-size="14" textLength="484.5" lengthAdjust="spacingAndGlyphs"> NOTES.md                                                </text>
+<text xml:space="preserve" x="493.0" y="158.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="158.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="510.0" y="158.0" fill="#cdd6f4" font-size="14" textLength="484.5" lengthAdjust="spacingAndGlyphs"> tsconfig.json                                           </text>
+<text xml:space="preserve" x="994.5" y="158.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="176.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="493.0" y="176.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="176.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="994.5" y="176.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="194.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="493.0" y="194.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="194.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="994.5" y="194.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="212.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="493.0" y="212.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="212.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="994.5" y="212.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="230.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="493.0" y="230.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="230.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="994.5" y="230.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="248.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="493.0" y="248.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="248.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="994.5" y="248.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="266.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="493.0" y="266.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="266.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="994.5" y="266.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="284.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="493.0" y="284.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="284.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="994.5" y="284.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="302.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="493.0" y="302.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="302.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="994.5" y="302.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="320.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="493.0" y="320.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="320.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="994.5" y="320.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="338.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="493.0" y="338.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="338.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="994.5" y="338.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="356.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="493.0" y="356.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="356.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="994.5" y="356.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="374.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="493.0" y="374.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="374.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="994.5" y="374.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="392.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="493.0" y="392.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="501.5" y="392.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="994.5" y="392.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="410.0" fill="#89dceb" font-size="14" textLength="501.5" lengthAdjust="spacingAndGlyphs">╰─────────────────────────────────────────────────────────╯</text>
+<text xml:space="preserve" x="501.5" y="410.0" fill="#6c7086" font-size="14" textLength="501.5" lengthAdjust="spacingAndGlyphs">╰─────────────────────────────────────────────────────────╯</text>
+<text xml:space="preserve" x="0.0" y="428.0" fill="#6c7086" font-size="14" textLength="722.5" lengthAdjust="spacingAndGlyphs">Tab · ↑↓ · Enter open · Space pick · s send · / filter · o sort · . hidden · Esc back</text>
+</g>
+</svg>

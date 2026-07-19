@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="598" viewBox="0 0 980 598" font-family="'DejaVu Sans Mono','JetBrains Mono',Menlo,Consolas,'Liberation Mono',monospace">
+<rect x="0" y="0" width="980" height="598" rx="10" fill="#181825"/>
+<path d="M0 10 Q0 0 10 0 H970 Q980 0 980 10 V30 H0 Z" fill="#313244"/>
+<circle cx="18" cy="15" r="5.5" fill="#f38ba8"/>
+<circle cx="38" cy="15" r="5.5" fill="#f9e2af"/>
+<circle cx="58" cy="15" r="5.5" fill="#a6e3a1"/>
+<text x="490" y="20" fill="#9399b2" font-size="13" text-anchor="middle">introdus — control panel</text>
+<g transform="translate(14,44)">
+<rect x="8.5" y="0.0" width="85.0" height="18.0" fill="#89dceb"/>
+<rect x="0.0" y="306.0" width="459.0" height="18.0" fill="#89dceb"/>
+<text xml:space="preserve" x="0.0" y="14.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">╭</text>
+<text xml:space="preserve" x="8.5" y="14.0" fill="#11111b" font-size="14" textLength="85.0" lengthAdjust="spacingAndGlyphs"> introdus </text>
+<text xml:space="preserve" x="93.5" y="14.0" fill="#89dceb" font-size="14" textLength="76.5" lengthAdjust="spacingAndGlyphs" font-weight="bold"> control </text>
+<text xml:space="preserve" x="170.0" y="14.0" fill="#89dceb" font-size="14" textLength="289.0" lengthAdjust="spacingAndGlyphs">─────────────────────────────────╮</text>
+<text xml:space="preserve" x="459.0" y="14.0" fill="#6c7086" font-size="14" textLength="493.0" lengthAdjust="spacingAndGlyphs">╭ output ────────────────────────────────────────────────╮</text>
+<text xml:space="preserve" x="0.0" y="32.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="8.5" y="32.0" fill="#6c7086" font-size="14" textLength="102.0" lengthAdjust="spacingAndGlyphs"> project    </text>
+<text xml:space="preserve" x="110.5" y="32.0" fill="#cdd6f4" font-size="14" textLength="68.0" lengthAdjust="spacingAndGlyphs" font-weight="bold">acme-web</text>
+<text xml:space="preserve" x="450.5" y="32.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="459.0" y="32.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="467.5" y="32.0" fill="#cdd6f4" font-size="14" textLength="476.0" lengthAdjust="spacingAndGlyphs">▶ Show tunnel URL                                       </text>
+<text xml:space="preserve" x="943.5" y="32.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="50.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="8.5" y="50.0" fill="#6c7086" font-size="14" textLength="102.0" lengthAdjust="spacingAndGlyphs"> container  </text>
+<text xml:space="preserve" x="110.5" y="50.0" fill="#cdd6f4" font-size="14" textLength="340.0" lengthAdjust="spacingAndGlyphs">introdus-brave-swift-otter              </text>
+<text xml:space="preserve" x="450.5" y="50.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="459.0" y="50.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="467.5" y="50.0" fill="#cdd6f4" font-size="14" textLength="476.0" lengthAdjust="spacingAndGlyphs">  webapp tunnel is live:                                </text>
+<text xml:space="preserve" x="943.5" y="50.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="68.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="8.5" y="68.0" fill="#6c7086" font-size="14" textLength="102.0" lengthAdjust="spacingAndGlyphs"> state      </text>
+<text xml:space="preserve" x="110.5" y="68.0" fill="#a6e3a1" font-size="14" textLength="76.5" lengthAdjust="spacingAndGlyphs" font-weight="bold">● running</text>
+<text xml:space="preserve" x="450.5" y="68.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="459.0" y="68.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="467.5" y="68.0" fill="#cdd6f4" font-size="14" textLength="476.0" lengthAdjust="spacingAndGlyphs">  https://brave-swift-otter.trycloudflare.com           </text>
+<text xml:space="preserve" x="943.5" y="68.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="86.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="8.5" y="86.0" fill="#6c7086" font-size="14" textLength="102.0" lengthAdjust="spacingAndGlyphs"> webapp     </text>
+<text xml:space="preserve" x="110.5" y="86.0" fill="#cdd6f4" font-size="14" textLength="340.0" lengthAdjust="spacingAndGlyphs">port 5173                               </text>
+<text xml:space="preserve" x="450.5" y="86.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="459.0" y="86.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="86.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="104.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="8.5" y="104.0" fill="#6c7086" font-size="14" textLength="102.0" lengthAdjust="spacingAndGlyphs"> agents     </text>
+<text xml:space="preserve" x="110.5" y="104.0" fill="#cdd6f4" font-size="14" textLength="340.0" lengthAdjust="spacingAndGlyphs">claude, codex                           </text>
+<text xml:space="preserve" x="450.5" y="104.0" fill="#89dceb" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="459.0" y="104.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="467.5" y="104.0" fill="#cdd6f4" font-size="14" textLength="476.0" lengthAdjust="spacingAndGlyphs">  (also written to the dev-container log)               </text>
+<text xml:space="preserve" x="943.5" y="104.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="122.0" fill="#89dceb" font-size="14" textLength="459.0" lengthAdjust="spacingAndGlyphs">╰────────────────────────────────────────────────────╯</text>
+<text xml:space="preserve" x="459.0" y="122.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="122.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="140.0" fill="#89dceb" font-size="14" textLength="170.0" lengthAdjust="spacingAndGlyphs" font-weight="bold">  Terminals &amp; agents</text>
+<text xml:space="preserve" x="459.0" y="140.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="140.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="158.0" fill="#cdd6f4" font-size="14" textLength="459.0" lengthAdjust="spacingAndGlyphs">    Open a root terminal (tmux window)                </text>
+<text xml:space="preserve" x="459.0" y="158.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="158.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="176.0" fill="#cdd6f4" font-size="14" textLength="459.0" lengthAdjust="spacingAndGlyphs">    Open a dev terminal (tmux window)                 </text>
+<text xml:space="preserve" x="459.0" y="176.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="176.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="194.0" fill="#cdd6f4" font-size="14" textLength="459.0" lengthAdjust="spacingAndGlyphs">    Launch an installed agent (tmux window)           </text>
+<text xml:space="preserve" x="459.0" y="194.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="194.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="212.0" fill="#cdd6f4" font-size="14" textLength="459.0" lengthAdjust="spacingAndGlyphs">    Install a coding agent                            </text>
+<text xml:space="preserve" x="459.0" y="212.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="212.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="230.0" fill="#89dceb" font-size="14" textLength="136.0" lengthAdjust="spacingAndGlyphs" font-weight="bold">  Files &amp; egress</text>
+<text xml:space="preserve" x="459.0" y="230.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="230.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="248.0" fill="#cdd6f4" font-size="14" textLength="459.0" lengthAdjust="spacingAndGlyphs">    Copy a host file/folder into the container        </text>
+<text xml:space="preserve" x="459.0" y="248.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="248.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="266.0" fill="#cdd6f4" font-size="14" textLength="459.0" lengthAdjust="spacingAndGlyphs">    List recently blocked egress URLs                 </text>
+<text xml:space="preserve" x="459.0" y="266.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="266.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="284.0" fill="#cdd6f4" font-size="14" textLength="459.0" lengthAdjust="spacingAndGlyphs">    Add hostnames to the egress allowlist             </text>
+<text xml:space="preserve" x="459.0" y="284.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="284.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="302.0" fill="#89dceb" font-size="14" textLength="204.0" lengthAdjust="spacingAndGlyphs" font-weight="bold">  Webapp &amp; notifications</text>
+<text xml:space="preserve" x="459.0" y="302.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="302.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="320.0" fill="#11111b" font-size="14" textLength="459.0" lengthAdjust="spacingAndGlyphs" font-weight="bold">    Show tunnel URL                                   </text>
+<text xml:space="preserve" x="459.0" y="320.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="320.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="338.0" fill="#cdd6f4" font-size="14" textLength="459.0" lengthAdjust="spacingAndGlyphs">    Expose webapp via Cloudflare tunnel               </text>
+<text xml:space="preserve" x="459.0" y="338.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="338.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="356.0" fill="#cdd6f4" font-size="14" textLength="459.0" lengthAdjust="spacingAndGlyphs">    Enable ntfy.sh mobile notifications               </text>
+<text xml:space="preserve" x="459.0" y="356.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="356.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="374.0" fill="#cdd6f4" font-size="14" textLength="459.0" lengthAdjust="spacingAndGlyphs">    Send a test host notification                     </text>
+<text xml:space="preserve" x="459.0" y="374.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="374.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="392.0" fill="#89dceb" font-size="14" textLength="178.5" lengthAdjust="spacingAndGlyphs" font-weight="bold">  Container lifecycle</text>
+<text xml:space="preserve" x="459.0" y="392.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="392.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="410.0" fill="#cdd6f4" font-size="14" textLength="459.0" lengthAdjust="spacingAndGlyphs">    Restart the container                             </text>
+<text xml:space="preserve" x="459.0" y="410.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="410.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="428.0" fill="#cdd6f4" font-size="14" textLength="459.0" lengthAdjust="spacingAndGlyphs">    Stop the container                                </text>
+<text xml:space="preserve" x="459.0" y="428.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="428.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="446.0" fill="#cdd6f4" font-size="14" textLength="459.0" lengthAdjust="spacingAndGlyphs">    Recreate the container (apply .env changes)       </text>
+<text xml:space="preserve" x="459.0" y="446.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="446.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="0.0" y="464.0" fill="#cdd6f4" font-size="14" textLength="459.0" lengthAdjust="spacingAndGlyphs">    Reset the container (wipe the volume)             </text>
+<text xml:space="preserve" x="459.0" y="464.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="464.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="459.0" y="482.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="482.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="459.0" y="500.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="943.5" y="500.0" fill="#6c7086" font-size="14" textLength="8.5" lengthAdjust="spacingAndGlyphs">│</text>
+<text xml:space="preserve" x="459.0" y="518.0" fill="#6c7086" font-size="14" textLength="493.0" lengthAdjust="spacingAndGlyphs">╰────────────────────────────────────────────────────────╯</text>
+<text xml:space="preserve" x="0.0" y="536.0" fill="#6c7086" font-size="14" textLength="654.5" lengthAdjust="spacingAndGlyphs">↑/↓ move · type to filter · Enter select · Esc quit · Ctrl-a ⟨n⟩ tmux windows</text>
+</g>
+</svg>
