@@ -12,6 +12,7 @@ mod menu_actions;
 mod notify;
 mod notify_listen;
 mod panel;
+mod panel_draw;
 mod preflight;
 mod run;
 #[cfg(test)]

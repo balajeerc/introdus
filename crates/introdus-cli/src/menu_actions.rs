@@ -486,15 +486,6 @@ pub fn recreate(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     respawn_dev_window(ctx, ui)
 }
 
-/// Reset the container AND wipe the volume, respawning the dev-container window.
-/// Guarded by the same dirty-git scan + typed confirmation as `introdus reset`.
-pub fn reset(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
-    confirm_wipe(ctx, ui)?;
-    remove_container_task(ctx, ui, "resetting the container")?;
-    remove_volume_task(ctx, ui, "wiping the volume")?;
-    respawn_dev_window(ctx, ui)
-}
-
 /// Restart the container in place (re-runs its entrypoint; keeps the volume).
 /// `podman restart` starts a stopped container too, so it covers both states.
 pub fn restart(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
@@ -536,52 +527,42 @@ pub fn stop_for_quit(ctx: &LaunchContext, ui: &mut Ui) -> Result<bool> {
     Ok(true)
 }
 
-/// Stop the container (keeps it and its volume; Restart brings it back).
-pub fn stop(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
-    match podman::container_state(&ctx.container_name) {
-        podman::ContainerState::Absent => bail!("container {} isn't created", ctx.container_name),
-        podman::ContainerState::Stopped => {
-            ui.log(format!("  {} is already stopped.", ctx.container_name));
-            Ok(())
-        }
-        podman::ContainerState::Running => {
-            ui.run_task(
-                "stopping the container",
-                podman().args(["stop", &ctx.container_name]),
-            )?;
-            ui.log(format!("  stopped {}.", ctx.container_name));
-            Ok(())
-        }
-    }
-}
-
-/// Destroy the container AND its volume entirely (full teardown, no respawn),
-/// then offer to delete the local deploy key. Double-confirmed: a yes/no, then
-/// the dirty-git scan + typed 'yes' guard.
-pub fn destroy(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
+/// Merged Destroy/Reset: wipe the `/home/dev` volume (the destructive core both
+/// operations share), then two follow-up prompts decide which one it was —
+/// whether to also delete the local deploy key (destroy), and whether to bring
+/// the container back up fresh (reset) or leave it torn down (destroy). Guarded
+/// by a yes/no plus the dirty-git scan + typed-'yes' confirmation.
+pub fn destroy_or_reset(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     if !podman::container_exists(&ctx.container_name) && !podman::volume_exists(&ctx.volume_name) {
-        ui.log("  nothing to destroy — no container or volume for this project.");
+        ui.log("  nothing to do — no container or volume for this project.");
         return Ok(());
     }
     if !ui.confirm(
-        "Destroy this container and permanently delete its volume?",
+        "Destroy/Reset this container and permanently wipe its /home/dev volume?",
         false,
     )? {
         ui.log("  aborted.");
         return Ok(());
     }
-    // Second, stronger confirmation: scans for uncommitted work, requires typed 'yes'.
+    // Stronger confirmation: scans for uncommitted work, requires typed 'yes'.
     confirm_wipe(ctx, ui)?;
-    remove_container_task(ctx, ui, "tearing down the container")?;
-    remove_volume_task(ctx, ui, "removing the volume")?;
-    ui.log(format!(
-        "  destroyed container {} and its volume.",
-        ctx.container_name
-    ));
+    remove_container_task(ctx, ui, "wiping the container")?;
+    remove_volume_task(ctx, ui, "wiping the volume")?;
+    ui.log(format!("  wiped the volume for {}.", ctx.container_name));
+    // The destroy extra: optionally delete the local deploy key too.
     offer_remove_deploy_key(ctx, ui)?;
-    // Nothing runs in the dev-container window anymore; close it if present.
-    let _ = tmux::kill_window(&session_of(ctx), "dev-container");
-    Ok(())
+    // Reset vs destroy: bring it back up fresh, or leave it fully torn down.
+    if ui.confirm(
+        "Bring the container back up now with a fresh volume? (No leaves it torn down)",
+        true,
+    )? {
+        respawn_dev_window(ctx, ui)
+    } else {
+        // Nothing runs in the dev-container window anymore; close it if present.
+        let _ = tmux::kill_window(&session_of(ctx), "dev-container");
+        ui.log(format!("  torn down {}.", ctx.container_name));
+        Ok(())
+    }
 }
 
 /// The data-loss guard for reset/destroy, rendered into the pane: warn, show the

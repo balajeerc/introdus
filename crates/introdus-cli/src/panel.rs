@@ -20,17 +20,13 @@ use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph, Wrap};
-use ratatui::{Frame, Terminal};
+use ratatui::Terminal;
 
 use introdus_core::process::{self, CaptureGuard, OutputBuffer};
 
+pub(crate) use crate::panel_draw::{draw_frame, MenuView, Popup};
 use crate::ui::{
-    self, confirm_options, confirm_step, next_key, question, text_render, text_step, visible_items,
-    Picker, Row, Status, Step, ACCENT, DIM,
+    self, confirm_step, next_key, text_step, visible_items, Picker, Row, Status, Step,
 };
 
 type Backend = CrosstermBackend<Stdout>;
@@ -49,24 +45,6 @@ pub enum Selection {
     Tick,
 }
 
-/// A centered popup prompt drawn over the two-pane frame.
-pub(crate) enum Popup<'a> {
-    Confirm {
-        prompt: &'a str,
-        answer: bool,
-    },
-    Text {
-        prompt: &'a str,
-        buf: &'a str,
-        hidden: bool,
-    },
-    Pick {
-        prompt: &'a str,
-        items: &'a [String],
-        picker: &'a Picker,
-    },
-}
-
 /// Braille spinner frames for the "action in progress" indicator.
 const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
@@ -79,6 +57,9 @@ pub struct Ui {
     /// Selection index into the *visible* (filtered) item list.
     sel: usize,
     query: String,
+    /// Whether the menu is in filter mode (entered with `/`). When false, a
+    /// letter runs its item's hotkey instead of narrowing the list.
+    filtering: bool,
     /// When set, a long action is running: the footer shows a spinner and
     /// keystrokes are ignored (the menu is disabled until it finishes).
     busy: Option<String>,
@@ -102,6 +83,7 @@ impl Ui {
             rows: Vec::new(),
             sel: 0,
             query: String::new(),
+            filtering: false,
             busy: None,
             spin: 0,
             _capture: capture,
@@ -205,8 +187,10 @@ impl Ui {
         }
     }
 
-    /// Run one turn at the menu: filter/navigate until the user picks an item or
-    /// quits.
+    /// Run one turn at the menu. Two input modes: by default a letter runs its
+    /// item's hotkey directly, `/` enters filter mode, and ↑/↓ + Enter still
+    /// navigate; in filter mode (the send-files convention) typing narrows the
+    /// list and Esc leaves it. Returns when the user picks an item or quits.
     pub fn run_menu(&mut self) -> Result<Selection> {
         loop {
             let visible = visible_items(&self.rows, &self.query);
@@ -227,29 +211,57 @@ impl Ui {
             }
             use ratatui::crossterm::event::KeyCode::*;
             match code {
-                Esc => return Ok(Selection::Quit),
-                Enter => {
-                    if let Some(&idx) = visible.get(self.sel) {
-                        // Reset the filter so the next turn starts from the full
-                        // menu (the query persists across turns otherwise).
-                        self.query.clear();
-                        self.sel = 0;
-                        return Ok(Selection::Item(idx));
-                    }
-                }
                 Up => self.sel = self.sel.saturating_sub(1),
                 Down if self.sel + 1 < visible.len() => self.sel += 1,
-                Backspace => {
-                    self.query.pop();
+                Enter => {
+                    if let Some(&idx) = visible.get(self.sel) {
+                        return Ok(self.chose(idx));
+                    }
+                }
+                // --- filter mode: type to narrow, Esc/Backspace-empty to leave ---
+                _ if self.filtering => match code {
+                    Esc => self.end_filter(),
+                    Backspace => {
+                        self.query.pop();
+                        self.sel = 0;
+                        if self.query.is_empty() {
+                            self.filtering = false;
+                        }
+                    }
+                    Char(c) => {
+                        self.query.push(c);
+                        self.sel = 0;
+                    }
+                    _ => {}
+                },
+                // --- default mode: hotkeys + `/` filter ---
+                Esc => return Ok(Selection::Quit),
+                Char('/') => {
+                    self.filtering = true;
                     self.sel = 0;
                 }
                 Char(c) => {
-                    self.query.push(c);
-                    self.sel = 0;
+                    if let Some(idx) = self.rows.iter().position(|r| r.hotkey() == Some(c)) {
+                        return Ok(self.chose(idx));
+                    }
                 }
                 _ => {}
             }
         }
+    }
+
+    /// Commit a menu selection: reset the filter so the next turn starts from the
+    /// full menu (the query/mode persist across turns otherwise).
+    fn chose(&mut self, idx: usize) -> Selection {
+        self.end_filter();
+        Selection::Item(idx)
+    }
+
+    /// Leave filter mode and clear the query.
+    fn end_filter(&mut self) {
+        self.filtering = false;
+        self.query.clear();
+        self.sel = 0;
     }
 
     // ---- popup prompts (mirror the wizard's inline modals) -----------------
@@ -360,13 +372,21 @@ impl Ui {
         let status = &self.status;
         let rows = &self.rows;
         let query = &self.query;
+        let filtering = self.filtering;
         let sel = self.sel;
         let busy = self
             .busy
             .as_ref()
             .map(|label| (label.as_str(), SPINNER[self.spin % SPINNER.len()]));
         self.term.draw(|f| {
-            draw_frame(f, status, rows, query, sel, &lines, popup.as_ref(), busy);
+            let m = MenuView {
+                status,
+                rows,
+                query,
+                filtering,
+                sel,
+            };
+            draw_frame(f, &m, &lines, popup.as_ref(), busy);
         })?;
         Ok(())
     }
@@ -387,266 +407,5 @@ fn blank_status() -> Status {
         state: "…",
         webapp_port: 0,
         agents: String::new(),
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn draw_frame(
-    f: &mut Frame,
-    status: &Status,
-    rows: &[Row],
-    query: &str,
-    sel: usize,
-    out: &[String],
-    popup: Option<&Popup>,
-    busy: Option<(&str, char)>,
-) {
-    // A prompt (if any) is a full-width band at the bottom, above the footer —
-    // it never covers the panes, and its full width keeps long prompt text on a
-    // single line (so the output pane stays fully visible alongside it).
-    let prompt_h = popup.map_or(0, |p| prompt_height(p, f.area().width));
-    let root = Layout::vertical([
-        Constraint::Min(3),
-        Constraint::Length(prompt_h),
-        Constraint::Length(1),
-    ])
-    .split(f.area());
-    let cols =
-        Layout::horizontal([Constraint::Percentage(48), Constraint::Percentage(52)]).split(root[0]);
-    let left = Layout::vertical([Constraint::Length(7), Constraint::Min(3)]).split(cols[0]);
-
-    // While a task runs, the menu is disabled — dim it and drop the highlight.
-    // The status panel also reflects the in-progress op (e.g. "restarting the
-    // container") in its state line, so the state — not just the footer — shows it.
-    draw_status_panel(f, left[0], status, busy);
-    draw_menu_list(
-        f,
-        left[1],
-        rows,
-        query,
-        sel,
-        popup.is_none() && busy.is_none(),
-    );
-    draw_output_pane(f, cols[1], out);
-    if let Some(p) = popup {
-        draw_prompt(f, root[1], p);
-    }
-    draw_footer(f, root[2], query, busy);
-}
-
-fn prompt_height(popup: &Popup, width: u16) -> u16 {
-    // +1 for the top separator border line.
-    1 + match popup {
-        Popup::Pick { items, .. } => (items.len() as u16).min(12) + 1,
-        // The (wrapped) question rows + the Yes/No option row below it. The
-        // launch confirms name a long flag, so the question routinely wraps —
-        // size the band to show all of it rather than clipping at the edge.
-        Popup::Confirm { prompt, .. } => ui::confirm_question_rows(prompt, width) + 1,
-        _ => 1,
-    }
-}
-
-fn draw_status_panel(f: &mut Frame, area: Rect, status: &Status, busy: Option<(&str, char)>) {
-    // While a lifecycle op runs, surface it in the state line itself (spinner +
-    // label, e.g. "⠹ tearing down the container") so the status — not just the
-    // footer — reflects that something is in progress.
-    let (color, glyph, state_text) = match busy {
-        Some((label, spin)) => (Color::Yellow, spin.to_string(), label.to_owned()),
-        None => {
-            let (c, g) = match status.state {
-                "running" => (Color::Green, "●"),
-                "starting container…" => (Color::Cyan, "◌"),
-                "stopped" => (Color::Yellow, "◐"),
-                _ => (Color::Red, "○"),
-            };
-            (c, g.to_owned(), status.state.to_owned())
-        }
-    };
-    let label = Style::default().fg(DIM);
-    let bold = Style::default().add_modifier(Modifier::BOLD);
-    // The left column is narrow, so state gets its own line — otherwise a long
-    // container name pushes the state word off the right edge.
-    let body = vec![
-        Line::from(vec![
-            Span::styled(" project    ", label),
-            Span::styled(&status.project, bold),
-        ]),
-        Line::from(vec![
-            Span::styled(" container  ", label),
-            Span::raw(&status.container),
-        ]),
-        Line::from(vec![
-            Span::styled(" state      ", label),
-            Span::styled(
-                format!("{glyph} {state_text}"),
-                Style::default().fg(color).add_modifier(Modifier::BOLD),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled(" webapp     ", label),
-            Span::raw(format!("port {}", status.webapp_port)),
-        ]),
-        Line::from(vec![
-            Span::styled(" agents     ", label),
-            Span::raw(if status.agents.is_empty() {
-                "(none)".to_owned()
-            } else {
-                status.agents.clone()
-            }),
-        ]),
-    ];
-    let title = Line::from(vec![
-        Span::styled(" introdus ", Style::default().fg(Color::Black).bg(ACCENT)),
-        Span::styled(
-            " control ",
-            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-        ),
-    ]);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(ACCENT))
-        .title(title);
-    f.render_widget(Paragraph::new(body).block(block), area);
-}
-
-fn draw_menu_list(f: &mut Frame, area: Rect, rows: &[Row], query: &str, sel: usize, focused: bool) {
-    let visible = visible_items(rows, query);
-    let selected_row = visible.get(sel).copied();
-    let mut items: Vec<ListItem> = Vec::new();
-    let mut selected_line = None;
-    for (i, row) in rows.iter().enumerate() {
-        if !query.is_empty() && !visible.contains(&i) {
-            continue;
-        }
-        if Some(i) == selected_row {
-            selected_line = Some(items.len());
-        }
-        items.push(match row {
-            Row::Header(t) => ListItem::new(Line::from(Span::styled(
-                format!("  {t}"),
-                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-            ))),
-            Row::Item(label) => ListItem::new(Line::from(format!("    {label}"))),
-        });
-    }
-    let mut state = ListState::default();
-    if focused {
-        state.select(selected_line);
-    }
-    let hl = Style::default()
-        .bg(ACCENT)
-        .fg(Color::Black)
-        .add_modifier(Modifier::BOLD);
-    f.render_stateful_widget(List::new(items).highlight_style(hl), area, &mut state);
-}
-
-fn draw_output_pane(f: &mut Frame, area: Rect, out: &[String]) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(DIM))
-        .title(Span::styled(" output ", Style::default().fg(DIM)));
-    let inner_w = area.width.saturating_sub(2);
-    let inner_h = area.height.saturating_sub(2);
-    let text: Vec<Line> = if out.is_empty() {
-        vec![Line::from(Span::styled(
-            "  (select an action — its output appears here)",
-            Style::default().fg(DIM),
-        ))]
-    } else {
-        out.iter().map(|l| Line::from(l.as_str())).collect()
-    };
-    // Pin to the bottom: scroll past the wrapped rows that overflow the pane.
-    let total = wrapped_rows(out, inner_w);
-    let scroll = total.saturating_sub(inner_h as usize) as u16;
-    f.render_widget(
-        Paragraph::new(text)
-            .block(block)
-            .wrap(Wrap { trim: false })
-            .scroll((scroll, 0)),
-        area,
-    );
-}
-
-/// Approximate the number of display rows `lines` occupy when wrapped to
-/// `width` columns (char-count approximation — fine for the ASCII output here).
-fn wrapped_rows(lines: &[String], width: u16) -> usize {
-    let w = (width.max(1)) as usize;
-    lines
-        .iter()
-        .map(|l| {
-            let n = l.chars().count();
-            if n == 0 {
-                1
-            } else {
-                n.div_ceil(w)
-            }
-        })
-        .sum()
-}
-
-fn draw_footer(f: &mut Frame, area: Rect, query: &str, busy: Option<(&str, char)>) {
-    let hint = "↑/↓ move · type to filter · Enter select · Esc quit · Ctrl-a ⟨n⟩ tmux windows";
-    let line = if let Some((label, spin)) = busy {
-        Line::from(vec![
-            Span::styled(
-                format!(" {spin} working: {label}… "),
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("  menu paused until it finishes", Style::default().fg(DIM)),
-        ])
-    } else if query.is_empty() {
-        Line::from(Span::styled(hint, Style::default().fg(DIM)))
-    } else {
-        Line::from(vec![
-            Span::styled("filter: ", Style::default().fg(DIM)),
-            Span::styled(query, Style::default().fg(ACCENT)),
-        ])
-    };
-    f.render_widget(Paragraph::new(line), area);
-}
-
-fn draw_prompt(f: &mut Frame, area: Rect, popup: &Popup) {
-    // A top separator line sets the band off from the panes; the content spans
-    // the full width below it (no side borders), so long prompts stay on one row.
-    let block = Block::default()
-        .borders(Borders::TOP)
-        .border_style(Style::default().fg(ACCENT))
-        .title(Span::styled(" prompt ", Style::default().fg(ACCENT)));
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    match *popup {
-        Popup::Confirm { prompt, answer } => {
-            // Question wraps in the top area; the Yes/No options are pinned to the
-            // last row so they're always visible even when the question wraps.
-            let rows = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).split(inner);
-            f.render_widget(
-                Paragraph::new(question(prompt)).wrap(Wrap { trim: false }),
-                rows[0],
-            );
-            f.render_widget(Paragraph::new(confirm_options(answer)), rows[1]);
-        }
-        Popup::Text {
-            prompt,
-            buf,
-            hidden,
-        } => {
-            let pos = text_render(f, inner, prompt, buf, hidden);
-            f.set_cursor_position(pos);
-        }
-        Popup::Pick {
-            prompt,
-            items,
-            picker,
-        } => {
-            let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(inner);
-            f.render_widget(Paragraph::new(question(prompt)), rows[0]);
-            let (list, mut state) = picker.list(items);
-            f.render_stateful_widget(list, rows[1], &mut state);
-        }
     }
 }

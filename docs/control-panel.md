@@ -4,9 +4,10 @@
 
 Every launched container lives inside one **tmux session** with a persistent
 two-pane **control panel** in its `main-control` window. The left column is the
-live status + a grouped, filterable menu; the right column is an output pane
-where each action streams its output instead of clearing the screen. Prompts
-appear as centered popups over the frame.
+live status + the menu — grouped into icon-headed sections, each item carrying a
+single-key **hotkey** — and the right column is an output pane where each action
+streams its output instead of clearing the screen. Prompts appear as centered
+popups over the frame.
 
 ![The introdus control panel: status and menu on the left, streaming output on the right](img/control-panel.svg)
 
@@ -25,12 +26,18 @@ introdus menu       # attach just the control panel to an existing session
 
 Inside the panel:
 
+- **Press an item's hotkey** (the accent-coloured letter in `[ ]` beside it) to
+  run it directly — no navigation needed. Hotkeys are **case-sensitive**, so a
+  *shifted* key is a distinct, related action: `[T]` root vs `[t]` dev terminal,
+  `[P]` paseo-QR vs `[p]` install-paseo, `[N]` test-notification vs `[n]` ntfy.
 - **↑/↓** move the selection, **Enter** runs the highlighted action.
-- **Type** to fuzzy-filter the menu; **Backspace** clears a character, **Esc**
-  clears the filter or quits.
-- **Ctrl-a ⟨n⟩** switches tmux windows (the prefix is remapped from `C-b` to
-  `C-a`): `dev-container` is the container logs; `root-bash` / `dev-bash` /
-  per-agent windows open on demand.
+- **`/`** opens the filter; **type** to narrow the list, **Backspace** clears a
+  character, **Esc** leaves the filter. (The filter mirrors the
+  [send-files](send-files.md) browser, so the gesture is the same in both TUIs.)
+- **Esc** on the un-filtered menu **detaches** the session (the container keeps
+  running); **Ctrl-a ⟨n⟩** switches tmux windows (the prefix is remapped from
+  `C-b` to `C-a`): `dev-container` is the container logs; `root-bash` /
+  `dev-bash` / per-agent windows open on demand.
 - While a long action runs the menu is **disabled** (dimmed, no highlight) and a
   spinner shows in the status line and footer — keystrokes are discarded so a
   mashed key can't fire a cascade of actions.
@@ -38,18 +45,19 @@ Inside the panel:
 Prompts are popups: a yes/no confirm, free-text entry, or a single/multi-select
 picker. Destructive actions confirm first and **default to "No"**:
 
-![A confirmation prompt for a destructive reset, defaulting to No](img/control-panel-confirm.svg)
+![A confirmation prompt for a destructive Destroy/Reset, defaulting to No](img/control-panel-confirm.svg)
 
 ### What's on the menu
 
-| Group | Actions |
+Each action's hotkey is shown in parentheses.
+
+| Group | Actions (hotkey) |
 | ----- | ------- |
-| **Terminals & agents** | open a root/dev terminal, launch an installed agent, [install a coding agent](coding-agents.md) |
-| **Paseo** | install [paseo](paseo.md), show its pairing QR |
-| **Files & egress** | copy a host file/folder in, list recently [blocked egress](egress-filtering.md) URLs, add hostnames to the [allowlist](egress-filtering.md#adjusting-the-allowlist) |
-| **Webapp & notifications** | show the [tunnel URL](webapp-tunnel.md), toggle the [webapp tunnel](webapp-tunnel.md), enable [ntfy push](notifications.md#phone-push-ntfysh), send a test notification, show the notify log, restart the [notification service](notifications.md) |
-| **Container lifecycle** | restart, stop, [recreate, reset, destroy](persistence-and-lifecycle.md) |
-| **Menu** | refresh status, detach (keep the container running), quit (stop the container) |
+| **$ Access container** | open a dev (`t`) / root (`T`) terminal, copy a host file/folder in (`c`) |
+| **✦ Agents** | launch an installed agent (`a`), [install a coding agent](coding-agents.md) (`i`), install [paseo](paseo.md) (`p`), show its pairing QR (`P`) |
+| **⇅ Networking & egress security** | list recently [blocked egress](egress-filtering.md) URLs (`b`), add hostnames to the [allowlist](egress-filtering.md#adjusting-the-allowlist) (`w`), toggle the [webapp tunnel](webapp-tunnel.md) (`e`), show the [tunnel URL](webapp-tunnel.md) (`u`), enable [ntfy push](notifications.md#phone-push-ntfysh) (`n`) |
+| **? Troubleshooting** | refresh container status (`f`), send a test notification (`N`), show the notify log (`l`), restart the [notification service](notifications.md) (`v`) |
+| **↻ Container lifecycle** | restart (`s`), [recreate](persistence-and-lifecycle.md) (`x`), detach — keep the container running (`h`), [destroy/reset](persistence-and-lifecycle.md) — wipe the volume (`d`), quit — stops the container (`q`) |
 
 Most subcommands are also available from the CLI (see the
 [README](../README.md#quick-start)), but day-to-day you drive them from here.

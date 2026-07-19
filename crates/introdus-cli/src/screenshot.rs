@@ -234,7 +234,7 @@ fn xml_escape(s: &str) -> String {
 use ratatui::layout::{Constraint, Layout};
 use ratatui::widgets::Paragraph;
 
-use crate::panel::{draw_frame, Popup};
+use crate::panel::{draw_frame, MenuView, Popup};
 use crate::send_files::browser::{render as render_browser, Pane, PaneSource};
 use crate::ui::{question, Picker, Row, Status};
 use introdus_core::containers::{DirEntry, SortMode};
@@ -249,49 +249,75 @@ fn demo_status() -> Status {
     }
 }
 
-/// The full control menu, mirroring `menu::MENU`.
+/// The full control menu, mirroring `menu::MENU` (icons + hotkeys included).
 fn demo_menu_rows() -> Vec<Row> {
-    let section = |title: &str, items: &[&str], rows: &mut Vec<Row>| {
-        rows.push(Row::Header(title.to_owned()));
-        rows.extend(items.iter().map(|i| Row::Item((*i).to_owned())));
+    let section = |icon: char, title: &str, items: &[(char, &str)], rows: &mut Vec<Row>| {
+        rows.push(Row::Header {
+            icon,
+            title: title.to_owned(),
+        });
+        rows.extend(items.iter().map(|(key, label)| Row::Item {
+            key: *key,
+            label: (*label).to_owned(),
+        }));
     };
     let mut rows = Vec::new();
     section(
-        "Terminals & agents",
+        '$',
+        "Access container",
         &[
-            "Open a root terminal (tmux window)",
-            "Open a dev terminal (tmux window)",
-            "Launch an installed agent (tmux window)",
-            "Install a coding agent",
+            ('t', "Open a dev terminal (tmux window)"),
+            ('T', "Open a root terminal (tmux window)"),
+            ('c', "Copy a host file/folder into the container"),
         ],
         &mut rows,
     );
     section(
-        "Files & egress",
+        '✦',
+        "Agents",
         &[
-            "Copy a host file/folder into the container",
-            "List recently blocked egress URLs",
-            "Add hostnames to the egress allowlist",
+            ('a', "Launch an installed agent (tmux window)"),
+            ('i', "Install a coding agent"),
+            ('p', "Install paseo (drive agents from your phone)"),
+            ('P', "Show paseo pairing QR code (connect your phone)"),
         ],
         &mut rows,
     );
     section(
-        "Webapp & notifications",
+        '⇅',
+        "Networking & egress security",
         &[
-            "Show tunnel URL",
-            "Expose webapp via Cloudflare tunnel",
-            "Enable ntfy.sh mobile notifications",
-            "Send a test host notification",
+            ('b', "List recently blocked egress URLs"),
+            ('w', "Add hostnames to the egress allowlist"),
+            ('e', "Expose webapp via Cloudflare tunnel"),
+            ('u', "Show tunnel URL"),
+            ('n', "Enable ntfy.sh mobile notifications"),
         ],
         &mut rows,
     );
     section(
+        '?',
+        "Troubleshooting",
+        &[
+            ('f', "Refresh container status"),
+            ('N', "Send a test notification to host"),
+            ('l', "Show the notification log"),
+            ('v', "Restart the notification service"),
+        ],
+        &mut rows,
+    );
+    section(
+        '↻',
         "Container lifecycle",
         &[
-            "Restart the container",
-            "Stop the container",
-            "Recreate the container (apply .env changes)",
-            "Reset the container (wipe the volume)",
+            ('s', "Restart the container"),
+            ('x', "Recreate the container (apply config changes)"),
+            (
+                'h',
+                "Detach from this tmux session (keep container running)",
+            ),
+            ('d', "Destroy/Reset the container (wipe the volume)"),
+            ('q', "Quit introdus (stops the container)"),
         ],
         &mut rows,
     );
@@ -310,14 +336,22 @@ fn shot_control_panel() {
         String::new(),
         "  (also written to the dev-container log)".to_owned(),
     ];
-    // sel 7 = "Show tunnel URL" (8th selectable item), matching the output.
+    // sel 10 = "Show tunnel URL" (the 11th selectable item), matching the output.
+    // Height fits the full five-section menu + status header + footer.
     capture(
         "control-panel",
         "introdus — control panel",
         112,
-        30,
+        38,
         |f| {
-            draw_frame(f, &status, &rows, "", 7, &out, None, None);
+            let m = MenuView {
+                status: &status,
+                rows: &rows,
+                query: "",
+                filtering: false,
+                sel: 10,
+            };
+            draw_frame(f, &m, &out, None, None);
         },
     );
 }
@@ -327,18 +361,28 @@ fn shot_control_panel() {
 fn shot_control_panel_confirm() {
     let status = demo_status();
     let rows = demo_menu_rows();
-    let out = vec!["▶ Reset the container (wipe the volume)".to_owned()];
+    let out = vec!["▶ Destroy/Reset the container (wipe the volume)".to_owned()];
     let popup = Popup::Confirm {
-        prompt: "Reset introdus-brave-swift-otter? This wipes the /home/dev volume \
-                 (repo, node_modules, toolchains).",
+        prompt: "Destroy/Reset introdus-brave-swift-otter and permanently wipe its \
+                 /home/dev volume (repo, node_modules, toolchains)?",
         answer: false,
     };
+    // sel 19 = "Destroy/Reset the container", matching the prompt.
     capture(
         "control-panel-confirm",
         "introdus — confirmation prompt",
         112,
-        30,
-        |f| draw_frame(f, &status, &rows, "", 18, &out, Some(&popup), None),
+        38,
+        |f| {
+            let m = MenuView {
+                status: &status,
+                rows: &rows,
+                query: "",
+                filtering: false,
+                sel: 19,
+            };
+            draw_frame(f, &m, &out, Some(&popup), None);
+        },
     );
 }
 

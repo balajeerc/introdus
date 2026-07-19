@@ -51,10 +51,11 @@ mc_ready
 mc_vis | grep -qF "Container lifecycle" || { echo "FATAL: grouped sections missing"; exit 1; }
 echo "    ✓ grouped menu rendered"
 
-echo "==> menu: Refresh status"
+echo "==> menu: Refresh status (via the 'f' hotkey — direct-access path)"
 # Status lives in the panel's left header (always on screen); Refresh just
-# re-snapshots and redraws. Assert against the visible pane.
-mc_select "Refresh"
+# re-snapshots and redraws. Exercise the single-key hotkey path here (no filter,
+# no Enter): pressing 'f' runs Refresh directly. Assert against the visible pane.
+mc_hotkey "f"
 mc_ready
 mc_wait_prompt "running" "running status"
 mc_vis | grep -qF "$cname" \
@@ -126,19 +127,18 @@ mc_send Enter
 harness_poll "example.org persisted" grep -q "example.org" "$(harness_config_file "$proj")"
 echo "    ✓ example.org persisted to WHITELIST_HOSTS in .introdus/config.env"
 
-# ---- lifecycle: Stop then Restart, asserting status transitions ------------
+# ---- lifecycle: stop out-of-band, then Restart, asserting status transitions
 running() { podman container inspect -f '{{.State.Running}}' "$cname" 2>/dev/null | grep -qx "$1"; }
 
-echo "==> menu: Stop the container"
-mc_select "Stop the container"
-# The lifecycle op streams as a spinner-backed task now (no UI freeze): the state
-# line + footer surface it. Stop reliably takes the full SIGTERM→SIGKILL grace,
-# so the in-progress label is on screen long enough to catch.
-mc_wait_prompt "stopping the container" "stop spinner label"
-echo "    ✓ status shows 'stopping the container…' during the op (no freeze)"
+# There's no menu 'Stop' any more — Quit stops+closes, Detach keeps it running —
+# so stop the container directly and assert the *polling* status panel reflects
+# it. (The slow-op spinner label is covered by Destroy/Reset teardown in
+# driver-lifecycle.sh.)
+echo "==> stop the container out-of-band; the status panel should show stopped"
+podman stop "$cname" >/dev/null
 harness_poll "container stopped" running false
 mc_wait_prompt "stopped" "stopped status"
-echo "    ✓ Stop worked; the status panel shows stopped"
+echo "    ✓ status panel shows stopped once the container goes down"
 
 # ---- 'starting container…' status while a launch marker is present ---------
 # `introdus launch` writes a per-container marker at bring-up and execs into
@@ -157,8 +157,8 @@ echo "    ✓ status reverts to stopped once the marker is cleared"
 echo "==> menu: Restart the container"
 mc_select "Restart the container"
 # (Restart here is fast — the container is already stopped, so it's just a start,
-# not a stop+start — so we don't race for its in-progress label; the Stop above
-# and Destroy's teardown cover the spinner-label behaviour on reliably-slow ops.)
+# not a stop+start — so we don't race for its in-progress label; Destroy/Reset's
+# teardown covers the spinner-label behaviour on reliably-slow ops.)
 harness_poll "container running again" running true
 mc_wait_prompt "running" "running status"
 echo "    ✓ Restart worked; the status panel shows running again"
@@ -166,4 +166,4 @@ echo "    ✓ Restart worked; the status panel shows running again"
 echo
 echo "=== MILESTONE 3+ OK: full launch + a battery of live control-menu actions:"
 echo "    grouped render, live status, dev & root terminals, copy-file, add-"
-echo "    allowlist (persisted), and Stop/Restart lifecycle — all nested. ==="
+echo "    allowlist (persisted), and stop/Restart status transitions — nested. ==="

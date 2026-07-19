@@ -15,104 +15,137 @@ use crate::panel::{Selection, Ui};
 use crate::ui;
 use introdus_core::Config;
 
-/// A menu entry: either a selectable action or an inert section header (headers
-/// give the flat list some visual grouping; selecting one just redraws).
+/// A menu entry: either a selectable action or an inert section header. A header
+/// carries a group glyph and, with the divider drawn before it, segregates the
+/// flat list into scannable sections; selecting one just redraws.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Row {
-    Header(&'static str),
+    Header(&'static str, char),
     Item(Action),
 }
 
 /// The selectable actions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Action {
-    RootTerminal,
+    // Access container
     DevTerminal,
+    RootTerminal,
+    CopyFile,
+    // Agents
     LaunchAgent,
     InstallAgent,
     InstallPaseo,
     PaseoQr,
-    CopyFile,
+    // Networking & egress security
     BlockedEgress,
     AddAllowlist,
-    TunnelUrl,
     ExposeWebapp,
+    TunnelUrl,
     EnableNtfy,
+    // Container lifecycle
+    Restart,
+    Recreate,
+    Detach,
+    DestroyReset,
+    QuitStop,
+    // Troubleshooting
+    Refresh,
     TestNotify,
     NotifyLog,
     RestartNotify,
-    Restart,
-    Stop,
-    Recreate,
-    Reset,
-    Destroy,
-    Refresh,
-    Detach,
-    QuitStop,
 }
 
 impl std::fmt::Display for Action {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            Action::RootTerminal => "Open a root terminal (tmux window)",
             Action::DevTerminal => "Open a dev terminal (tmux window)",
+            Action::RootTerminal => "Open a root terminal (tmux window)",
+            Action::CopyFile => "Copy a host file/folder into the container",
             Action::LaunchAgent => "Launch an installed agent (tmux window)",
             Action::InstallAgent => "Install a coding agent",
             Action::InstallPaseo => "Install paseo (drive agents from your phone)",
             Action::PaseoQr => "Show paseo pairing QR code (connect your phone)",
-            Action::CopyFile => "Copy a host file/folder into the container",
             Action::BlockedEgress => "List recently blocked egress URLs",
             Action::AddAllowlist => "Add hostnames to the egress allowlist",
-            Action::TunnelUrl => "Show tunnel URL",
             Action::ExposeWebapp => "Expose webapp via Cloudflare tunnel",
+            Action::TunnelUrl => "Show tunnel URL",
             Action::EnableNtfy => "Enable ntfy.sh mobile notifications",
-            Action::TestNotify => "Send a test host notification",
+            Action::Restart => "Restart the container",
+            Action::Recreate => "Recreate the container (apply config changes)",
+            Action::Detach => "Detach from this tmux session (keep container running)",
+            Action::DestroyReset => "Destroy/Reset the container (wipe the volume)",
+            Action::QuitStop => "Quit introdus (stops the container)",
+            Action::Refresh => "Refresh container status",
+            Action::TestNotify => "Send a test notification to host",
             Action::NotifyLog => "Show the notification log",
             Action::RestartNotify => {
                 "Restart the notification service (apply forward/ntfy changes)"
             }
-            Action::Restart => "Restart the container",
-            Action::Stop => "Stop the container",
-            Action::Recreate => "Recreate the container (apply .env changes)",
-            Action::Reset => "Reset the container (wipe the volume)",
-            Action::Destroy => "Destroy the container (remove volume + key)",
-            Action::Refresh => "Refresh status",
-            Action::Detach => "Detach tmux session (Keep container running)",
-            Action::QuitStop => "Quit introdus (stop the container)",
         };
         f.write_str(s)
     }
 }
 
+impl Action {
+    /// The single-key shortcut that runs this action directly from the menu
+    /// (shown in its own column). Kept unique across the whole menu and matched
+    /// **case-sensitively**, so a *shifted* key is a distinct, related action:
+    /// `T` root vs `t` dev terminal, `P` paseo-QR vs `p` install-paseo, `N`
+    /// test-notification vs `n` enable-ntfy. The two irreversible actions
+    /// (`DestroyReset`, `QuitStop`) confirm before doing anything.
+    fn hotkey(self) -> char {
+        match self {
+            Action::DevTerminal => 't',
+            Action::RootTerminal => 'T',
+            Action::CopyFile => 'c',
+            Action::LaunchAgent => 'a',
+            Action::InstallAgent => 'i',
+            Action::InstallPaseo => 'p',
+            Action::PaseoQr => 'P',
+            Action::BlockedEgress => 'b',
+            Action::AddAllowlist => 'w',
+            Action::ExposeWebapp => 'e',
+            Action::TunnelUrl => 'u',
+            Action::EnableNtfy => 'n',
+            Action::Restart => 's',
+            Action::Recreate => 'x',
+            Action::Detach => 'h',
+            Action::DestroyReset => 'd',
+            Action::QuitStop => 'q',
+            Action::Refresh => 'f',
+            Action::TestNotify => 'N',
+            Action::NotifyLog => 'l',
+            Action::RestartNotify => 'v',
+        }
+    }
+}
+
 const MENU: &[Row] = &[
-    Row::Header("Terminals & agents"),
-    Row::Item(Action::RootTerminal),
+    Row::Header("Access container", '$'),
     Row::Item(Action::DevTerminal),
+    Row::Item(Action::RootTerminal),
+    Row::Item(Action::CopyFile),
+    Row::Header("Agents", '✦'),
     Row::Item(Action::LaunchAgent),
     Row::Item(Action::InstallAgent),
-    Row::Header("Paseo (mobile agent control)"),
     Row::Item(Action::InstallPaseo),
     Row::Item(Action::PaseoQr),
-    Row::Header("Files & egress"),
-    Row::Item(Action::CopyFile),
+    Row::Header("Networking & egress security", '⇅'),
     Row::Item(Action::BlockedEgress),
     Row::Item(Action::AddAllowlist),
-    Row::Header("Webapp & notifications"),
-    Row::Item(Action::TunnelUrl),
     Row::Item(Action::ExposeWebapp),
+    Row::Item(Action::TunnelUrl),
     Row::Item(Action::EnableNtfy),
+    Row::Header("Troubleshooting", '?'),
+    Row::Item(Action::Refresh),
     Row::Item(Action::TestNotify),
     Row::Item(Action::NotifyLog),
     Row::Item(Action::RestartNotify),
-    Row::Header("Container lifecycle"),
+    Row::Header("Container lifecycle", '↻'),
     Row::Item(Action::Restart),
-    Row::Item(Action::Stop),
     Row::Item(Action::Recreate),
-    Row::Item(Action::Reset),
-    Row::Item(Action::Destroy),
-    Row::Header("Menu"),
-    Row::Item(Action::Refresh),
     Row::Item(Action::Detach),
+    Row::Item(Action::DestroyReset),
     Row::Item(Action::QuitStop),
 ];
 
@@ -138,8 +171,14 @@ pub fn run() -> Result<()> {
             let rows: Vec<ui::Row> = MENU
                 .iter()
                 .map(|r| match r {
-                    Row::Header(h) => ui::Row::Header((*h).to_owned()),
-                    Row::Item(a) => ui::Row::Item(a.to_string()),
+                    Row::Header(h, icon) => ui::Row::Header {
+                        icon: *icon,
+                        title: (*h).to_owned(),
+                    },
+                    Row::Item(a) => ui::Row::Item {
+                        key: a.hotkey(),
+                        label: a.to_string(),
+                    },
                 })
                 .collect();
             ui.set_menu(status, rows);
@@ -147,7 +186,7 @@ pub fn run() -> Result<()> {
             let action = match ui.run_menu()? {
                 Selection::Item(idx) => match MENU[idx] {
                     Row::Item(a) => a,
-                    Row::Header(_) => continue,
+                    Row::Header(..) => continue,
                 },
                 // A poll tick: re-snapshot the status (loop top does it) + redraw.
                 Selection::Tick => continue,
@@ -245,10 +284,8 @@ fn dispatch(action: Action, ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
         Action::NotifyLog => act::notify_log(ctx, ui),
         Action::RestartNotify => act::restart_notify(ctx, ui),
         Action::Restart => act::restart(ctx, ui),
-        Action::Stop => act::stop(ctx, ui),
         Action::Recreate => act::recreate(ctx, ui),
-        Action::Reset => act::reset(ctx, ui),
-        Action::Destroy => act::destroy(ctx, ui),
+        Action::DestroyReset => act::destroy_or_reset(ctx, ui),
         // Handled directly in `run()` (detach / refresh / end the loop), never
         // dispatched.
         Action::Refresh | Action::Detach | Action::QuitStop => Ok(()),

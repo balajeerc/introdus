@@ -39,10 +39,11 @@ or change what one owns, update the matching line (per
 | `lifecycle.rs`   | Container/volume lifecycle: cleanup, `--recreate`, `--reset` (dirty-git guard + typed confirm). |
 | `run.rs`         | The full `podman run` flag/env/mount set; `--verify` self-check; `--update` in-container refresh. |
 | `session.rs`     | The tmux session model — puts each container in one session with its windows; spawns/respawns the detached `notify-host` service. |
-| `menu.rs`        | The control TUI (`introdus menu`): menu layout, dispatch to `menu_actions`. |
+| `menu.rs`        | The control TUI (`introdus menu`): menu layout (group icons + per-item hotkeys), dispatch to `menu_actions`. |
 | `menu_actions.rs`| Implementations of each control-menu utility (tunnel URL, agents, allowlist, terminals, copy-in, ntfy, test/restart the notify service, recreate/reset/stop/destroy, paseo). |
-| `panel.rs`       | The persistent two-pane control panel (status+menu / streaming output), popup prompts. |
-| `ui.rs`          | Shared ratatui primitives: status/row types, key reading, prompt state machines, the wizard's standalone inline modals. |
+| `panel.rs`       | The persistent two-pane control panel: the `Ui` that owns the alternate screen, the input loop (hotkeys + `/` filter), task streaming, and popup prompts. |
+| `panel_draw.rs`  | Pure rendering for the panel: `MenuView`/`Popup` types + the side-effect-free `draw_frame` and its status/menu/output/footer/prompt helpers. |
+| `ui.rs`          | Shared ratatui primitives: status/row types (headers carry a group icon, items a hotkey), key reading, prompt state machines, the wizard's standalone inline modals. |
 | `notify.rs`      | Host notification service: `notify-host` (FIFO/socket → ntfy/forward/desktop) and the laptop-side listen loop (`bind_listener` + `serve_listener`). |
 | `notify_listen.rs`| The dev-machine `notify-listen` orchestration: flag/env/saved-config/wizard resolution, ssh reverse-tunnel supervision (autossh-or-ssh), the `systemd --user` unit install (no-linger, `default.target`), idempotency, `--dry-run`. |
 | `install.rs`     | `introdus install` — put the binary on `PATH`. |

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Destructive lifecycle via the control menu: Recreate (keeps the /home/dev
-# volume — persistence) and Destroy (double confirm + dirty-git scan + deploy-key
-# deletion + full teardown). Kept separate from driver-menu.sh because it tears
-# the container/volume down.
+# volume — persistence) and Destroy/Reset declined-back-up (double confirm +
+# dirty-git scan + deploy-key deletion + full teardown). Kept separate from
+# driver-menu.sh because it tears the container/volume down.
 # Covers TEST_PLAN: TA54, TA55, TA56, TA58, TA59, TA62, TA63, TA93, TA95, TA112
 set -euo pipefail
 source /usr/local/bin/driver-common.sh
@@ -60,10 +60,10 @@ podman exec --user dev "$cname" bash -c '
     echo scratch > harness-untracked.txt              # -> untracked file
 '
 
-echo "==> menu: Destroy the container"
-mc_select "Destroy the container"
+echo "==> menu: Destroy/Reset the container"
+mc_select "Destroy/Reset the container"
 # 1) plain yes/no
-mc_wait_prompt "Destroy this container and permanently delete its volume" "destroy confirm"
+mc_wait_prompt "Destroy/Reset this container" "destroy confirm"
 mc_send "y"   # a single y submits the confirm (Enter here would leak to the next prompt)
 # 2) dirty-git scan runs (throwaway container), then a typed confirmation. The
 #    scan report streams into the output pane just before the typed prompt band
@@ -77,12 +77,15 @@ echo "$scan" | grep -qF "unpushed commits" \
 echo "    ✓ safety scan reported uncommitted working-tree + unpushed commits"
 mc_send "yes" Enter
 # Teardown streams as a spinner-backed task now (no UI freeze): the state line +
-# footer show "tearing down the container…" during the ~SIGKILL-grace removal.
-mc_wait_prompt "tearing down the container" "teardown spinner label"
-echo "    ✓ status shows 'tearing down the container…' during teardown (no freeze)"
+# footer show "wiping the container…" during the ~SIGKILL-grace removal.
+mc_wait_prompt "wiping the container" "teardown spinner label"
+echo "    ✓ status shows 'wiping the container…' during teardown (no freeze)"
 # 3) offer to delete the local deploy key (single y submits)
 mc_wait_prompt "Also delete the local deploy key" "deploy-key prompt"
 mc_send "y"
+# 4) reset-vs-destroy fork: decline bringing it back up → full teardown (destroy)
+mc_wait_prompt "Bring the container back up" "bring-back-up prompt"
+mc_send "n"
 
 harness_poll "container gone" bash -c "! podman container exists '$cname'"
 harness_poll "volume gone" bash -c "! podman volume exists introdus-vol-harness"

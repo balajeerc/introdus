@@ -125,20 +125,29 @@ pub struct Status {
     pub agents: String,
 }
 
-/// A row in the menu: an inert section header or a selectable item.
+/// A row in the menu: an inert section header (with a group glyph) or a
+/// selectable item (with a single-key hotkey that runs it directly).
 pub enum Row {
-    Header(String),
-    Item(String),
+    Header { icon: char, title: String },
+    Item { key: char, label: String },
 }
 
 impl Row {
     pub(crate) fn label(&self) -> &str {
         match self {
-            Row::Header(s) | Row::Item(s) => s,
+            Row::Header { title, .. } => title,
+            Row::Item { label, .. } => label,
         }
     }
     pub(crate) fn is_item(&self) -> bool {
-        matches!(self, Row::Item(_))
+        matches!(self, Row::Item { .. })
+    }
+    /// The item's direct-run hotkey, or `None` for a header.
+    pub(crate) fn hotkey(&self) -> Option<char> {
+        match self {
+            Row::Item { key, .. } => Some(*key),
+            Row::Header { .. } => None,
+        }
     }
 }
 
@@ -371,11 +380,13 @@ impl Picker {
             .collect();
         let mut state = ListState::default();
         state.select(Some(self.cursor));
+        // Pure black on the ACCENT bar (no bold — bold-black renders as muddy
+        // grey on many terminals; see the panel's menu highlight).
         let widget = List::new(rows).highlight_style(
             Style::default()
                 .bg(ACCENT)
                 .fg(Color::Black)
-                .add_modifier(Modifier::BOLD),
+                .remove_modifier(Modifier::BOLD),
         );
         (widget, state)
     }
@@ -552,11 +563,18 @@ mod tests {
 
     #[test]
     fn ta81_filter_matches_labels_case_insensitively() {
+        let item = |key: char, label: &str| Row::Item {
+            key,
+            label: label.into(),
+        };
         let rows = vec![
-            Row::Header("Container lifecycle".into()),
-            Row::Item("Restart the container".into()),
-            Row::Item("Stop the container".into()),
-            Row::Item("Refresh status".into()),
+            Row::Header {
+                icon: '↻',
+                title: "Container lifecycle".into(),
+            },
+            item('s', "Restart the container"),
+            item('k', "Stop the container"),
+            item('f', "Refresh status"),
         ];
         // Header is never selectable.
         assert_eq!(visible_items(&rows, ""), vec![1, 2, 3]);

@@ -11,7 +11,7 @@
 <text xml:space="preserve" x="17.0" y="14.0" fill="#cdd6f4" font-size="14" textLength="374.0" lengthAdjust="spacingAndGlyphs" font-weight="bold">Which coding agents should introdus install?</text>
 <text xml:space="preserve" x="0.0" y="32.0" fill="#cdd6f4" font-size="14" textLength="748.0" lengthAdjust="spacingAndGlyphs">  [x] Claude (Anthropic)  [runs its own npm postinstall]                                </text>
 <text xml:space="preserve" x="0.0" y="50.0" fill="#cdd6f4" font-size="14" textLength="748.0" lengthAdjust="spacingAndGlyphs">  [x] Codex (OpenAI)                                                                    </text>
-<text xml:space="preserve" x="0.0" y="68.0" fill="#11111b" font-size="14" textLength="748.0" lengthAdjust="spacingAndGlyphs" font-weight="bold">  [ ] Antigravity (Google)  [vendor installer — runs remote code]                       </text>
+<text xml:space="preserve" x="0.0" y="68.0" fill="#11111b" font-size="14" textLength="748.0" lengthAdjust="spacingAndGlyphs">  [ ] Antigravity (Google)  [vendor installer — runs remote code]                       </text>
 <text xml:space="preserve" x="0.0" y="86.0" fill="#cdd6f4" font-size="14" textLength="748.0" lengthAdjust="spacingAndGlyphs">  [ ] Opencode (Open source)                                                            </text>
 <text xml:space="preserve" x="0.0" y="104.0" fill="#cdd6f4" font-size="14" textLength="748.0" lengthAdjust="spacingAndGlyphs">  [ ] Pi agent (Open source)                                                            </text>
 <text xml:space="preserve" x="0.0" y="122.0" fill="#cdd6f4" font-size="14" textLength="748.0" lengthAdjust="spacingAndGlyphs">  [ ] Kilocode CLI (kilo.sh)                                                            </text>

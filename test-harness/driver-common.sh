@@ -153,9 +153,15 @@ mc_wait_gone() {
     echo "FATAL: [$lbl] still present after timeout:"; mc_vis | sed 's/^/      /'; return 1
 }
 
-# Select a menu item: type the filter + Enter. The panel resets the filter after
-# a selection, so consecutive selects start from the full menu.
-mc_select() { mc_ready; mc_send "$1" Enter; }
+# Select a menu item by label: `/` opens filter mode, then the fragment narrows
+# the list and Enter runs the match. (Bare letters are per-item hotkeys now, so
+# selection must go through the filter.) The panel resets the filter after a
+# selection, so consecutive selects start from the full menu.
+mc_select() { mc_ready; mc_send "/" "$1" Enter; }
+
+# Run a menu item by its single-key hotkey (the direct-access path). No filter,
+# no Enter — the keypress runs the action immediately.
+mc_hotkey() { mc_ready; mc_send "$1"; }
 
 # True if window $1 exists in the session (waits up to ~30s).
 harness_window_appears() {

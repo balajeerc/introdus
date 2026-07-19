@@ -21,8 +21,12 @@ introdus update      # in-container refresh (apt, mise, agents, LazyVim)
 introdus rebuild-base # rebuild the shared base image
 ```
 
-All are also on the [control panel](control-panel.md)'s "Container lifecycle"
-group (plus "Destroy" — remove container + volume + deploy key).
+On the [control panel](control-panel.md)'s "Container lifecycle" group these show
+as **Restart**, **Recreate**, **Detach**, and a single **Destroy/Reset** entry —
+it wipes the volume (guarded), then asks whether to also delete the deploy key
+and whether to bring the container back up, so one entry covers both `reset`
+(back up, fresh volume) and `destroy` (torn down, key removed) — plus **Quit**
+(stops the container).
 
 **When to recreate:** `podman run` flags (capabilities, volumes, env vars,
 published ports, `--memory`) are frozen at container-create time — `podman start`

@@ -42,15 +42,20 @@ mc_wait_prompt "working: install-agents" "install progress spinner"
 echo "    ✓ progress spinner shown (menu marked paused)"
 
 # ---- a stray action during the install must be ignored ---------------------
-echo "==> mashing a stray 'Stop the container' during the install"
-mc_send "Stop the container" Enter
-mc_send "Stop the container" Enter
+# Mash the Destroy/Reset hotkey (d) while the install task owns the UI — a single
+# key that would pop a confirm the moment it fired. Keystrokes are drained, so
+# nothing happens.
+echo "==> mashing the stray Destroy/Reset hotkey (d) during the install"
+mc_hotkey "d"
+mc_hotkey "d"
 
 # ---- wait for the install to finish, then prove nothing cascaded -----------
 echo "==> waiting for install-agents to finish"
 mc_wait_gone "working: install-agents" "install task end"
 
-echo "==> the container is still running — the stray Stop was discarded"
+echo "==> no stray Destroy/Reset confirm leaked, and the container still runs"
+mc_vis | grep -qF "Destroy/Reset this container" \
+    && { echo "FATAL: a stray hotkey leaked a Destroy/Reset confirm — keys weren't drained"; exit 1; }
 running || { echo "FATAL: container stopped — a stray action cascaded through!"; exit 1; }
 echo "    ✓ menu was disabled during the task; no cascade"
 
