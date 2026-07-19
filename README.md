@@ -117,3 +117,16 @@ notification trust boundary are documented across
 [Egress filtering](docs/egress-filtering.md),
 [Container hardening](docs/container-hardening.md), and the canonical
 [security model](agent_rules/05_security.md).
+
+## Why "introdus"?
+
+A tip of the hat to Greg Egan's novel *[Diaspora](https://www.gregegan.net/DIASPORA/DIASPORA.html)*.
+In it, the **Introdus** is the process by which a flesher — a flesh-and-blood
+human — is scanned and migrated into software, taking up life inside a *polis*:
+a self-contained digital environment, insulated from the hazards of the physical
+world.
+
+The metaphor fit too well to pass up. This tool does the small, mundane version:
+it moves your dev environment — your repo and the AI agents you point at it — off
+your real machine and into a hardened, egress-filtered container, where whatever
+they get up to stays contained.
