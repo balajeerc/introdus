@@ -59,6 +59,7 @@ test-harness/harness.sh install    # binary onto PATH
 test-harness/harness.sh agents     # claude opt-out absent + opt-in menu install
 test-harness/harness.sh agent-launch / agent-missing / quit-stop / detach / paseo
 test-harness/harness.sh send-files # send a host file into a container via the dual-pane TUI
+test-harness/harness.sh cli        # headless subcommands drive a real container
 ```
 
 Each target is a scripted `driver-*.sh` that drives the real UI over tmux and

@@ -392,6 +392,19 @@ impl Ui {
     }
 }
 
+/// The panel drives the reusable action cores through the shared [`Frontend`]
+/// surface (delegating to its own inherent methods), so a core can run under
+/// either the panel or the headless CLI. The panel keeps its richer inherent
+/// prompt methods (`confirm`/`text`/`select`/…) for the interactive wrappers.
+impl crate::frontend::Frontend for Ui {
+    fn log(&mut self, line: impl Into<String>) {
+        Ui::log(self, line);
+    }
+    fn run_task(&mut self, label: &str, cmd: introdus_core::process::Cmd) -> Result<()> {
+        Ui::run_task(self, label, cmd)
+    }
+}
+
 impl Drop for Ui {
     fn drop(&mut self) {
         let _ = disable_raw_mode();

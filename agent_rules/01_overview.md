@@ -53,7 +53,11 @@ persisting to `.env` where it matters.
 
 Subcommands: `introdus [launch]`, `up`, `menu`, `verify`, `recreate`, `reset`,
 `update`, `rebuild-base`, `notify-host`, `notify-listen`, `send-files`,
-`install`.
+`install`. Every control-panel utility also has a headless subcommand for
+scripting (the panel's prompts become flags): `tunnel-url`, `blocked-egress`,
+`allow`, `expose-webapp`, `ntfy`, `install-agent`, `agent`, `install-paseo`,
+`paseo-url`, `dev-shell`, `root-shell`, `test-notify`, `notify-log`,
+`restart-notify`, `restart`, `stop`.
 
 `introdus send-files` is the dev-machine file-transfer tool: it lists the
 introdus containers running on this laptop plus the remote hosts in your

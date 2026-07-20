@@ -5,7 +5,10 @@
 #                       ON_LAUNCH_ROOT_SCRIPT (as root, with the repo present).
 #   setup.sh serve    — start the cloudflared tunnel (if enabled), run
 #                       ON_LAUNCH_SCRIPT (as dev), print the banner, and idle.
-# With no argument it runs both (prepare then serve).
+# With no argument it runs both (prepare then serve). One more on-demand mode,
+# invoked by the control panel (not the entrypoint):
+#   setup.sh restart-tunnel — re-establish a dropped cloudflared quick tunnel
+#                       (new URL), reusing the container's baked-in edge IPs.
 #
 # Before this runs, the firewall entrypoint has already, as root: installed the
 # nft egress filter, started the hostname-allowlist proxy, run the egress
@@ -110,25 +113,75 @@ ${NTFY_BANNER:-}
 EOF
 }
 
+# ---- cloudflared quick tunnel (shared by `serve` and `restart-tunnel`) -------
+# Start (or restart) the cloudflared quick tunnel in tmux session 'tunnel'.
+# Pin edge IPs and force HTTP/2 so cloudflared skips SRV-based edge discovery and
+# avoids QUIC/UDP. Edge IPs come from TUNNEL_EDGE_IPS, set by introdus and allowed
+# (by IP, on 7844) in the nft egress filter — cloudflared's edge protocol can't go
+# through the HTTP proxy. Truncates the log and drops the stale URL cache so the
+# next wait_tunnel_url reads only this run's URL.
+start_tunnel() {
+    log "starting cloudflared quick tunnel in tmux session 'tunnel' (-> port $WEBAPP_PORT)"
+    tmux kill-session -t tunnel 2>/dev/null || true
+    : > "${HOME}/.logs/tunnel.log"
+    rm -f "${HOME}/.logs/tunnel-url.txt"
+    local edge_args=""
+    for ip in ${TUNNEL_EDGE_IPS:-}; do
+        edge_args="$edge_args --edge ${ip}:7844"
+    done
+    tmux new-session -d -s tunnel "cloudflared tunnel --protocol http2 $edge_args --url http://localhost:$WEBAPP_PORT 2>&1; echo '[cloudflared exited]'; exec bash"
+    tmux pipe-pane -t tunnel -o "cat >>${HOME}/.logs/tunnel.log"
+}
+
+# Poll the tunnel log up to 30s for the assigned quick-tunnel URL; cache it to
+# tunnel-url.txt and echo it on stdout (empty if it never appeared).
+wait_tunnel_url() {
+    local url=""
+    for _ in $(seq 1 60); do
+        url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "${HOME}/.logs/tunnel.log" 2>/dev/null | grep -v '^https://api\.trycloudflare\.com$' | head -1 || true)
+        [[ -n "$url" ]] && break
+        sleep 0.5
+    done
+    [[ -n "$url" ]] && echo "$url" > "${HOME}/.logs/tunnel-url.txt"
+    echo "$url"
+}
+
+# ---- restart-tunnel: re-establish a dropped quick tunnel (new URL) -----------
+# Invoked by the control panel's "(Re)Expose app via Cloudflare Tunnel" when the
+# cached URL is no longer routing. Reuses the container's baked-in edge IPs, so it
+# only works when the container was created with EXPOSE_WEBAPP=true (holes open).
+do_restart_tunnel() {
+    mkdir -p "${HOME}/.logs"
+    if [[ "$EXPOSE_WEBAPP" != "true" ]]; then
+        echo "EXPOSE_WEBAPP is not true for this container — nothing to (re)start." >&2
+        exit 3
+    fi
+    if [[ -z "${TUNNEL_EDGE_IPS:-}" ]]; then
+        echo "This container has no tunnel egress holes (created before EXPOSE_WEBAPP)." >&2
+        echo "Recreate it to open them." >&2
+        exit 4
+    fi
+    start_tunnel
+    log "waiting for the new cloudflared tunnel URL (up to 30s)"
+    local url
+    url=$(wait_tunnel_url)
+    if [[ -z "$url" ]]; then
+        echo "  tunnel URL not detected after 30s; check: tmux attach -t tunnel" >&2
+        exit 1
+    fi
+    echo
+    echo "  PUBLIC TUNNEL (re)started — new URL:"
+    echo "    $url"
+    echo
+}
+
 # ---- serve: tunnel + ON_LAUNCH_SCRIPT (dev) + banner + idle -----------------
 do_serve() {
     cd "$WORKDIR" 2>/dev/null || cd "$HOME"
     mkdir -p "${HOME}/.logs"
 
     if [[ "$EXPOSE_WEBAPP" == "true" ]]; then
-        log "starting cloudflared quick tunnel in tmux session 'tunnel' (-> port $WEBAPP_PORT)"
-        : > "${HOME}/.logs/tunnel.log"
-        rm -f "${HOME}/.logs/tunnel-url.txt"
-        # Pin edge IPs and force HTTP/2 so cloudflared skips SRV-based edge
-        # discovery and avoids QUIC/UDP. Edge IPs come from TUNNEL_EDGE_IPS, set
-        # by introdus and allowed (by IP, on 7844) in the nft egress filter —
-        # cloudflared's edge protocol can't go through the HTTP proxy.
-        EDGE_ARGS=""
-        for ip in ${TUNNEL_EDGE_IPS:-}; do
-            EDGE_ARGS="$EDGE_ARGS --edge ${ip}:7844"
-        done
-        tmux new-session -d -s tunnel "cloudflared tunnel --protocol http2 $EDGE_ARGS --url http://localhost:$WEBAPP_PORT 2>&1; echo '[cloudflared exited]'; exec bash"
-        tmux pipe-pane -t tunnel -o "cat >>${HOME}/.logs/tunnel.log"
+        start_tunnel
         echo "  attach: podman exec -it --user dev $CNAME tmux attach -t tunnel"
         echo "  tail:   podman exec -it --user dev $CNAME tail -f ~/.logs/tunnel.log"
     fi
@@ -173,14 +226,8 @@ print(d[0]['ConnectionInfo']['PodmanSocket']['Path'])
     TUNNEL_BANNER=""
     if [[ "$EXPOSE_WEBAPP" == "true" ]]; then
         log "waiting for cloudflared tunnel URL (up to 30s)"
-        TUNNEL_URL=""
-        for _ in $(seq 1 60); do
-            TUNNEL_URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "${HOME}/.logs/tunnel.log" 2>/dev/null | grep -v '^https://api\.trycloudflare\.com$' | head -1 || true)
-            [[ -n "$TUNNEL_URL" ]] && break
-            sleep 0.5
-        done
+        TUNNEL_URL=$(wait_tunnel_url)
         if [[ -n "$TUNNEL_URL" ]]; then
-            echo "$TUNNEL_URL" > "${HOME}/.logs/tunnel-url.txt"
             TUNNEL_BANNER=$(cat <<TBEOF
 
 ============================================================
@@ -293,7 +340,8 @@ NBEOF
 }
 
 case "${1:-all}" in
-    prepare) do_prepare ;;
-    serve)   do_serve ;;
-    *)       do_prepare; do_serve ;;
+    prepare)        do_prepare ;;
+    serve)          do_serve ;;
+    restart-tunnel) do_restart_tunnel ;;
+    *)              do_prepare; do_serve ;;
 esac

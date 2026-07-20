@@ -289,7 +289,7 @@ fn demo_menu_rows() -> Vec<Row> {
         &[
             ('b', "List recently blocked egress URLs"),
             ('w', "Add hostnames to the egress allowlist"),
-            ('e', "Expose webapp via Cloudflare tunnel"),
+            ('e', "(Re)Expose app via Cloudflare Tunnel"),
             ('u', "Show tunnel URL"),
             ('n', "Enable ntfy.sh mobile notifications"),
         ],

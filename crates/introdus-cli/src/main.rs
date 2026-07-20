@@ -2,13 +2,16 @@
 //! harness. Runs on the container host; drives podman + tmux + a full-screen
 //! control TUI. See PLAN.md for the milestone roadmap.
 
+mod cli_actions;
 mod context;
+mod frontend;
 mod image;
 mod install;
 mod launch;
 mod lifecycle;
 mod menu;
 mod menu_actions;
+mod menu_tunnel;
 mod notify;
 mod notify_listen;
 mod panel;
@@ -99,6 +102,80 @@ enum Command {
     SendFiles,
     /// Put the binary on PATH and set up host services.
     Install,
+
+    // ---- control-panel utilities, also available headlessly ----------------
+    /// Show the container's cached Cloudflare quick-tunnel URL.
+    TunnelUrl,
+    /// List hostnames the egress proxy recently blocked.
+    BlockedEgress,
+    /// Add hostnames to the egress allowlist (`WHITELIST_HOSTS`).
+    Allow {
+        /// Hostnames to allow (repeat for several).
+        #[arg(required = true, value_name = "HOST")]
+        hosts: Vec<String>,
+        /// Restart the container so the running proxy picks them up.
+        #[arg(long)]
+        restart: bool,
+    },
+    /// (Re)expose the in-container app via a Cloudflare quick tunnel.
+    ExposeWebapp {
+        /// Recreate the container now to apply it (needed the first time).
+        #[arg(long)]
+        recreate: bool,
+    },
+    /// Enable ntfy.sh mobile push for a topic.
+    Ntfy {
+        /// The ntfy.sh topic to publish to (treat it like a password).
+        #[arg(long)]
+        topic: String,
+        /// Recreate the container now to apply it.
+        #[arg(long)]
+        recreate: bool,
+    },
+    /// Install one or more coding agents into the running container.
+    InstallAgent {
+        /// Agent ids (e.g. `claude codex opencode`).
+        #[arg(required = true, value_name = "AGENT")]
+        agents: Vec<String>,
+        /// Restart the container to apply the new egress hosts.
+        #[arg(long)]
+        restart: bool,
+    },
+    /// Launch an installed agent in the foreground.
+    Agent {
+        /// The installed agent id to launch (e.g. `claude`).
+        #[arg(value_name = "AGENT")]
+        id: String,
+        /// Launch with the agent's skip-permissions / auto-approve flag.
+        #[arg(long)]
+        yolo: bool,
+    },
+    /// Install paseo (drive agents from your phone).
+    InstallPaseo {
+        /// Recreate the container now to wire paseo's relay access.
+        #[arg(long)]
+        recreate: bool,
+    },
+    /// Print the paseo pairing URL for the running daemon.
+    PaseoUrl,
+    /// Open an interactive shell in the container (the `dev` user).
+    DevShell,
+    /// Open an interactive root shell in the container.
+    RootShell,
+    /// Send a test notification to the host.
+    TestNotify,
+    /// Show the tail of the notification service log.
+    NotifyLog,
+    /// Restart the notification service (apply forward/ntfy changes).
+    RestartNotify,
+    /// Restart the container in place (keeps the volume).
+    Restart,
+    /// Stop the container (requires `--yes`).
+    Stop {
+        /// Confirm stopping the container.
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 /// Flags for `introdus notify-listen` (the dev-machine side). With no `--via`
@@ -148,6 +225,22 @@ fn main() -> Result<()> {
         Command::NotifyListen(a) => notify_listen::run(a.into()),
         Command::SendFiles => send_files::run(),
         Command::Install => install::run(),
+        Command::TunnelUrl => cli_actions::tunnel_url(),
+        Command::BlockedEgress => cli_actions::blocked_egress(),
+        Command::Allow { hosts, restart } => cli_actions::allow(&hosts, restart),
+        Command::ExposeWebapp { recreate } => cli_actions::expose_webapp(recreate),
+        Command::Ntfy { topic, recreate } => cli_actions::ntfy(&topic, recreate),
+        Command::InstallAgent { agents, restart } => cli_actions::install_agent(&agents, restart),
+        Command::Agent { id, yolo } => cli_actions::agent(&id, yolo),
+        Command::InstallPaseo { recreate } => cli_actions::install_paseo(recreate),
+        Command::PaseoUrl => cli_actions::paseo_url(),
+        Command::DevShell => cli_actions::shell(false),
+        Command::RootShell => cli_actions::shell(true),
+        Command::TestNotify => cli_actions::test_notify(),
+        Command::NotifyLog => cli_actions::notify_log(),
+        Command::RestartNotify => cli_actions::restart_notify(),
+        Command::Restart => cli_actions::restart(),
+        Command::Stop { yes } => cli_actions::stop(yes),
     }
 }
 

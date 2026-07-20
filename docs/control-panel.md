@@ -55,12 +55,19 @@ Each action's hotkey is shown in parentheses.
 | ----- | ------- |
 | **$ Access container** | open a dev (`t`) / root (`T`) terminal, copy a host file/folder in (`c`) |
 | **✦ Agents** | launch an installed agent (`a`), [install a coding agent](coding-agents.md) (`i`), install [paseo](paseo.md) (`p`), show its pairing QR (`P`) |
-| **⇅ Networking & egress security** | list recently [blocked egress](egress-filtering.md) URLs (`b`), add hostnames to the [allowlist](egress-filtering.md#adjusting-the-allowlist) (`w`), toggle the [webapp tunnel](webapp-tunnel.md) (`e`), show the [tunnel URL](webapp-tunnel.md) (`u`), enable [ntfy push](notifications.md#phone-push-ntfysh) (`n`) |
+| **⇅ Networking & egress security** | list recently [blocked egress](egress-filtering.md) URLs (`b`), add hostnames to the [allowlist](egress-filtering.md#adjusting-the-allowlist) (`w`), (re)expose the app via [Cloudflare tunnel](webapp-tunnel.md) (`e`), show the [tunnel URL](webapp-tunnel.md) (`u`), enable [ntfy push](notifications.md#phone-push-ntfysh) (`n`) |
 | **? Troubleshooting** | refresh container status (`f`), send a test notification (`N`), show the notify log (`l`), restart the [notification service](notifications.md) (`v`) |
 | **↻ Container lifecycle** | restart (`s`), [recreate](persistence-and-lifecycle.md) (`x`), detach — keep the container running (`h`), [destroy/reset](persistence-and-lifecycle.md) — wipe the volume (`d`), quit — stops the container (`q`) |
 
-Most subcommands are also available from the CLI (see the
-[README](../README.md#quick-start)), but day-to-day you drive them from here.
+Every menu action (bar the pure-UI ones — refresh, detach, quit) also has a
+headless `introdus` subcommand, so you can script anything you'd otherwise click:
+`tunnel-url`, `blocked-egress`, `allow <host…>`, `expose-webapp`, `ntfy`,
+`install-agent <id…>`, `agent <id>`, `install-paseo`, `paseo-url` (prints the
+pairing URL instead of a QR), `dev-shell`/`root-shell`, `test-notify`,
+`notify-log`, `restart-notify`, `restart`, and `stop`. The prompts the panel
+shows become flags: `--restart` / `--recreate` apply a config change, `--yolo`
+launches an agent unattended, `--yes` confirms a stop. Run `introdus <cmd>
+--help` for each. Day-to-day you still drive them from the panel.
 
 ## How it works
 

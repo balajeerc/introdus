@@ -10,6 +10,7 @@ use introdus_core::podman::{self, exec_interactive, podman};
 use introdus_core::{agents, session as session_names, tmux, Config};
 
 use crate::context::{env_path, LaunchContext};
+use crate::frontend::Frontend;
 use crate::panel::Ui;
 use crate::util::{expand_tilde, shell_quote};
 
@@ -20,75 +21,75 @@ const NOTIFY_LOG_TAIL: usize = 40;
 
 /// Show the cached cloudflared quick-tunnel URL from inside the container. Its
 /// output is captured into the pane automatically (no explicit `ui.log`).
-pub fn tunnel_url(ctx: &LaunchContext, _ui: &mut Ui) -> Result<()> {
+pub fn tunnel_url(ctx: &LaunchContext, _f: &mut impl Frontend) -> Result<()> {
     require_running(ctx)?;
     let _ = exec(ctx, Some("dev")).arg("tunnel-url").run();
     Ok(())
 }
 
 /// Show the hostnames the egress proxy recently blocked (captured into the pane).
-pub fn blocked_egress(ctx: &LaunchContext, _ui: &mut Ui) -> Result<()> {
+pub fn blocked_egress(ctx: &LaunchContext, _f: &mut impl Frontend) -> Result<()> {
     require_running(ctx)?;
     let _ = exec(ctx, Some("dev")).arg("egress-log").run();
     Ok(())
 }
 
 /// Fire a test notification event from inside the container.
-pub fn test_notify(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
+pub fn test_notify(ctx: &LaunchContext, f: &mut impl Frontend) -> Result<()> {
     require_running(ctx)?;
-    ui.log("  sending a test 'done' notification via rc-notify…");
+    f.log("  sending a test 'done' notification via rc-notify…");
     let _ = exec(ctx, Some("dev")).args(["rc-notify", "done"]).run();
     // Surface where the config says the event should land — the usual "no popup"
     // cause is a forward mismatch, so name it here.
     match &ctx.config.rc_forward_addr {
         Some(addr) => {
-            ui.log(format!(
+            f.log(format!(
                 "  config: forwarding to {addr} (a remote dev machine over the ssh reverse tunnel)"
             ));
-            ui.log("  if you changed this recently, use 'Restart the notification service' so");
-            ui.log("  the running notify-host picks it up (its env froze at session start).");
+            f.log("  if you changed this recently, use 'Restart the notification service' so");
+            f.log("  the running notify-host picks it up (its env froze at session start).");
         }
-        None => ui.log("  config: rendering locally on this host (RC_FORWARD_ADDR unset)"),
+        None => f.log("  config: rendering locally on this host (RC_FORWARD_ADDR unset)"),
     }
-    ui.log("  (delivery is handled by the detached notify service — see its log below)");
+    f.log("  (delivery is handled by the detached notify service — see its log below)");
     Ok(())
 }
 
 /// Restart the detached `notify-host` so it re-reads the project's notification
 /// config (e.g. a just-added `RC_FORWARD_ADDR`) without recreating the container
 /// or bouncing the tmux session.
-pub fn restart_notify(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
-    ui.log("  restarting the notification service (notify-host)…");
+pub fn restart_notify(ctx: &LaunchContext, f: &mut impl Frontend) -> Result<()> {
+    f.log("  restarting the notification service (notify-host)…");
     crate::session::restart_notify_host(&ctx.config, &session_of(ctx))?;
     match &ctx.config.rc_forward_addr {
-        Some(addr) => ui.log(format!("  restarted — now forwarding to {addr}.")),
-        None => ui.log("  restarted — now rendering locally on this host."),
+        Some(addr) => f.log(format!("  restarted — now forwarding to {addr}.")),
+        None => f.log("  restarted — now rendering locally on this host."),
     }
     Ok(())
 }
 
 /// Show the tail of the detached notify-host service's log. The service has no
 /// tmux window of its own; this is how you inspect what it has delivered.
-pub fn notify_log(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
+pub fn notify_log(ctx: &LaunchContext, f: &mut impl Frontend) -> Result<()> {
     let path = introdus_core::paths::notify_log(&session_of(ctx))?;
     match std::fs::read_to_string(&path) {
         Ok(s) if !s.trim().is_empty() => {
             let lines: Vec<&str> = s.lines().collect();
             let start = lines.len().saturating_sub(NOTIFY_LOG_TAIL);
             if start > 0 {
-                ui.log(format!(
+                f.log(format!(
                     "  notification log (last {} lines of {}):",
                     NOTIFY_LOG_TAIL,
                     lines.len()
                 ));
             } else {
-                ui.log("  notification log:");
+                f.log("  notification log:");
             }
             for line in &lines[start..] {
-                ui.log(format!("    {line}"));
+                f.log(format!("    {line}"));
             }
         }
-        _ => ui.log(format!(
+        _ => f.log(format!(
             "  no notifications logged yet ({})",
             path.display()
         )),
@@ -207,13 +208,23 @@ fn resolve_yolo(yolo: agents::Yolo, label: &str, ui: &mut Ui) -> Result<Option<&
     }
 }
 
+/// The agent's bypass/auto flag, or `None` when it has none (or always
+/// auto-approves). The non-interactive counterpart to [`resolve_yolo`], used by
+/// the CLI `agent --yolo` launch where the choice comes from a flag, not a prompt.
+pub(crate) fn yolo_flag(yolo: agents::Yolo) -> Option<&'static str> {
+    match yolo {
+        agents::Yolo::Bypass(flag) | agents::Yolo::Auto(flag) => Some(flag),
+        agents::Yolo::Always | agents::Yolo::None => None,
+    }
+}
+
 /// Shell snippet that ensures the paseo daemon is running, for prefixing an
 /// interactive window command. `paseo daemon status` exits 0 whether the daemon
 /// is running OR stopped, so `status || start` never starts it (and `start` errors
 /// noisily when already up); gate on the `localDaemon` field of the JSON status
 /// instead. Without a running daemon the relay never connects and phone pairing
 /// times out.
-const PASEO_ENSURE_DAEMON: &str = r#"paseo daemon status --json 2>/dev/null | grep -Eq '"localDaemon":[[:space:]]*"running"' || paseo daemon start"#;
+pub(crate) const PASEO_ENSURE_DAEMON: &str = r#"paseo daemon status --json 2>/dev/null | grep -Eq '"localDaemon":[[:space:]]*"running"' || paseo daemon start"#;
 
 // ---- paseo orchestrator -----------------------------------------------------
 
@@ -239,11 +250,7 @@ pub fn install_paseo(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     // *recreate* installs that hole. A plain restart would re-run the entrypoint
     // with the old (paseo-less) env and pairing would still time out.
     let mut config = ctx.config.clone();
-    config.install_paseo = true;
-    let host = agents::paseo::HOST.to_owned();
-    if !config.whitelist_hosts.contains(&host) {
-        config.whitelist_hosts.push(host);
-    }
+    paseo_opt_in(&mut config);
     save_and_write_allowlist(ctx, ui, config, "enabled paseo (INSTALL_PASEO=true)")?;
 
     // Offer the recreate that bakes in the relay bypass. The fresh container's
@@ -294,8 +301,8 @@ pub fn paseo_qr(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
 /// Stream `install-agents` with only the paseo opt-in set. `INSTALL_AGENTS=` is
 /// passed empty so the installer touches paseo alone and leaves the agent list
 /// untouched (an unset `INSTALL_AGENTS` would default to installing claude).
-fn run_install_paseo(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
-    ui.run_task(
+pub(crate) fn run_install_paseo(ctx: &LaunchContext, f: &mut impl Frontend) -> Result<()> {
+    f.run_task(
         "install-agents (paseo)",
         exec(ctx, Some("dev"))
             .arg("env")
@@ -305,6 +312,17 @@ fn run_install_paseo(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     )
 }
 
+/// Record the paseo opt-in on `config`: set `INSTALL_PASEO=true` and add paseo's
+/// proxy-allowlist host (idempotently). Shared by the menu and CLI opt-in flows;
+/// the caller still persists the config and rewrites the allowlist.
+pub(crate) fn paseo_opt_in(config: &mut Config) {
+    config.install_paseo = true;
+    let host = agents::paseo::HOST.to_owned();
+    if !config.whitelist_hosts.contains(&host) {
+        config.whitelist_hosts.push(host);
+    }
+}
+
 // ---- egress allowlist -------------------------------------------------------
 
 /// Append hostnames to `WHITELIST_HOSTS`, regenerate the allowlist file, and
@@ -312,18 +330,7 @@ fn run_install_paseo(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
 pub fn add_allowlist(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     let raw = ui.text("Hostnames to allow (space/comma separated):", false)?;
     let mut config = ctx.config.clone();
-    let mut added = Vec::new();
-    for host in raw
-        .split([',', ' ', '\n', '\t'])
-        .map(str::trim)
-        .filter(|h| !h.is_empty())
-    {
-        let host = host.to_owned();
-        if !config.whitelist_hosts.contains(&host) {
-            config.whitelist_hosts.push(host.clone());
-            added.push(host);
-        }
-    }
+    let added = append_whitelist(&mut config, &raw);
     if added.is_empty() {
         ui.log("  nothing new to add.");
         return Ok(());
@@ -336,25 +343,26 @@ pub fn add_allowlist(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     )
 }
 
-// ---- config toggles (need a recreate to apply) ------------------------------
-
-/// Turn on `EXPOSE_WEBAPP` and offer to recreate.
-pub fn toggle_expose_webapp(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
-    if ctx.config.expose_webapp {
-        ui.log("  webapp is already exposed (EXPOSE_WEBAPP=true).");
-        return Ok(());
+/// Append the (space/comma/newline/tab-separated) hostnames in `raw` to
+/// `config.whitelist_hosts`, skipping blanks and ones already present. Returns
+/// the hosts actually newly added. Shared by the menu and CLI allowlist flows.
+pub(crate) fn append_whitelist(config: &mut Config, raw: &str) -> Vec<String> {
+    let mut added = Vec::new();
+    for host in raw
+        .split([',', ' ', '\n', '\t'])
+        .map(str::trim)
+        .filter(|h| !h.is_empty())
+    {
+        let host = host.to_owned();
+        if !config.whitelist_hosts.contains(&host) {
+            config.whitelist_hosts.push(host.clone());
+            added.push(host);
+        }
     }
-    if !ui.confirm(
-        "Expose the webapp to the internet via a Cloudflare tunnel?",
-        false,
-    )? {
-        return Ok(());
-    }
-    let mut config = ctx.config.clone();
-    config.expose_webapp = true;
-    save_config(ctx, ui, &config)?;
-    offer_recreate(ctx, ui, "EXPOSE_WEBAPP=true")
+    added
 }
+
+// ---- config toggles (need a recreate to apply) ------------------------------
 
 /// Turn on ntfy.sh push (prompting for the topic) and offer to recreate.
 pub fn enable_ntfy(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
@@ -395,19 +403,7 @@ pub fn install_agent(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
         return Ok(());
     }
     let mut config = ctx.config.clone();
-    for id in &picked {
-        if !config.install_agents.contains(id) {
-            config.install_agents.push(id.clone());
-        }
-        if let Some(agent) = agents::find(id) {
-            for h in agent.host_list() {
-                let h = h.to_owned();
-                if !config.whitelist_hosts.contains(&h) {
-                    config.whitelist_hosts.push(h);
-                }
-            }
-        }
-    }
+    select_agents(&mut config, &picked);
     save_and_regen_allowlist(
         ctx,
         ui,
@@ -421,6 +417,28 @@ pub fn install_agent(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     Ok(())
 }
 
+/// Add each agent id in `ids` to `config.install_agents` (if absent) plus its
+/// declared extra egress hosts to `config.whitelist_hosts`. Returns the ids that
+/// were newly added. Shared by the menu and CLI install-agent flows.
+pub(crate) fn select_agents(config: &mut Config, ids: &[String]) -> Vec<String> {
+    let mut added = Vec::new();
+    for id in ids {
+        if !config.install_agents.contains(id) {
+            config.install_agents.push(id.clone());
+            added.push(id.clone());
+        }
+        if let Some(agent) = agents::find(id) {
+            for h in agent.host_list() {
+                let h = h.to_owned();
+                if !config.whitelist_hosts.contains(&h) {
+                    config.whitelist_hosts.push(h);
+                }
+            }
+        }
+    }
+    added
+}
+
 /// Install a single agent on demand (used when a selected agent's binary is
 /// missing at launch). The agent is already in `.env`; this just (re)runs the
 /// in-container installer for it.
@@ -429,13 +447,17 @@ fn install_one_agent(ctx: &LaunchContext, ui: &mut Ui, id: &str) -> Result<()> {
 }
 
 /// Stream `install-agents` for the given space-separated agent ids.
-fn run_install_agents(ctx: &LaunchContext, ui: &mut Ui, agent_ids: &str) -> Result<()> {
+pub(crate) fn run_install_agents(
+    ctx: &LaunchContext,
+    f: &mut impl Frontend,
+    agent_ids: &str,
+) -> Result<()> {
     // Pass INSTALL_AGENTS *into* the container with an `env` prefix — a host-side
     // `.env()` on the podman process is NOT forwarded through `podman exec`, so
     // install-agents would otherwise only see the baked-in list and install
     // nothing. A real install can take a while and is chatty, so run it as a
     // streaming task: progress shows live and the menu stays disabled until done.
-    ui.run_task(
+    f.run_task(
         "install-agents",
         exec(ctx, Some("dev"))
             .arg("env")
@@ -488,18 +510,18 @@ pub fn recreate(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
 
 /// Restart the container in place (re-runs its entrypoint; keeps the volume).
 /// `podman restart` starts a stopped container too, so it covers both states.
-pub fn restart(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
+pub fn restart(ctx: &LaunchContext, f: &mut impl Frontend) -> Result<()> {
     if podman::container_state(&ctx.container_name) == podman::ContainerState::Absent {
         bail!(
             "container {} isn't created yet — use Recreate to build it",
             ctx.container_name
         );
     }
-    ui.run_task(
+    f.run_task(
         "restarting the container",
         podman().args(["restart", &ctx.container_name]),
     )?;
-    ui.log("  restarted.");
+    f.log("  restarted.");
     Ok(())
 }
 
@@ -631,7 +653,7 @@ fn offer_remove_deploy_key(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
 
 // ---- helpers ----------------------------------------------------------------
 
-fn require_running(ctx: &LaunchContext) -> Result<()> {
+pub(crate) fn require_running(ctx: &LaunchContext) -> Result<()> {
     if podman::container_running(&ctx.container_name) {
         Ok(())
     } else {
@@ -664,13 +686,13 @@ fn remove_volume_task(ctx: &LaunchContext, ui: &mut Ui, label: &str) -> Result<(
 /// plain `podman exec … sh -c 'command -v'`, which sees the image's ENV PATH —
 /// the exact PATH the agent launch itself runs under (pnpm's global bin dir is
 /// on it), so a hit here means the launch will find the binary too.
-fn container_has_cmd(ctx: &LaunchContext, cmd: &str) -> bool {
+pub(crate) fn container_has_cmd(ctx: &LaunchContext, cmd: &str) -> bool {
     exec(ctx, Some("dev"))
         .args(["sh", "-c", &format!("command -v {}", shell_quote(cmd))])
         .ok()
 }
 
-fn exec(ctx: &LaunchContext, user: Option<&str>) -> introdus_core::process::Cmd {
+pub(crate) fn exec(ctx: &LaunchContext, user: Option<&str>) -> introdus_core::process::Cmd {
     podman::exec(&ctx.container_name, user)
 }
 
@@ -702,9 +724,13 @@ fn respawn_dev_window(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     Ok(())
 }
 
-fn save_config(ctx: &LaunchContext, ui: &mut Ui, config: &Config) -> Result<()> {
+pub(crate) fn save_config(
+    ctx: &LaunchContext,
+    f: &mut impl Frontend,
+    config: &Config,
+) -> Result<()> {
     config.save(&env_path(&ctx.project_dir))?;
-    ui.log("  saved .env");
+    f.log("  saved .env");
     Ok(())
 }
 
@@ -712,15 +738,15 @@ fn save_config(ctx: &LaunchContext, ui: &mut Ui, config: &Config) -> Result<()> 
 /// No restart: the allowlist is a file the proxy re-reads on the next start, so
 /// callers decide whether a restart/recreate is warranted (a frozen-env change
 /// like an nft IP bypass needs a full recreate — see [`offer_recreate`]).
-fn save_and_write_allowlist(
+pub(crate) fn save_and_write_allowlist(
     ctx: &LaunchContext,
-    ui: &mut Ui,
+    f: &mut impl Frontend,
     config: Config,
     summary: &str,
 ) -> Result<()> {
-    save_config(ctx, ui, &config)?;
+    save_config(ctx, f, &config)?;
     LaunchContext::resolve(config, ctx.project_dir.clone())?.write_allowlist()?;
-    ui.log(format!("  {summary}"));
+    f.log(format!("  {summary}"));
     Ok(())
 }
 
@@ -745,7 +771,7 @@ fn save_and_regen_allowlist(
     Ok(())
 }
 
-fn offer_recreate(ctx: &LaunchContext, ui: &mut Ui, changed: &str) -> Result<()> {
+pub(crate) fn offer_recreate(ctx: &LaunchContext, ui: &mut Ui, changed: &str) -> Result<()> {
     ui.log(format!(
         "  {changed} saved — it applies only after a container recreate (env is frozen at create)."
     ));

@@ -67,7 +67,7 @@ impl std::fmt::Display for Action {
             Action::PaseoQr => "Show paseo pairing QR code (connect your phone)",
             Action::BlockedEgress => "List recently blocked egress URLs",
             Action::AddAllowlist => "Add hostnames to the egress allowlist",
-            Action::ExposeWebapp => "Expose webapp via Cloudflare tunnel",
+            Action::ExposeWebapp => "(Re)Expose app via Cloudflare Tunnel",
             Action::TunnelUrl => "Show tunnel URL",
             Action::EnableNtfy => "Enable ntfy.sh mobile notifications",
             Action::Restart => "Restart the container",
@@ -269,7 +269,7 @@ fn detach(ctx: &LaunchContext) -> Detach {
 fn dispatch(action: Action, ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     match action {
         Action::TunnelUrl => act::tunnel_url(ctx, ui),
-        Action::ExposeWebapp => act::toggle_expose_webapp(ctx, ui),
+        Action::ExposeWebapp => crate::menu_tunnel::reexpose_webapp(ctx, ui),
         Action::EnableNtfy => act::enable_ntfy(ctx, ui),
         Action::CopyFile => act::copy_file(ctx, ui),
         Action::InstallAgent => act::install_agent(ctx, ui),

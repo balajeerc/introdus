@@ -18,8 +18,8 @@ tunnel** — no Cloudflare account, no domain.
 ## Usage
 
 Set `EXPOSE_WEBAPP=true` in
-[config](setup-and-configuration.md#configuration-reference) (or toggle it from
-the [control panel](control-panel.md) → "Expose webapp via Cloudflare tunnel").
+[config](setup-and-configuration.md#configuration-reference) (or turn it on from
+the [control panel](control-panel.md) → "(Re)Expose app via Cloudflare Tunnel").
 The next launch:
 
 - starts `cloudflared` in a `tunnel` tmux session inside the container,
@@ -28,6 +28,16 @@ The next launch:
   command inside the container, and the panel's "Show tunnel URL").
 
 The URL is stable for the container's lifetime and **rotates on relaunch**.
+
+### If the tunnel drops
+
+Cloudflare quick tunnels can disconnect on their own. When that happens, pick
+**"(Re)Expose app via Cloudflare Tunnel"** (`e`) again: the panel probes the
+cached URL from the host and, if it is no longer routing, restarts `cloudflared`
+in place — reusing the container's existing edge-IP holes — and prints a fresh
+URL (no recreate, no volume churn). If the current URL is still reachable it is
+left untouched. (Under the hood this runs `setup.sh restart-tunnel` inside the
+container.)
 
 Allow the hostname in your dev server config (this lives in *your* repo — commit
 it once). For Vite:

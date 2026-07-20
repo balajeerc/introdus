@@ -93,7 +93,11 @@ persisting to `.env` where it matters.
 
 Subcommands: `introdus [launch]`, `up`, `menu`, `verify`, `recreate`, `reset`,
 `update`, `rebuild-base`, `notify-host`, `notify-listen`, `send-files`,
-`install`.
+`install`. Every control-panel utility also has a headless subcommand for
+scripting (the panel's prompts become flags): `tunnel-url`, `blocked-egress`,
+`allow`, `expose-webapp`, `ntfy`, `install-agent`, `agent`, `install-paseo`,
+`paseo-url`, `dev-shell`, `root-shell`, `test-notify`, `notify-log`,
+`restart-notify`, `restart`, `stop`.
 
 `introdus send-files` is the dev-machine file-transfer tool: it lists the
 introdus containers running on this laptop plus the remote hosts in your
@@ -267,7 +271,10 @@ or change what one owns, update the matching line (per
 | `run.rs`         | The full `podman run` flag/env/mount set; `--verify` self-check; `--update` in-container refresh. |
 | `session.rs`     | The tmux session model — puts each container in one session with its windows; spawns/respawns the detached `notify-host` service. |
 | `menu.rs`        | The control TUI (`introdus menu`): menu layout (group icons + per-item hotkeys), dispatch to `menu_actions`. |
-| `menu_actions.rs`| Implementations of each control-menu utility (tunnel URL, agents, allowlist, terminals, copy-in, ntfy, test/restart the notify service, recreate/reset/stop/destroy, paseo). |
+| `menu_actions.rs`| Implementations of each control-menu utility (tunnel URL, (re)expose webapp — host-side probe of the cached quick-tunnel URL + in-place cloudflared restart, agents, allowlist, terminals, copy-in, ntfy, test/restart the notify service, recreate/reset/stop/destroy, paseo). The reusable, decision-free cores (`save_and_write_allowlist`, `append_whitelist`, `select_agents`, `run_install_agents`, `paseo_opt_in`, `run_install_paseo`, the no-prompt actions) are `pub(crate)` + generic over [`Frontend`] so `cli_actions` can reuse them headlessly. |
+| `menu_tunnel.rs` | The panel's "(Re)Expose webapp" action + the `pub(crate)` `refresh_running_tunnel` / `container_has_tunnel_holes` cores (host-side quick-tunnel probe + in-place cloudflared restart) reused by `cli_actions`. |
+| `cli_actions.rs` | Headless one-shot subcommands mirroring the panel utilities (`tunnel-url`, `blocked-egress`, `allow`, `expose-webapp`, `ntfy`, `install-agent`, `agent`, `install-paseo`, `paseo-url`, `dev-shell`/`root-shell`, `test-notify`, `notify-log`, `restart-notify`, `restart`, `stop`). Reuses the `menu_actions`/`menu_tunnel` cores via a `StdioFrontend`; interactive prompts become CLI flags (`--restart`/`--recreate`/`--yolo`/`--yes`). |
+| `frontend.rs`    | The `Frontend` trait — the output surface (`log` + `run_task`) shared by the interactive panel `Ui` and the headless `StdioFrontend`, so the action cores drive either. |
 | `panel.rs`       | The persistent two-pane control panel: the `Ui` that owns the alternate screen, the input loop (hotkeys + `/` filter), task streaming, and popup prompts. |
 | `panel_draw.rs`  | Pure rendering for the panel: `MenuView`/`Popup` types + the side-effect-free `draw_frame` and its status/menu/output/footer/prompt helpers. |
 | `ui.rs`          | Shared ratatui primitives: status/row types (headers carry a group icon, items a hotkey), key reading, prompt state machines, the wizard's standalone inline modals. |
@@ -286,7 +293,8 @@ Not compiled — embedded by `assets.rs` and bind-mounted at launch.
 - `container/egress/firewall-entrypoint.sh` — PID 1: nft default-deny + tinyproxy
   + egress self-check, then drops privilege to `dev`.
 - `container/egress/tinyproxy.conf` — the hostname-allowlist proxy config.
-- `setup.sh` — post-firewall: clone repo, run launch hooks, start the workload.
+- `setup.sh` — post-firewall: clone repo, run launch hooks, start the workload;
+  `restart-tunnel` mode re-establishes a dropped cloudflared quick tunnel.
 - `container/agents.sh` — in-container agent-install registry (mirror of
   `agents.rs`).
 - `container/bin/*` — `run-claude`, `install-agents`, `rc-notify` (container→host
@@ -672,6 +680,7 @@ test-harness/harness.sh install    # binary onto PATH
 test-harness/harness.sh agents     # claude opt-out absent + opt-in menu install
 test-harness/harness.sh agent-launch / agent-missing / quit-stop / detach / paseo
 test-harness/harness.sh send-files # send a host file into a container via the dual-pane TUI
+test-harness/harness.sh cli        # headless subcommands drive a real container
 ```
 
 Each target is a scripted `driver-*.sh` that drives the real UI over tmux and
