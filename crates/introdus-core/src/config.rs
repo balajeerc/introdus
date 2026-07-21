@@ -45,6 +45,42 @@ const DEFAULT_PIDS_LIMIT: u64 = 16384;
 const DEFAULT_ROOT_TIMEOUT: u32 = 600;
 const DEFAULT_CANARY_IP: &str = "93.184.216.34";
 
+/// How paseo connects when installed: through the official relay (phone/desktop
+/// pairing over paseo.sh) or a direct TCP connection on a VPN/zero-trust network
+/// (no relay; the daemon port is published on the host and password-protected).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PaseoMode {
+    #[default]
+    Relay,
+    Direct,
+}
+
+impl PaseoMode {
+    /// The `.env` token.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PaseoMode::Relay => "relay",
+            PaseoMode::Direct => "direct",
+        }
+    }
+
+    pub fn is_direct(self) -> bool {
+        matches!(self, PaseoMode::Direct)
+    }
+
+    /// Parse the `.env` token; anything but `direct` (case-insensitive) is relay.
+    fn parse(s: &str) -> PaseoMode {
+        if s.eq_ignore_ascii_case("direct") {
+            PaseoMode::Direct
+        } else {
+            PaseoMode::Relay
+        }
+    }
+}
+
+/// The base of the obscure port range direct-mode daemons are auto-assigned from.
+pub const PASEO_PORT_BASE: u16 = 20190;
+
 /// A project's full configuration, the typed mirror of its `.env`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
@@ -57,8 +93,19 @@ pub struct Config {
     // ---- agents & egress ----
     pub install_agents: Vec<String>,
     /// Install the paseo orchestrator so agents can be driven from a phone/app
-    /// through the relay (opt-in, separate from the agent list).
+    /// (opt-in, separate from the agent list).
     pub install_paseo: bool,
+    /// How paseo connects when installed: via the official relay (default) or a
+    /// direct TCP connection on a VPN/zero-trust net (no relay; port published).
+    pub paseo_mode: PaseoMode,
+    /// The direct-mode daemon port, published on the host. Auto-picked free from
+    /// [`PASEO_PORT_BASE`] on the first direct launch, then persisted for
+    /// stability. `None` in relay mode or before the first pick.
+    pub paseo_port: Option<u16>,
+    /// The auto-generated 2-word daemon passphrase for direct mode (bcrypt-hashed
+    /// inside the container; kept here so the panel can display it). `None` in
+    /// relay mode.
+    pub paseo_password: Option<String>,
     pub whitelist_hosts: Vec<String>,
     pub internal_allow_cidrs: Vec<String>,
 
@@ -104,6 +151,9 @@ impl Config {
             webapp_port,
             install_agents: vec!["claude".to_owned()],
             install_paseo: false,
+            paseo_mode: PaseoMode::Relay,
+            paseo_port: None,
+            paseo_password: None,
             whitelist_hosts: DEFAULT_WHITELIST.iter().map(|s| (*s).to_owned()).collect(),
             internal_allow_cidrs: Vec::new(),
             on_launch_script: None,
@@ -137,6 +187,14 @@ impl Config {
                 .context("WEBAPP_PORT must be a port number")?,
             install_agents: list_or(&m, "INSTALL_AGENTS", &["claude"]),
             install_paseo: flag(&m, "INSTALL_PASEO"),
+            paseo_mode: opt(&m, "PASEO_MODE")
+                .map(|s| PaseoMode::parse(&s))
+                .unwrap_or_default(),
+            paseo_port: match opt(&m, "PASEO_PORT") {
+                Some(v) => Some(v.parse().context("PASEO_PORT must be a port number")?),
+                None => None,
+            },
+            paseo_password: opt(&m, "PASEO_PASSWORD"),
             whitelist_hosts: list_or(&m, "WHITELIST_HOSTS", DEFAULT_WHITELIST),
             internal_allow_cidrs: list_or(&m, "INTERNAL_ALLOW_CIDRS", &[]),
             on_launch_script: opt(&m, "ON_LAUNCH_SCRIPT"),
@@ -180,6 +238,10 @@ impl Config {
         );
         inline_list(&mut o, "INSTALL_AGENTS", &self.install_agents);
         scalar(&mut o, "INSTALL_PASEO", bool_str(self.install_paseo));
+        scalar(&mut o, "PASEO_MODE", self.paseo_mode.as_str());
+        let paseo_port_s = self.paseo_port.map(|p| p.to_string());
+        opt_scalar(&mut o, "PASEO_PORT", paseo_port_s.as_deref());
+        opt_scalar(&mut o, "PASEO_PASSWORD", self.paseo_password.as_deref());
 
         section(&mut o, "Egress: proxy hostname allowlist (default-deny)");
         multiline_list(&mut o, "WHITELIST_HOSTS", &self.whitelist_hosts);
@@ -343,6 +405,9 @@ mod tests {
         );
         c.install_agents = vec!["claude".to_owned(), "codex".to_owned()];
         c.install_paseo = true;
+        c.paseo_mode = PaseoMode::Direct;
+        c.paseo_port = Some(20191);
+        c.paseo_password = Some("fast-koala".to_owned());
         c.internal_allow_cidrs = vec!["10.2.5.131".to_owned()];
         c.extra_ports = vec!["8123".to_owned(), "16379:6379".to_owned()];
         c.on_launch_script = Some("pnpm install\npnpm dev --host 0.0.0.0".to_owned());
@@ -379,6 +444,10 @@ mod tests {
         std::fs::remove_file(&path).ok();
         assert_eq!(c.install_agents, vec!["claude".to_owned()]);
         assert!(!c.install_paseo);
+        // paseo defaults: relay mode, no port/password until a direct launch.
+        assert_eq!(c.paseo_mode, PaseoMode::Relay);
+        assert!(c.paseo_port.is_none());
+        assert!(c.paseo_password.is_none());
         assert_eq!(c.whitelist_hosts.len(), DEFAULT_WHITELIST.len());
         assert_eq!(c.mem_limit, "8g");
         assert_eq!(c.pids_limit, 16384);

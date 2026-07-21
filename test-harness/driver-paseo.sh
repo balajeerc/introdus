@@ -42,6 +42,16 @@ harness_poll "paseo auto-installed by setup (INSTALL_PASEO=true)" \
     podman exec --user dev "$cname" sh -c 'command -v paseo'
 echo "    ✓ paseo auto-installed on launch (opt-in wired into the container)"
 
+# ---- 0. Assert setup.sh auto-STARTED the daemon at boot ---------------------
+# INSTALL_PASEO=true makes do_serve ensure the daemon (no control-panel action
+# needed): `paseo ls`/pairing must work straight after launch, and after a
+# stop/start. Poll the daemon's own status for `localDaemon: running` WITHOUT
+# opening the QR window that would otherwise start it.
+paseo_up='paseo daemon status --json 2>/dev/null | grep -Eq "\"localDaemon\":[[:space:]]*\"running\""'
+harness_poll "paseo daemon auto-started at boot (setup.sh, no panel action)" \
+    podman exec --user dev "$cname" bash -lc "$paseo_up"
+echo "    ✓ paseo daemon auto-started by setup.sh at container boot"
+
 # ---- 1. Assert the relay bypass is wired + the daemon reaches the relay -----
 # relay.paseo.sh is resolved at launch and its IPs are allowed directly on :443 by
 # nft, because paseo's ws client bypasses the proxy. Prove the env + nft rule

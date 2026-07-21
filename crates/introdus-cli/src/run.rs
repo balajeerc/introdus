@@ -68,7 +68,10 @@ pub fn run_args(ctx: &LaunchContext, disable_network_block: bool) -> Result<Vec<
     lit(&mut a, "--name");
     a.push(ctx.container_name.clone());
     lit(&mut a, "--hostname");
-    lit(&mut a, "introdus");
+    // The container hostname is what paseo reports as its server name and what
+    // the shell prompt shows, so derive it from the project (slugged to a valid
+    // DNS label) rather than a fixed literal.
+    a.push(introdus_core::names::hostname_slug(&c.project_name));
     lit(&mut a, "--network=pasta");
     a.push(format!("--memory={}", c.mem_limit));
     a.push(format!("--cpus={}", c.cpu_limit));
@@ -174,15 +177,41 @@ fn push_env(ctx: &LaunchContext, disable_network_block: bool, a: &mut Vec<String
     // container's setup (install-agents) installs it when enabled — otherwise a
     // wizard opt-in or a recreate would come up without paseo.
     env(a, "INSTALL_PASEO", c.install_paseo.to_string());
+    // Direct-mode paseo: the container-side setup binds the daemon to
+    // 0.0.0.0:<PASEO_PORT>, disables the relay, and sets this password. Empty in
+    // relay mode (setup then keeps the relay defaults).
+    env(a, "PASEO_MODE", c.paseo_mode.as_str().to_owned());
+    env(
+        a,
+        "PASEO_PORT",
+        c.paseo_port.map(|p| p.to_string()).unwrap_or_default(),
+    );
+    env(
+        a,
+        "PASEO_PASSWORD",
+        c.paseo_password.clone().unwrap_or_default(),
+    );
 }
 
 fn push_publish(ctx: &LaunchContext, a: &mut Vec<String>) -> Result<()> {
-    let port = ctx.config.webapp_port;
+    let c = &ctx.config;
+    let port = c.webapp_port;
     a.push("--publish".to_owned());
     a.push(format!("127.0.0.1:{port}:{port}"));
-    for (host, container) in parse_extra_ports(&ctx.config.extra_ports, port)? {
+    for (host, container) in parse_extra_ports(&c.extra_ports, port)? {
         a.push("--publish".to_owned());
         a.push(format!("127.0.0.1:{host}:{container}"));
+    }
+    // Direct-mode paseo: publish the daemon port on ALL host interfaces (0.0.0.0),
+    // not just loopback, so paseo desktop on a laptop can reach it over the
+    // VPN/tailscale net. The daemon is password-protected; this is the container's
+    // one intentional inbound surface. Relay mode publishes nothing (relay is
+    // outbound-only).
+    if c.paseo_mode.is_direct() {
+        if let Some(pport) = c.paseo_port {
+            a.push("--publish".to_owned());
+            a.push(format!("0.0.0.0:{pport}:{pport}"));
+        }
     }
     Ok(())
 }
@@ -372,6 +401,33 @@ mod tests {
         let a = run_args(&ctx(), false).unwrap();
         assert!(a.contains(&"127.0.0.1:3000:3000".to_owned()));
         assert!(a.contains(&"127.0.0.1:8123:8123".to_owned()));
+        // Relay mode (the default) publishes NO paseo port and passes empty
+        // direct-mode env.
+        assert!(!a.iter().any(|s| s.contains(":20190:")));
+        assert!(a.iter().any(|s| s == "PASEO_MODE=relay"));
+    }
+
+    #[test]
+    fn ta164_direct_mode_publishes_paseo_port_on_all_interfaces() {
+        let mut cfg = Config::new(
+            "web".to_owned(),
+            "git@github.com:o/r.git".to_owned(),
+            "/dev/null".to_owned(),
+            3000,
+        );
+        cfg.image_suffix = Some("ab12".to_owned());
+        cfg.install_paseo = true;
+        cfg.paseo_mode = introdus_core::config::PaseoMode::Direct;
+        cfg.paseo_port = Some(20190);
+        cfg.paseo_password = Some("fast-koala".to_owned());
+        let c = LaunchContext::resolve(cfg, std::env::temp_dir()).unwrap();
+        let a = run_args(&c, false).unwrap();
+        // Published on 0.0.0.0 (all interfaces) so a laptop can reach it over VPN.
+        assert!(a.contains(&"0.0.0.0:20190:20190".to_owned()));
+        // The direct-mode env the container-side setup reads.
+        assert!(a.iter().any(|s| s == "PASEO_MODE=direct"));
+        assert!(a.iter().any(|s| s == "PASEO_PORT=20190"));
+        assert!(a.iter().any(|s| s == "PASEO_PASSWORD=fast-koala"));
     }
 
     // run_args must be a PURE argv builder: it bind-mounts the notify FIFO at

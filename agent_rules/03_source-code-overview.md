@@ -9,14 +9,14 @@ or change what one owns, update the matching line (per
 | File          | Owns |
 | ------------- | ---- |
 | `lib.rs`      | Crate root; `pub mod` list, `VERSION`, `BIN_NAME`. |
-| `config.rs`   | Typed project `Config` ⇄ `.env` round-trip (`load`/`render`/`save`), default whitelist. |
+| `config.rs`   | Typed project `Config` ⇄ `.env` round-trip (`load`/`render`/`save`), default whitelist; `PaseoMode` (relay/direct) + `PASEO_PORT`/`PASEO_PASSWORD`/`PASEO_PORT_BASE`. |
 | `env_file.rs` | Low-level `.env` I/O: `dotenvy` read, list-splitting, value quoting. |
 | `egress.rs`   | Pure allowlist logic: git-host extraction, per-host anchored regex, container whitelist assembly, tunnel edge IPs/hosts. |
-| `agents.rs`   | The coding-agent registry (`AGENTS`) + install method / yolo-flag metadata; `paseo` orchestrator constants. Hand-mirrors `container/agents.sh`. |
+| `agents.rs`   | The coding-agent registry (`AGENTS`) + install method / yolo-flag metadata; `paseo` orchestrator constants + direct-mode passphrase generator (`generate_passphrase`). Hand-mirrors `container/agents.sh`. |
 | `assets.rs`   | The embedded container-side bash core (`include_str!`) and `materialize` into the per-container assets/build-context dir. |
-| `names.rs`    | Podman object naming (base image, per-project image tag, container, volume); deterministic suffix fallback. |
+| `names.rs`    | Podman object naming (base image, per-project image tag, container, volume); deterministic suffix fallback; project→hostname slug for the container `--hostname`. |
 | `paths.rs`    | Host state dir (`$XDG_STATE_HOME/introdus`) + generated-artifact paths (allowlist, notify log, launch marker, assets dir); config dir (`$XDG_CONFIG_HOME/introdus`) + the `notify-listen` config path. |
-| `ports.rs`    | Parse/validate `EXTRA_PORTS` entries. |
+| `ports.rs`    | Parse/validate `EXTRA_PORTS` entries; `pick_free_port` (bind-test picker) for the direct-mode paseo daemon port. |
 | `session.rs`  | Whimsical deterministic tmux session-name generation. |
 | `notify.rs`   | The notification trust boundary: wire-format parse, event whitelist, label sanitization. |
 | `podman.rs`   | Thin `podman` command constructors + existence/state probes. |
@@ -62,8 +62,12 @@ Not compiled — embedded by `assets.rs` and bind-mounted at launch.
 - `container/egress/firewall-entrypoint.sh` — PID 1: nft default-deny + tinyproxy
   + egress self-check, then drops privilege to `dev`.
 - `container/egress/tinyproxy.conf` — the hostname-allowlist proxy config.
-- `setup.sh` — post-firewall: clone repo, run launch hooks, start the workload;
-  `restart-tunnel` mode re-establishes a dropped cloudflared quick tunnel.
+- `setup.sh` — post-firewall: clone repo, run launch hooks, auto-start the paseo
+  daemon when `INSTALL_PASEO=true` (re-ensured on every container start; in
+  `PASEO_MODE=direct` it sets a bcrypt password via a tmux PTY — fail-loud — and
+  patches `~/.paseo/config.json` to bind `0.0.0.0:PASEO_PORT` with the relay
+  off), start the workload; `restart-tunnel` mode re-establishes a dropped
+  cloudflared quick tunnel.
 - `container/agents.sh` — in-container agent-install registry (mirror of
   `agents.rs`).
 - `container/bin/*` — `run-claude`, `install-agents`, `rc-notify` (container→host

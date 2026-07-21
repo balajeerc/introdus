@@ -214,6 +214,16 @@ pub fn paseo_url() -> Result<()> {
     if !act::container_has_cmd(&ctx, agents::paseo::CMD) {
         bail!("paseo isn't installed — run `introdus install-paseo` first");
     }
+    // Direct mode has no relay pairing URL — print the port + password instead.
+    if ctx.config.paseo_mode.is_direct() {
+        for line in agents::paseo::direct_connection_help(
+            ctx.config.paseo_port,
+            ctx.config.paseo_password.as_deref(),
+        ) {
+            println!("{line}");
+        }
+        return Ok(());
+    }
     // Ensure the daemon is up, then print the pairing details and pull the URL
     // out of them. `2>&1` folds any diagnostics into the captured stream.
     let script = format!("{}; paseo daemon pair 2>&1", act::PASEO_ENSURE_DAEMON);
@@ -343,5 +353,30 @@ mod tests {
         );
         // Nothing URL-shaped -> None.
         assert_eq!(extract_pairing_url("no url here"), None);
+    }
+
+    #[test]
+    fn ta158_ensure_daemon_does_not_treat_nonzero_start_as_fatal() {
+        let s = act::PASEO_ENSURE_DAEMON;
+        // Every `paseo daemon start` is followed by `|| true`, so its exit code
+        // (e.g. the readiness-gate "exit code 1" reported even when the worker is
+        // actually listening on :6767) never aborts the snippet.
+        assert_eq!(
+            s.matches("paseo daemon start").count(),
+            s.matches("paseo daemon start || true").count(),
+            "every start attempt must be `|| true` so a non-zero exit is not fatal"
+        );
+        // Readiness is decided by re-probing the daemon status, not by `start`'s
+        // exit code: the running-daemon gate appears before AND after starting.
+        assert!(
+            s.matches(r#"grep -Eq '"localDaemon":[[:space:]]*"running"'"#)
+                .count()
+                >= 1,
+            "must gate on the localDaemon=running status probe"
+        );
+        assert!(
+            s.matches("_paseo_up").count() >= 4,
+            "must re-probe readiness after attempting start (not trust its exit code)"
+        );
     }
 }

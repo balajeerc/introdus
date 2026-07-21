@@ -19,12 +19,14 @@
 #     quit-stop  "Quit introdus (stop the container)" stops it + kills the session
 #     detach     "Detach tmux session" detaches the client; session + container survive
 #     paseo      install paseo, launch an agent directly, show the pairing QR
+#     paseo-direct  direct mode (no relay): daemon on 0.0.0.0:PORT + password,
+#                   port published, authenticated client works
 #     send-files send a host file into a running container via the dual-pane TUI
 #     cli        headless subcommands drive a real container (allow --restart,
 #                dev/root shells, notify-log/restart-notify, restart, stop --yes)
 #     all        verify + menu + egress + lifecycle + install + agents +
 #                agent-launch + agent-missing + quit-stop + detach +
-#                paseo + send-files + cli (default)
+#                paseo + paseo-direct + send-files + cli (default)
 #
 # This is a heavy, opt-in tier — it is NOT part of `cargo test`. It needs a
 # rootless-podman host with /dev/fuse and /dev/net/tun.
@@ -115,6 +117,10 @@ case "$target" in
         echo "==> paseo: install paseo, launch an agent directly, show the pairing QR"
         run_driver driver-paseo.sh
         ;;
+    paseo-direct)
+        echo "==> paseo-direct: direct mode (no relay) — 0.0.0.0:PORT + password, authed client"
+        run_driver driver-paseo-direct.sh
+        ;;
     send-files)
         echo "==> send-files: send a host file into a running container via the dual-pane TUI"
         run_driver driver-send-files.sh
@@ -146,6 +152,8 @@ case "$target" in
         run_driver driver-detach.sh
         echo "==> paseo: install paseo, launch an agent directly, show the pairing QR"
         run_driver driver-paseo.sh
+        echo "==> paseo-direct: direct mode (no relay) — 0.0.0.0:PORT + password, authed client"
+        run_driver driver-paseo-direct.sh
         echo "==> send-files: send a host file into a running container via the dual-pane TUI"
         run_driver driver-send-files.sh
         echo "==> cli: headless subcommands drive a real container (allow/shells/notify/restart/stop)"
@@ -154,7 +162,7 @@ case "$target" in
         run_driver driver-lifecycle.sh
         ;;
     *)
-        echo "unknown target: $target (want: verify | launch | reattach | menu | egress | lifecycle | install | agents | agent-launch | agent-missing | quit-stop | detach | paseo | send-files | cli | all)" >&2
+        echo "unknown target: $target (want: verify | launch | reattach | menu | egress | lifecycle | install | agents | agent-launch | agent-missing | quit-stop | detach | paseo | paseo-direct | send-files | cli | all)" >&2
         exit 2
         ;;
 esac

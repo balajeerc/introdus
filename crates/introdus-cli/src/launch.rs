@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use anyhow::{bail, Result};
-use introdus_core::{paths, podman, Config};
+use introdus_core::{agents, config, paths, podman, ports, Config};
 
 use crate::context::{env_path, LaunchContext};
 use crate::lifecycle::Lifecycle;
@@ -45,6 +45,7 @@ fn load_context_in(dir: PathBuf) -> Result<LaunchContext> {
 /// first. On success this hands the terminal to podman and does not return.
 pub fn run_launch(lifecycle: Lifecycle, opts: LaunchOpts) -> Result<()> {
     preflight::check_launch()?;
+    provision_paseo_direct()?;
     let ctx = load_context()?;
     run::validate_inputs(&ctx)?;
 
@@ -59,6 +60,35 @@ pub fn run_launch(lifecycle: Lifecycle, opts: LaunchOpts) -> Result<()> {
     let result = bring_up(&ctx, lifecycle, opts);
     clear_launch_marker(&ctx); // only reached if bring_up failed (else it exec'd)
     result
+}
+
+/// Direct-mode paseo needs a stable host port and a daemon passphrase. Assign
+/// them once at launch — a free port from [`config::PASEO_PORT_BASE`] and a
+/// generated 2-word passphrase — persist them to the project config so they stay
+/// consistent across restarts, and do nothing in relay mode or once assigned.
+fn provision_paseo_direct() -> Result<()> {
+    let dir = std::env::current_dir()?;
+    let env = env_path(&dir);
+    if !env.exists() {
+        return Ok(()); // first run has no config yet — the wizard writes it
+    }
+    let mut cfg = Config::load(&env)?;
+    if !cfg.install_paseo || !cfg.paseo_mode.is_direct() {
+        return Ok(());
+    }
+    let mut changed = false;
+    if cfg.paseo_port.is_none() {
+        cfg.paseo_port = Some(ports::pick_free_port(config::PASEO_PORT_BASE, &[])?);
+        changed = true;
+    }
+    if cfg.paseo_password.is_none() {
+        cfg.paseo_password = Some(agents::paseo::generate_passphrase());
+        changed = true;
+    }
+    if changed {
+        cfg.save(&env)?;
+    }
+    Ok(())
 }
 
 /// The actual bring-up. On success the `run::*_and_exec` call replaces this

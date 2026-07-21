@@ -144,6 +144,9 @@ fn ta127_wizard_paseo_opt_in_records_flag_and_relay_host() {
     // Opt INTO paseo (default is No) — a single 'y' submits the confirm.
     p.exp_string("Also install paseo").unwrap();
     send(&mut p, "y");
+    // Then the connection-mode prompt — default No keeps the relay.
+    p.exp_string("DIRECT connection").unwrap();
+    enter(&mut p); // default No = relay
     finish_expose_ntfy(&mut p);
 
     let env = std::fs::read_to_string(fx.env_file()).unwrap();
@@ -153,7 +156,29 @@ fn ta127_wizard_paseo_opt_in_records_flag_and_relay_host() {
     );
     assert!(
         env.contains("paseo.sh"),
-        "paseo opt-in must allowlist the relay host paseo.sh:\n{env}"
+        "relay-mode paseo opt-in must allowlist the relay host paseo.sh:\n{env}"
+    );
+}
+
+#[test]
+fn ta161_wizard_paseo_direct_mode_records_mode_and_skips_relay_host() {
+    let (fx, mut p) = init_to_agent_checklist();
+    tick_claude(&mut p);
+    p.exp_string("Also install paseo").unwrap();
+    send(&mut p, "y");
+    // Choose the DIRECT (VPN/zero-trust) connection mode.
+    p.exp_string("DIRECT connection").unwrap();
+    send(&mut p, "y");
+    finish_expose_ntfy(&mut p);
+
+    let env = std::fs::read_to_string(fx.env_file()).unwrap();
+    assert!(
+        env.contains("PASEO_MODE=\"direct\"") || env.contains("PASEO_MODE=direct"),
+        "direct opt-in must record PASEO_MODE=direct:\n{env}"
+    );
+    assert!(
+        !env.contains("paseo.sh"),
+        "direct mode must NOT allowlist the relay host paseo.sh:\n{env}"
     );
 }
 

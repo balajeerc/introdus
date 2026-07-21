@@ -158,6 +158,82 @@ pub mod paseo {
     /// workload's default-deny egress blackholes the relay and phone pairing
     /// times out. Anycast/stable enough for a launch-time resolve.
     pub const RELAY_HOST: &str = "relay.paseo.sh";
+
+    /// Adjective + noun wordlists for a friendly, memorable direct-mode passphrase
+    /// (e.g. `fast-koala`). Not a high-entropy secret alone — direct mode is meant
+    /// for a VPN/zero-trust network and the daemon bcrypt-hashes it — but drawn
+    /// from a large enough pool (~90x90 ≈ 8k pairs) not to be guessable off-hand.
+    const ADJECTIVES: &[&str] = &[
+        "amber", "ancient", "bold", "brave", "brisk", "bronze", "calm", "clever", "cobalt",
+        "cosmic", "crimson", "crisp", "daring", "dusky", "eager", "electric", "emerald", "fair",
+        "fast", "fearless", "fierce", "frosty", "gentle", "gilded", "golden", "grand", "hidden",
+        "humble", "indigo", "iron", "jade", "jolly", "keen", "lively", "lucid", "lunar", "mellow",
+        "merry", "misty", "noble", "nimble", "olive", "opal", "placid", "polar", "proud", "quick",
+        "quiet", "royal", "rustic", "sable", "sapphire", "scarlet", "serene", "sharp", "silent",
+        "silver", "sleek", "smooth", "solar", "spry", "stellar", "sterling", "stoic", "stout",
+        "sunny", "swift", "tidy", "timber", "topaz", "tranquil", "trusty", "twilight", "valiant",
+        "velvet", "vivid", "warm", "whisper", "wild", "windy", "wise", "witty", "zealous",
+    ];
+    const NOUNS: &[&str] = &[
+        "acorn", "otter", "koala", "falcon", "harbor", "meadow", "cedar", "comet", "ember",
+        "canyon", "willow", "badger", "raven", "maple", "brook", "heron", "lynx", "orchid",
+        "pebble", "quartz", "summit", "thistle", "walnut", "beacon", "cactus", "dune", "fjord",
+        "glacier", "hollow", "island", "jasmine", "kestrel", "lagoon", "marlin", "nectar", "oasis",
+        "pine", "reef", "spruce", "tundra", "vale", "wren", "yarrow", "zephyr", "bison", "cove",
+        "delta", "elk", "fern", "grove", "hawk", "ibis", "juniper", "lark", "moss", "nomad",
+        "onyx", "prairie", "quail", "ridge", "sparrow", "tulip", "vireo", "wolf", "aspen", "birch",
+        "cricket", "dew", "eagle", "finch", "gale", "hazel", "iris", "jetty", "kelp", "lotus",
+        "mica", "north", "opal", "puffin", "quill", "robin", "sage", "teal", "umber", "violet",
+        "wisp", "yew", "zinnia",
+    ];
+
+    /// Generate a memorable `adjective-noun` passphrase for the direct-mode daemon
+    /// password, seeded from OS randomness (`/dev/urandom`; a time/pid fallback is
+    /// used only if that is unreadable, which does not happen on Linux).
+    pub fn generate_passphrase() -> String {
+        let b = random_bytes();
+        let a = ADJECTIVES[pick(&b[0..4], ADJECTIVES.len())];
+        let n = NOUNS[pick(&b[4..8], NOUNS.len())];
+        format!("{a}-{n}")
+    }
+
+    /// The display lines for a direct-mode connection — the port + password and
+    /// how to enter them in paseo desktop's "Direct connection" dialog / the CLI.
+    /// `None` values render a "relaunch to assign/generate" hint. Shared by the
+    /// panel action and the headless subcommand.
+    pub fn direct_connection_help(port: Option<u16>, password: Option<&str>) -> Vec<String> {
+        let port = port.map_or_else(|| "(relaunch to assign)".to_owned(), |p| p.to_string());
+        let pass = password.unwrap_or("(relaunch to generate)");
+        vec![
+            "Paseo DIRECT connection (no relay) — in paseo desktop → 'Direct connection':"
+                .to_owned(),
+            format!("  port {port}, password {pass}"),
+            "  host: this machine's VPN/tailscale address (127.0.0.1 if the desktop is here)"
+                .to_owned(),
+            format!("  CLI:  PASEO_HOST=<host>:{port} PASEO_PASSWORD={pass} paseo ls"),
+        ]
+    }
+
+    fn pick(b: &[u8], len: usize) -> usize {
+        (u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize) % len
+    }
+
+    fn random_bytes() -> [u8; 8] {
+        use std::io::Read;
+        let mut buf = [0u8; 8];
+        if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
+            if f.read_exact(&mut buf).is_ok() {
+                return buf;
+            }
+        }
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0)
+            ^ u64::from(std::process::id());
+        buf.copy_from_slice(&seed.to_le_bytes());
+        buf
+    }
 }
 
 /// Look up an agent by its id.
@@ -192,6 +268,34 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn ta162_paseo_passphrase_is_two_words_from_the_lists() {
+        for _ in 0..200 {
+            let p = paseo::generate_passphrase();
+            let (a, n) = p.split_once('-').expect("passphrase is adjective-noun");
+            assert!(!a.is_empty() && !n.is_empty(), "both words present: {p}");
+            assert!(
+                a.chars().all(|c| c.is_ascii_lowercase()),
+                "adjective is lowercase ascii: {p}"
+            );
+            assert!(
+                n.chars().all(|c| c.is_ascii_lowercase()),
+                "noun is lowercase ascii: {p}"
+            );
+        }
+    }
+
+    #[test]
+    fn ta165_direct_connection_help_shows_port_and_password() {
+        let lines = paseo::direct_connection_help(Some(20190), Some("fast-koala")).join("\n");
+        assert!(lines.contains("20190"), "shows the port: {lines}");
+        assert!(lines.contains("fast-koala"), "shows the password: {lines}");
+        assert!(lines.contains("PASEO_HOST"), "shows the CLI form: {lines}");
+        // Missing values render a relaunch hint, not an empty/garbage line.
+        let hint = paseo::direct_connection_help(None, None).join("\n");
+        assert!(hint.contains("relaunch"), "None renders a hint: {hint}");
     }
 
     #[test]

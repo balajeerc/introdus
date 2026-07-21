@@ -75,6 +75,16 @@ as a throwaway container.
   tightly.
 - `DISABLE_NETWORK_BLOCK=true` is an explicit escape hatch that runs the workload
   with **no firewall and no proxy**. Only for debugging; never a default.
+- **paseo direct mode** (`PASEO_MODE=direct`) is the one intentional *inbound*
+  surface: the daemon binds `0.0.0.0:PASEO_PORT` and introdus publishes it on the
+  host's **all-interfaces** address so a laptop can reach it over a VPN/tailscale
+  net. It is protected only by a generated bcrypt passphrase (`set-password`,
+  driven via a PTY; the daemon otherwise runs unauthenticated, so setup **fails
+  loud** and refuses to start the daemon if the password can't be set). Scope host
+  reachability of that port to your VPN — do not run direct mode on a host whose
+  `PASEO_PORT` is reachable from the public internet. The default (relay mode)
+  exposes nothing inbound (the daemon dials out to the relay). Direct mode also
+  does *not* widen egress — it never contacts paseo's relay/app hosts.
 
 ## 4. Supply-chain posture — agent installs
 

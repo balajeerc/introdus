@@ -76,8 +76,9 @@ impl LaunchContext {
 
         // paseo's daemon dials the relay over a WebSocket that ignores the proxy,
         // so (like cloudflared) it needs a direct-by-IP nft hole. Only resolve
-        // when paseo is opted in; empty otherwise = no hole.
-        let paseo_relay_ips = if config.install_paseo {
+        // when paseo is opted in AND in relay mode; direct mode never touches the
+        // relay, so it gets no hole (empty = no hole).
+        let paseo_relay_ips = if config.install_paseo && !config.paseo_mode.is_direct() {
             resolve_ipv4(agents::paseo::RELAY_HOST)
         } else {
             Vec::new()

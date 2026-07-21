@@ -149,6 +149,18 @@ const MENU: &[Row] = &[
     Row::Item(Action::QuitStop),
 ];
 
+/// The visible label for a menu item — mostly the static [`Action`] label, but
+/// the paseo "connect" item reads as port & password in direct mode (there's no
+/// QR to scan; you connect over TCP).
+fn item_label(a: Action, ctx: &LaunchContext) -> String {
+    match a {
+        Action::PaseoQr if ctx.config.paseo_mode.is_direct() => {
+            "Show Paseo port & password (direct connection)".to_owned()
+        }
+        _ => a.to_string(),
+    }
+}
+
 /// Run the control menu for the current project until the user quits. The
 /// [`Ui`] owns the alternate screen for the whole session; each turn re-snapshots
 /// the status/menu, then an action's output streams into the right-hand pane.
@@ -177,7 +189,7 @@ pub fn run() -> Result<()> {
                     },
                     Row::Item(a) => ui::Row::Item {
                         key: a.hotkey(),
-                        label: a.to_string(),
+                        label: item_label(*a, &ctx),
                     },
                 })
                 .collect();

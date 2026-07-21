@@ -25,6 +25,31 @@ pub fn image_slug(project_name: &str) -> String {
     out
 }
 
+/// Slug a project name into a valid single-label hostname for the container's
+/// `--hostname` (so paseo's server name and the shell prompt read as the project,
+/// not a fixed literal). A DNS label is `[a-z0-9-]`, no leading/trailing hyphen,
+/// ≤63 chars; we lowercase, map every other char to `-`, collapse runs, trim
+/// hyphens, and cap the length. Empty/degenerate names fall back to `introdus`.
+pub fn hostname_slug(project_name: &str) -> String {
+    let mut out = String::with_capacity(project_name.len());
+    for ch in project_name.chars() {
+        let c = ch.to_ascii_lowercase();
+        if c.is_ascii_alphanumeric() {
+            out.push(c);
+        } else if !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    let slug = out.trim_matches('-');
+    let slug: String = slug.chars().take(63).collect();
+    let slug = slug.trim_end_matches('-');
+    if slug.is_empty() {
+        "introdus".to_owned()
+    } else {
+        slug.to_owned()
+    }
+}
+
 /// Per-project image tag alias of [`BASE_IMAGE`] (a `podman tag`, no rebuild).
 pub fn image_name(project_name: &str, suffix: &str) -> String {
     format!("introdus-{}-{suffix}:latest", image_slug(project_name))
@@ -61,6 +86,25 @@ mod tests {
     fn ta18_slug_sanitizes() {
         assert_eq!(image_slug("My Project!"), "my-project-");
         assert_eq!(image_slug("web.app_2"), "web.app_2");
+    }
+
+    #[test]
+    fn ta159_hostname_slug_is_a_valid_dns_label() {
+        // Lowercased; the project name passes through as the container hostname.
+        assert_eq!(hostname_slug("algo-builder"), "algo-builder");
+        assert_eq!(hostname_slug("Algo Builder"), "algo-builder");
+        // Unlike image_slug, dots and underscores are NOT valid in a single
+        // hostname label — they collapse to a hyphen, and runs don't stack.
+        assert_eq!(hostname_slug("web.app_2"), "web-app-2");
+        assert_eq!(hostname_slug("a  b__c"), "a-b-c");
+        // No leading/trailing hyphen even when the name starts/ends with junk.
+        assert_eq!(hostname_slug("!My Project!"), "my-project");
+        // Length is capped at 63 chars, with no trailing hyphen after the cut.
+        let long = hostname_slug(&"x".repeat(80));
+        assert_eq!(long.len(), 63);
+        // Degenerate/empty names fall back to the old literal.
+        assert_eq!(hostname_slug(""), "introdus");
+        assert_eq!(hostname_slug("___"), "introdus");
     }
 
     #[test]

@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use introdus_core::agents::{self, Agent};
+use introdus_core::config::PaseoMode;
 use introdus_core::process::Cmd;
 use introdus_core::{names, Config};
 
@@ -32,12 +33,8 @@ pub fn run(project_dir: &Path) -> Result<Config> {
 
     let install_agents = prompt_agents()?;
     // Paseo is an orchestrator, opted into separately from the agent checklist:
-    // it lets you drive the installed agents from a phone/desktop/web/CLI client
-    // through the paseo relay (the daemon dials out, so nothing is exposed).
-    let install_paseo = ui::confirm(
-        "Also install paseo, to drive these agents from your phone (agent orchestrator)?",
-        false,
-    )?;
+    // it lets you drive the installed agents from a phone/desktop/web/CLI client.
+    let (install_paseo, paseo_mode) = prompt_paseo()?;
     let expose_webapp = ui::confirm(
         "Expose the webapp to the internet via a Cloudflare tunnel?",
         false,
@@ -47,7 +44,7 @@ pub fn run(project_dir: &Path) -> Result<Config> {
 
     let mut config = Config::new(project_name, repo_url, deploy_key_path, webapp_port);
     apply_agents(&mut config, install_agents);
-    apply_paseo(&mut config, install_paseo);
+    apply_paseo(&mut config, install_paseo, paseo_mode);
     config.expose_webapp = expose_webapp;
     config.enable_notify_sh_alerts = enable_notify_sh_alerts;
     config.ntfy_sh_topic = ntfy_sh_topic;
@@ -76,11 +73,40 @@ fn apply_agents(config: &mut Config, selected: Vec<String>) {
     }
 }
 
-/// Record the paseo opt-in and, when enabled, add its relay egress host so the
-/// daemon can reach the pairing/relay service.
-fn apply_paseo(config: &mut Config, enabled: bool) {
+/// Ask whether to install paseo and, if so, how it connects: through the
+/// official relay (phone/desktop pairing; nothing exposed) or a direct TCP
+/// connection over a VPN/zero-trust net (no relay; the daemon port is published
+/// on the host and password-protected). The direct-mode port + passphrase are
+/// auto-assigned at launch, so the wizard only needs the mode.
+fn prompt_paseo() -> Result<(bool, PaseoMode)> {
+    let install = ui::confirm(
+        "Also install paseo, to drive these agents from your phone/desktop (agent orchestrator)?",
+        false,
+    )?;
+    if !install {
+        return Ok((false, PaseoMode::Relay));
+    }
+    let direct = ui::confirm(
+        "Use a DIRECT connection over your own VPN/zero-trust network instead of the paseo relay? \
+         (No relay contacted; the daemon port is published on the host, protected by a generated \
+         password.)",
+        false,
+    )?;
+    let mode = if direct {
+        PaseoMode::Direct
+    } else {
+        PaseoMode::Relay
+    };
+    Ok((install, mode))
+}
+
+/// Record the paseo opt-in + connection mode. Relay mode adds paseo's egress host
+/// so the daemon can reach the pairing/relay service; direct mode never contacts
+/// paseo's hosts, so it doesn't widen egress.
+fn apply_paseo(config: &mut Config, enabled: bool, mode: PaseoMode) {
     config.install_paseo = enabled;
-    if enabled {
+    config.paseo_mode = if enabled { mode } else { PaseoMode::Relay };
+    if enabled && !mode.is_direct() {
         let host = agents::paseo::HOST.to_owned();
         if !config.whitelist_hosts.contains(&host) {
             config.whitelist_hosts.push(host);
@@ -441,12 +467,13 @@ mod tests {
             "/k".to_owned(),
             3000,
         );
-        apply_paseo(&mut c, false);
+        apply_paseo(&mut c, false, PaseoMode::Relay);
         assert!(!c.install_paseo);
         assert!(!c.whitelist_hosts.contains(&"paseo.sh".to_owned()));
 
-        apply_paseo(&mut c, true);
+        apply_paseo(&mut c, true, PaseoMode::Relay);
         assert!(c.install_paseo);
+        assert_eq!(c.paseo_mode, PaseoMode::Relay);
         assert!(c.whitelist_hosts.contains(&"paseo.sh".to_owned()));
         // Idempotent: enabling again doesn't duplicate the host.
         let count = c
@@ -454,7 +481,7 @@ mod tests {
             .iter()
             .filter(|h| *h == "paseo.sh")
             .count();
-        apply_paseo(&mut c, true);
+        apply_paseo(&mut c, true, PaseoMode::Relay);
         assert_eq!(
             c.whitelist_hosts
                 .iter()
@@ -462,6 +489,22 @@ mod tests {
                 .count(),
             count
         );
+    }
+
+    #[test]
+    fn ta160_apply_paseo_direct_mode_skips_relay_host() {
+        let mut c = Config::new(
+            "p".to_owned(),
+            "git@github.com:o/r.git".to_owned(),
+            "/k".to_owned(),
+            3000,
+        );
+        // Direct mode records the mode but never widens egress with paseo.sh —
+        // it's a VPN-local TCP connection that never contacts paseo's relay.
+        apply_paseo(&mut c, true, PaseoMode::Direct);
+        assert!(c.install_paseo);
+        assert_eq!(c.paseo_mode, PaseoMode::Direct);
+        assert!(!c.whitelist_hosts.contains(&"paseo.sh".to_owned()));
     }
 
     #[test]

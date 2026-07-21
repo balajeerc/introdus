@@ -175,6 +175,103 @@ do_restart_tunnel() {
     echo
 }
 
+# ---- paseo daemon (optional agent orchestrator) -----------------------------
+# When paseo is opted in (INSTALL_PASEO=true), bring its daemon up as part of
+# container boot so `paseo ls` / a client can connect without first opening the
+# control panel — and so it comes back after a container stop/start (the
+# entrypoint re-execs this on every start). paseo is on the image PATH
+# (PNPM_HOME), so a non-login shell finds it.
+#
+# Two connection modes (PASEO_MODE):
+#   relay  (default) — the daemon dials OUT to paseo's relay; nothing is exposed.
+#   direct           — the daemon binds 0.0.0.0:PASEO_PORT (published on the host)
+#                      with the relay OFF and a bcrypt password, for a plain TCP
+#                      connection over a VPN/zero-trust network.
+#
+# A non-zero `paseo daemon start` is NOT authoritative — its readiness gate can
+# report "failed to start" while the worker is actually serving (e.g. a slow
+# relay handshake) — so we re-probe the daemon status and warm-retry once. Never
+# fatal (set -e safe): the container comes up regardless.
+CONFIG_JSON="${HOME}/.paseo/config.json"
+
+_paseo_up() {
+    paseo daemon status --json 2>/dev/null | grep -Eq '"localDaemon":[[:space:]]*"running"'
+}
+_paseo_has_password() {
+    [[ -f "$CONFIG_JSON" ]] && grep -q '"password"' "$CONFIG_JSON"
+}
+
+# Set the daemon password (direct mode). paseo's `set-password` is an interactive
+# TUI prompt with no non-interactive flag, so drive it through a REAL pty via a
+# detached tmux session. Idempotent (skips if already set). Returns non-zero if a
+# password could not be saved — the caller then refuses to start the daemon.
+set_paseo_password() {
+    _paseo_has_password && return 0
+    [[ -n "${PASEO_PASSWORD:-}" ]] || { echo "  paseo: PASEO_PASSWORD is empty"; return 1; }
+    # set-password saves into the daemon home; make sure it's initialized first.
+    if [[ ! -f "$CONFIG_JSON" ]]; then
+        paseo daemon start >/dev/null 2>&1 || true; sleep 2
+        paseo daemon stop  >/dev/null 2>&1 || true
+    fi
+    tmux kill-session -t paseo-pw 2>/dev/null || true
+    tmux new-session -d -s paseo-pw -x 200 -y 50 "paseo daemon set-password; sleep 20"
+    sleep 3
+    tmux send-keys -t paseo-pw "$PASEO_PASSWORD" Enter; sleep 1
+    tmux send-keys -t paseo-pw "$PASEO_PASSWORD" Enter; sleep 3   # confirm step, if any
+    tmux kill-session -t paseo-pw 2>/dev/null || true
+    _paseo_has_password
+}
+
+# Direct mode: ensure a password is set, then patch config.json so the daemon
+# binds 0.0.0.0:PASEO_PORT with the relay disabled (a node merge that preserves
+# the password + any other keys). Returns non-zero if the password can't be set.
+configure_paseo_direct() {
+    set_paseo_password || return 1
+    node -e '
+      const fs=require("fs"), path=require("path");
+      const f=process.env.HOME+"/.paseo/config.json";
+      let c={}; try { c=JSON.parse(fs.readFileSync(f,"utf8")); } catch {}
+      c.version=c.version||1; c.daemon=c.daemon||{};
+      c.daemon.listen=process.argv[1];
+      c.daemon.relay=Object.assign({}, c.daemon.relay, {enabled:false});
+      fs.mkdirSync(path.dirname(f), {recursive:true});
+      fs.writeFileSync(f, JSON.stringify(c,null,2)+"\n");
+    ' "0.0.0.0:${PASEO_PORT:-20190}"
+}
+
+ensure_paseo_daemon() {
+    if ! command -v paseo >/dev/null 2>&1; then
+        echo "  paseo enabled but its CLI isn't installed (install may have been blocked) — skipping daemon start"
+        return 0
+    fi
+    if [[ "${PASEO_MODE:-relay}" == "direct" ]]; then
+        if ! configure_paseo_direct; then
+            echo "  ERROR: could not set the paseo daemon password — refusing to start an"
+            echo "         unauthenticated daemon on 0.0.0.0. Check ~/.paseo and PASEO_PASSWORD."
+            return 0
+        fi
+        local want="0.0.0.0:${PASEO_PORT:-20190}"
+        if _paseo_up && paseo daemon status --json 2>/dev/null | grep -q "$want"; then
+            echo "  paseo daemon already running on $want (direct mode)"
+            return 0
+        fi
+        # A daemon from a prior boot may be on the wrong address — restart it so it
+        # re-reads the direct listen/relay config.
+        paseo daemon stop >/dev/null 2>&1 || true
+    elif _paseo_up; then
+        echo "  paseo daemon already running"
+        return 0
+    fi
+    paseo daemon start || true
+    _paseo_up && { echo "  paseo daemon started"; return 0; }
+    paseo daemon start || true   # warm retry — a non-zero start is not fatal
+    if _paseo_up; then
+        echo "  paseo daemon started (after retry)"
+    else
+        echo "  paseo daemon still not up after two attempts — see ~/.paseo/daemon.log"
+    fi
+}
+
 # ---- serve: tunnel + ON_LAUNCH_SCRIPT (dev) + banner + idle -----------------
 do_serve() {
     cd "$WORKDIR" 2>/dev/null || cd "$HOME"
@@ -184,6 +281,11 @@ do_serve() {
         start_tunnel
         echo "  attach: podman exec -it --user dev $CNAME tmux attach -t tunnel"
         echo "  tail:   podman exec -it --user dev $CNAME tail -f ~/.logs/tunnel.log"
+    fi
+
+    if [[ "${INSTALL_PASEO:-false}" == "true" ]]; then
+        log "ensuring the paseo daemon is up (INSTALL_PASEO=true)"
+        ensure_paseo_daemon
     fi
 
     # VSCode connection instructions are OS- and locality-aware.

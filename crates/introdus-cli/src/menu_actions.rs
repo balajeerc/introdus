@@ -224,7 +224,20 @@ pub(crate) fn yolo_flag(yolo: agents::Yolo) -> Option<&'static str> {
 /// noisily when already up); gate on the `localDaemon` field of the JSON status
 /// instead. Without a running daemon the relay never connects and phone pairing
 /// times out.
-pub(crate) const PASEO_ENSURE_DAEMON: &str = r#"paseo daemon status --json 2>/dev/null | grep -Eq '"localDaemon":[[:space:]]*"running"' || paseo daemon start"#;
+///
+/// A non-zero `paseo daemon start` is NOT authoritative. Its readiness gate can
+/// report "Daemon failed to start in background (exit code 1)" even though the
+/// worker actually came up and is serving on :6767 — e.g. a slow first relay
+/// handshake trips the gate. So we never treat `start`'s exit code as fatal:
+/// after attempting it we re-probe the daemon status and treat a running daemon
+/// as success. Only if it is genuinely still down do we make one more start
+/// attempt (the warm retry that succeeds by hand).
+pub(crate) const PASEO_ENSURE_DAEMON: &str = concat!(
+    r#"_paseo_up(){ paseo daemon status --json 2>/dev/null | grep -Eq '"localDaemon":[[:space:]]*"running"'; }; "#,
+    r#"_paseo_up || paseo daemon start || true; "#,
+    r#"_paseo_up || paseo daemon start || true; "#,
+    r#"_paseo_up || echo 'paseo: daemon still not up after two attempts — see ~/.paseo/daemon.log'"#,
+);
 
 // ---- paseo orchestrator -----------------------------------------------------
 
@@ -278,17 +291,28 @@ pub fn install_paseo(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     Ok(())
 }
 
-/// Open a tmux window that starts the paseo daemon (if needed) and prints the
-/// pairing QR code, so you can scan it from the paseo phone app. The daemon
-/// dials out to the relay (needs `paseo.sh` allowlisted) and the phone connects
-/// through that relay — nothing is exposed inbound.
+/// The paseo "connect" panel action. In relay mode it opens a tmux window that
+/// starts the daemon and prints the pairing QR (the daemon dials out to the
+/// relay; nothing is exposed inbound). In direct mode there is no QR — the daemon
+/// is reached over plain TCP on your VPN — so it prints the port + password
+/// instead.
 pub fn paseo_qr(ctx: &LaunchContext, ui: &mut Ui) -> Result<()> {
     require_running(ctx)?;
     if !container_has_cmd(ctx, agents::paseo::CMD) {
         bail!("paseo isn't installed — run 'Install paseo (drive agents from your phone)' first");
     }
-    // Ensure the daemon is up, print the pairing QR (paseo renders it natively),
-    // then drop to a shell so the code stays on screen long enough to scan.
+    if ctx.config.paseo_mode.is_direct() {
+        for line in agents::paseo::direct_connection_help(
+            ctx.config.paseo_port,
+            ctx.config.paseo_password.as_deref(),
+        ) {
+            ui.log(format!("  {line}"));
+        }
+        return Ok(());
+    }
+    // Relay mode: ensure the daemon is up, print the pairing QR (paseo renders it
+    // natively), then drop to a shell so the code stays on screen long enough to
+    // scan.
     let inner = format!("{PASEO_ENSURE_DAEMON}; paseo daemon pair; exec bash");
     let cmd = exec_interactive(&ctx.container_name, Some("dev"))
         .args(["bash", "-lc", &inner])
@@ -317,9 +341,14 @@ pub(crate) fn run_install_paseo(ctx: &LaunchContext, f: &mut impl Frontend) -> R
 /// the caller still persists the config and rewrites the allowlist.
 pub(crate) fn paseo_opt_in(config: &mut Config) {
     config.install_paseo = true;
-    let host = agents::paseo::HOST.to_owned();
-    if !config.whitelist_hosts.contains(&host) {
-        config.whitelist_hosts.push(host);
+    // Direct mode never reaches paseo's relay/app hosts (it's a VPN-local TCP
+    // connection; install is via the npm registry, already allowed), so don't
+    // widen egress with paseo.sh. Callers set `paseo_mode` before opting in.
+    if !config.paseo_mode.is_direct() {
+        let host = agents::paseo::HOST.to_owned();
+        if !config.whitelist_hosts.contains(&host) {
+            config.whitelist_hosts.push(host);
+        }
     }
 }
 
